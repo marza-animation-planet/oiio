@@ -70,11 +70,17 @@ if python_dir:
     if sys.platform == "win32":
         oiio_opts["PYTHON_LIBRARY"] = "%s/libs/python%s.lib" % (python_dir, python_ver.replace(".", ""))
         oiio_opts["PYTHON_EXECUTABLE"] = "%s/python.exe" % (python_dir)
+        oiio_opts["PYTHON_INCLUDE_DIR"] = python_dir + "/include"
     else:
-        oiio_opts["PYTHON_LIBRARY"] = "%s/libs/libpython%s.so" % (python_dir, python_ver)
-        oiio_opts["PYTHON_EXECUTABLE"] = "%s/python" % (python_dir)
-
-    oiio_opts["PYTHON_INCLUDE_DIR"] = python_dir + "/include"
+        pybin = "%s/bin/python%s" % (python_dir, python_ver)
+        if not os.path.isfile(pybin):
+            pybin = "%s/bin/python" % python_dir
+        pylib = "%s/lib64/libpython%s.so" % (python_dir, python_ver)
+        if not os.path.isfile(pylib):
+            pylib = "%s/lib/libpython%s.so" % (python_dir, python_ver)
+        oiio_opts["PYTHON_EXECUTABLE"] = pybin
+        oiio_opts["PYTHON_LIBRARY"] = pylib
+        oiio_opts["PYTHON_INCLUDE_DIR"] = "%s/include/python%s" % (python_dir, python_ver)
 
 # boost
 #   force static link

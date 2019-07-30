@@ -87,7 +87,9 @@ ImageBuf_read (ImageBuf &buf, int subimage=0, int miplevel=0,
                bool force=false, TypeDesc convert=TypeUnknown)
 {
     ScopedGILRelease gil;
-    return buf.read (subimage, miplevel, force, convert);
+    ProgressCallback cb = NULL;
+    void *cb_data = NULL;
+    return buf.read (subimage, miplevel, force, convert, cb, cb_data);
 }
 
 
@@ -97,14 +99,42 @@ ImageBuf_read2 (ImageBuf &buf, int subimage=0, int miplevel=0,
                 TypeDesc::BASETYPE convert=TypeDesc::UNKNOWN)
 {
     ScopedGILRelease gil;
-    return buf.read (subimage, miplevel, force, convert);
+    ProgressCallback cb = NULL;
+    void *cb_data = NULL;
+    return buf.read (subimage, miplevel, force, convert, cb, cb_data);
 }
+
+bool
+ImageBuf_read3 (ImageBuf &buf, int subimage, int miplevel,
+                int chbegin, int chend, bool force, TypeDesc convert)
+{
+    ScopedGILRelease gil;
+    ProgressCallback cb = NULL;
+    void *cb_data = NULL;
+    return buf.read (subimage, miplevel, chbegin, chend, force, convert, cb, cb_data);
+}
+
+bool
+ImageBuf_read4 (ImageBuf &buf, int subimage, int miplevel,
+                int chbegin, int chend, bool force,
+                TypeDesc::BASETYPE convert)
+{
+    ScopedGILRelease gil;
+    ProgressCallback cb = NULL;
+    void *cb_data = NULL;
+    return buf.read (subimage, miplevel, chbegin, chend, force, convert, cb, cb_data);
+}
+
 
 
 BOOST_PYTHON_FUNCTION_OVERLOADS(ImageBuf_read_overloads,
                                 ImageBuf_read, 1, 5)
 BOOST_PYTHON_FUNCTION_OVERLOADS(ImageBuf_read2_overloads,
                                 ImageBuf_read2, 1, 5)
+BOOST_PYTHON_FUNCTION_OVERLOADS(ImageBuf_read3_overloads,
+                                ImageBuf_read3, 7, 7)
+BOOST_PYTHON_FUNCTION_OVERLOADS(ImageBuf_read4_overloads,
+                                ImageBuf_read4, 7, 7)
 
 
 bool
@@ -437,6 +467,10 @@ void declare_imagebuf()
              ImageBuf_read_overloads())
         .def("read",  &ImageBuf_read2,
              ImageBuf_read2_overloads())
+        .def("read",  &ImageBuf_read3,
+             ImageBuf_read3_overloads())
+        .def("read",  &ImageBuf_read4,
+             ImageBuf_read4_overloads())
         .def("write", &ImageBuf_write,
              ImageBuf_write_overloads())
         // FIXME -- write(ImageOut&)

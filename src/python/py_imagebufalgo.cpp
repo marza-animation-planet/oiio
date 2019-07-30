@@ -1216,38 +1216,42 @@ IBA_fixNonFinite (ImageBuf &dst, const ImageBuf &src,
 
 
 bool
-IBA_render_point (ImageBuf &dst, int x, int y, tuple color_ = tuple())
+IBA_render_point (ImageBuf &dst, int x, int y, tuple color_ = tuple(),
+                  ROI roi = ROI::All(), int nthreads = 0)
 {
     std::vector<float> color;
     py_to_stdvector (color, color_);
     color.resize (dst.nchannels(), 1.0f);
     ScopedGILRelease gil;
-    return ImageBufAlgo::render_point (dst, x, y, color);
+    return ImageBufAlgo::render_point (dst, x, y, color, roi, nthreads);
 }
 
 
 bool
 IBA_render_line (ImageBuf &dst, int x1, int y1, int x2, int y2,
-                 tuple color_ = tuple(), bool skip_first_point=false)
+                 tuple color_ = tuple(), bool skip_first_point=false,
+                 ROI roi = ROI::All(), int nthreads = 0)
 {
     std::vector<float> color;
     py_to_stdvector (color, color_);
     color.resize (dst.nchannels(), 1.0f);
     ScopedGILRelease gil;
     return ImageBufAlgo::render_line (dst, x1, y1, x2, y2,
-                                      color, skip_first_point);
+                                      color, skip_first_point,
+                                      roi, nthreads);
 }
 
 
 bool
 IBA_render_box (ImageBuf &dst, int x1, int y1, int x2, int y2,
-                 tuple color_ = tuple(), bool fill=false)
+                 tuple color_ = tuple(), bool fill=false,
+                 ROI roi = ROI::All(), int nthreads = 0)
 {
     std::vector<float> color;
     py_to_stdvector (color, color_);
     color.resize (dst.nchannels(), 1.0f);
     ScopedGILRelease gil;
-    return ImageBufAlgo::render_box (dst, x1, y1, x2, y2, color, fill);
+    return ImageBufAlgo::render_box (dst, x1, y1, x2, y2, color, fill, roi, nthreads);
 }
 
 
@@ -1943,17 +1947,20 @@ void declare_imagebufalgo()
         .staticmethod("zover")
 
         .def("render_point", &IBA_render_point,
-             (arg("dst"), arg("x"), arg("y"), arg("color")=tuple()))
+             (arg("dst"), arg("x"), arg("y"), arg("color")=tuple(),
+              arg("roi")=ROI::All(), arg("nthreads")=0))
         .staticmethod("render_point")
 
         .def("render_line", &IBA_render_line,
              (arg("dst"), arg("x1"), arg("y1"), arg("x2"), arg("y2"),
-              arg("color")=tuple(), arg("skip_first_point")=false))
+              arg("color")=tuple(), arg("skip_first_point")=false,
+              arg("roi")=ROI::All(), arg("nthreads")=0))
         .staticmethod("render_line")
 
         .def("render_box", &IBA_render_box,
              (arg("dst"), arg("x1"), arg("y1"), arg("x2"), arg("y2"),
-              arg("color")=tuple(), arg("fill")=false))
+              arg("color")=tuple(), arg("fill")=false,
+              arg("roi")=ROI::All(), arg("nthreads")=0))
         .staticmethod("render_box")
 
         .def("render_text", &IBA_render_text,

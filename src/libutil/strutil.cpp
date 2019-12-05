@@ -494,6 +494,28 @@ Strutil::StringILess::operator()(const char* a, const char* b) const
 
 
 string_view
+Strutil::lstrip(string_view str, string_view chars)
+{
+    if (chars.empty())
+        chars = string_view(" \t\n\r\f\v", 6);
+    size_t b = str.find_first_not_of(chars);
+    return str.substr(b, string_view::npos);
+}
+
+
+
+string_view
+Strutil::rstrip(string_view str, string_view chars)
+{
+    if (chars.empty())
+        chars = string_view(" \t\n\r\f\v", 6);
+    size_t e = str.find_last_not_of(chars);
+    return e != string_view::npos ? str.substr(0, e + 1) : string_view();
+}
+
+
+
+string_view
 Strutil::strip(string_view str, string_view chars)
 {
     if (chars.empty())
@@ -787,13 +809,13 @@ Strutil::parse_string(string_view& str, string_view& val, bool eat,
     char lead_char    = p.front();
     bool quoted       = parse_char(p, '\"') || parse_char(p, '\'');
     const char *begin = p.begin(), *end = p.begin();
-    bool escaped = false;
+    bool escaped = false;  // was the prior character a backslash
     while (end != p.end()) {
         if (isspace(*end) && !quoted)
             break;  // not quoted and we hit whitespace: we're done
         if (quoted && *end == lead_char && !escaped)
-            break;  // closing quite -- we're done (beware embedded quote)
-        escaped = (p[0] == '\\');
+            break;  // closing quote -- we're done (beware embedded quote)
+        escaped = (end[0] == '\\') && (!escaped);
         ++end;
     }
     if (quoted && keep_quotes == KeepQuotes) {

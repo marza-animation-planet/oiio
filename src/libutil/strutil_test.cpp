@@ -192,11 +192,20 @@ test_get_rest_arguments()
 
 
 void
+test_escape(string_view raw, string_view escaped)
+{
+    Strutil::printf ("escape '%s' <-> '%s'\n", raw, escaped);
+    OIIO_CHECK_EQUAL(Strutil::escape_chars(raw), escaped);
+    OIIO_CHECK_EQUAL(Strutil::unescape_chars(escaped), raw);
+}
+
+
+
+void
 test_escape_sequences()
 {
-    OIIO_CHECK_EQUAL(Strutil::unescape_chars("\\\\ \\n \\r \\017"),
-                     "\\ \n \r \017");
-    OIIO_CHECK_EQUAL(Strutil::escape_chars("\\ \n \r"), "\\\\ \\n \\r");
+    test_escape ("\\ \n \r \t", "\\\\ \\n \\r \\t");
+    test_escape (" \"quoted\" ",  " \\\"quoted\\\" ");
 }
 
 
@@ -331,6 +340,18 @@ test_strip()
     OIIO_CHECK_EQUAL(Strutil::strip("  \tHello, world\n"), "Hello, world");
     OIIO_CHECK_EQUAL(Strutil::strip(" \t"), "");
     OIIO_CHECK_EQUAL(Strutil::strip(""), "");
+
+    OIIO_CHECK_EQUAL(Strutil::lstrip("abcdefbac", "abc"), "defbac");
+    OIIO_CHECK_EQUAL(Strutil::lstrip("defghi", "abc"), "defghi");
+    OIIO_CHECK_EQUAL(Strutil::lstrip("  \tHello, world\n"), "Hello, world\n");
+    OIIO_CHECK_EQUAL(Strutil::lstrip(" \t"), "");
+    OIIO_CHECK_EQUAL(Strutil::lstrip(""), "");
+
+    OIIO_CHECK_EQUAL(Strutil::rstrip("abcdefbac", "abc"), "abcdef");
+    OIIO_CHECK_EQUAL(Strutil::rstrip("defghi", "abc"), "defghi");
+    OIIO_CHECK_EQUAL(Strutil::rstrip("  \tHello, world\n"), "  \tHello, world");
+    OIIO_CHECK_EQUAL(Strutil::rstrip(" \t"), "");
+    OIIO_CHECK_EQUAL(Strutil::rstrip(""), "");
 }
 
 
@@ -389,6 +410,11 @@ test_join()
 
     int intarr[] = { 4, 2 };
     OIIO_CHECK_EQUAL(Strutil::join(intarr, ","), "4,2");
+
+    // Test join's `len` parameter.
+    float farr[] = { 1, 2, 3.5, 4, 5 };
+    OIIO_CHECK_EQUAL(Strutil::join(farr, ",", 3), "1,2,3.5");
+    OIIO_CHECK_EQUAL(Strutil::join(farr, ",", 7), "1,2,3.5,4,5,0,0");
 }
 
 
@@ -597,6 +623,7 @@ test_to_string()
 void
 test_extract()
 {
+    std::cout << "Testing extract_from_list_string\n";
     std::vector<int> vals;
     int n;
 
@@ -658,6 +685,7 @@ test_extract()
 void
 test_safe_strcpy()
 {
+    std::cout << "Testing safe_strcpy\n";
     {  // test in-bounds copy
         char result[4] = { '0', '1', '2', '3' };
         Strutil::safe_strcpy(result, "A", 3);
@@ -698,8 +726,18 @@ test_safe_strcpy()
 void
 test_string_view()
 {
+    std::cout << "Testing string_view methods\n";
     std::string s("0123401234");
     string_view sr(s);
+
+    OIIO_CHECK_EQUAL(sr.substr(0), sr); // whole string
+    OIIO_CHECK_EQUAL(sr.substr(2), "23401234"); // nonzero pos, default n
+    OIIO_CHECK_EQUAL(sr.substr(2, 3), "234"); // true substrng
+    OIIO_CHECK_EQUAL(sr.substr(string_view::npos, 3), ""); // npos start
+    OIIO_CHECK_EQUAL(sr.substr(3, 0), ""); // zero length
+    OIIO_CHECK_EQUAL(sr.substr(10, 3), ""); // start at end
+    OIIO_CHECK_EQUAL(sr.substr(18, 3), ""); // start past end
+    OIIO_CHECK_EQUAL(sr.substr(4, 18), "401234"); // end too big
 
     OIIO_CHECK_EQUAL(sr.find("123"), s.find("123"));
     OIIO_CHECK_EQUAL(sr.find("123"), 1);
@@ -754,7 +792,8 @@ test_string_view()
     OIIO_CHECK_EQUAL(sr.find_last_not_of("234"), 6);
     OIIO_CHECK_EQUAL(sr.find_last_not_of('4', 5), 3);
     OIIO_CHECK_EQUAL(sr.find_last_not_of("234", 5), 1);
-    OIIO_CHECK_EQUAL(sr.find_last_of("xyz"), string_view::npos);
+    OIIO_CHECK_EQUAL(sr.find_last_not_of("xyz"), 9);
+    OIIO_CHECK_EQUAL(sr.find_last_not_of("01234"), string_view::npos);
 }
 
 
@@ -808,6 +847,17 @@ void test_parse ()
     parse_string (s, ss, true, DeleteQuotes);
     OIIO_CHECK_EQUAL (ss, "foo bar");
     OIIO_CHECK_EQUAL (s, " baz");
+    s = "'foo bar' baz";
+
+    s = "\"foo \\\"bar\\\" baz\" blort";
+    parse_string (s, ss, true, DeleteQuotes);
+    OIIO_CHECK_EQUAL (ss, "foo \\\"bar\\\" baz");
+    OIIO_CHECK_EQUAL (s, " blort");
+    s = "\"foo \\\"bar\\\" baz\" blort";
+    parse_string (s, ss, true, KeepQuotes);
+    OIIO_CHECK_EQUAL (ss, "\"foo \\\"bar\\\" baz\"");
+    OIIO_CHECK_EQUAL (s, " blort");
+
     s = "'foo bar' baz";
     parse_string (s, ss, true, KeepQuotes);
     OIIO_CHECK_EQUAL (ss, "'foo bar'");

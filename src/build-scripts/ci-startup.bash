@@ -5,18 +5,20 @@
 # with 'source', not in a separate shell.
 
 # Figure out the platform
-if [[ $TRAVIS_OS_NAME == osx || $RUNNER_OS == macOS ]] ; then
-      export ARCH=macosx
-fi
-if [[ $TRAVIS_OS_NAME == linux || $RUNNER_OS == Linux || $CIRCLECI == true ]] ; then
-      export ARCH=linux64
-fi
-if [[ $RUNNER_OS == Windows ]] ; then
-      export ARCH=windows64
+if [[ $$RUNNER_OS == macOS ]] ; then
+    export ARCH=macosx
+elif [[ $RUNNER_OS == Linux ]] ; then
+    export ARCH=linux64
+elif [[ $RUNNER_OS == Windows ]] ; then
+    export ARCH=windows64
+elif [[ `uname -m` == aarch64 ]] ; then
+    export ARCH=aarch64
+else
+    export ARCH=unknown
 fi
 export PLATFORM=$ARCH
 
-if [[ "$DEBUG" == 1 ]] ; then
+if [[ "${DEBUG:=0}" != "0" ]] ; then
     export PLATFORM=${PLATFORM}.debug
 fi
 
@@ -24,8 +26,15 @@ echo "Architecture is $ARCH"
 echo "Build platform name is $PLATFORM"
 
 # Environment variables we always need
+export PATH=/usr/local/bin/_ccache:/usr/lib/ccache:$PATH
 export USE_CCACHE=${USE_CCACHE:=1}
-export CCACHE_CPP2=1
+export CCACHE_CPP2=
+export CCACHE_DIR=/tmp/ccache
+if [[ "${RUNNER_OS}" == "macOS" ]] ; then
+    export CCACHE_DIR=$HOME/.ccache
+fi
+mkdir -p $CCACHE_DIR
+
 export OpenImageIO_ROOT=$PWD/dist/$PLATFORM
 export DYLD_LIBRARY_PATH=$OpenImageIO_ROOT/lib:$DYLD_LIBRARY_PATH
 export LD_LIBRARY_PATH=$OpenImageIO_ROOT/lib:$LD_LIBRARY_PATH
@@ -45,31 +54,38 @@ export CMAKE_GENERATOR=${CMAKE_GENERATOR:=Ninja}
 export CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:=Release}
 export CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:=11}
 
-if [[ $TRAVIS == true ]] ; then
-    export PARALLEL=2
-elif [[ $CIRCLECI == true ]] ; then
-    export PARALLEL=4
-elif [[ $GITHUB_ACTIONS == true ]] ; then
-    export PARALLEL=4
-fi
 export PARALLEL=${PARALLEL:=4}
 export PAR_MAKEFLAGS=-j${PARALLEL}
-export CMAKE_BUILD_PARALLEL_LEVEL=${PARALLEL}
-export CTEST_PARALLEL_LEVEL=${PARALLEL}
+export CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL:=${PARALLEL}}
+export CTEST_PARALLEL_LEVEL=${CTEST_PARALLEL_LEVEL:=${PARALLEL}}
 
 export LOCAL_DEPS_DIR=${LOCAL_DEPS_DIR:=$HOME/ext}
-export PATH=${LOCAL_DEPS_DIR}/bin:$PATH
-export LD_LIBRARY_PATH=${LOCAL_DEPS_DIR}/lib:$LD_LIBRARY_PATH
-export DYLD_LIBRARY_PATH=${LOCAL_DEPS_DIR}/lib:$DYLD_LIBRARY_PATH
+export PATH=${LOCAL_DEPS_DIR}/dist/bin:$PATH
+export LD_LIBRARY_PATH=${LOCAL_DEPS_DIR}/dist/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${LOCAL_DEPS_DIR}/dist/lib64:$LD_LIBRARY_PATH
+export DYLD_LIBRARY_PATH=${LOCAL_DEPS_DIR}/dist/lib:$DYLD_LIBRARY_PATH
 
-uname -a
-uname -n
+export OCIO="$PWD/testsuite/common/OpenColorIO/nuke-default/config.ocio"
+export TESTSUITE_CLEANUP_ON_SUCCESS=${TESTSUITE_CLEANUP_ON_SUCCESS:=1}
+
+mkdir -p build/$PLATFORM dist/$PLATFORM
+
+echo "HOME = $HOME"
+echo "PWD = $PWD"
+echo "LOCAL_DEPS_DIR = $LOCAL_DEPS_DIR"
+echo "uname -a: " `uname -a`
+echo "uname -m: " `uname -m`
+echo "uname -s: " `uname -s`
+echo "uname -n: " `uname -n`
 pwd
 ls
 env | sort
 
-if [[ $ARCH == linux64 ]] ; then
+if [[ `uname -s` == "Linux" ]] ; then
     head -40 /proc/cpuinfo
 elif [[ $ARCH == macosx ]] ; then
     sysctl machdep.cpu.features
 fi
+
+# Save the env for use by other stages
+src/build-scripts/save-env.bash

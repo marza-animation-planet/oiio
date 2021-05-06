@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <iostream>
 #include <vector>
-
-#include <OpenEXR/ImathFun.h>
-#include <OpenEXR/half.h>
 
 #include <OpenImageIO/argparse.h>
 #include <OpenImageIO/benchmark.h>
@@ -16,6 +16,12 @@
 #include <OpenImageIO/timer.h>
 #include <OpenImageIO/typedesc.h>
 #include <OpenImageIO/unittest.h>
+
+#if OIIO_USING_IMATH >= 3
+#    include <Imath/ImathFun.h>
+#else
+#    include <OpenEXR/ImathFun.h>
+#endif
 
 using namespace OIIO;
 
@@ -31,31 +37,20 @@ static bool verbose   = false;
 static void
 getargs(int argc, char* argv[])
 {
-    bool help = false;
     ArgParse ap;
     // clang-format off
-    ap.options(
-        "fmath_test\n" OIIO_INTRO_STRING "\n"
-        "Usage:  fmath_test [options]",
-        // "%*", parse_files, "",
-        "--help", &help, "Print help message",
-        "-v", &verbose, "Verbose mode",
-        // "--threads %d", &numthreads,
-        //     ustring::sprintf("Number of threads (default: %d)", numthreads).c_str(),
-        "--iterations %d", &iterations,
-            ustring::sprintf("Number of values to convert for benchmarks (default: %d)", iterations).c_str(),
-        "--trials %d", &ntrials, "Number of trials",
-        nullptr);
+    ap.intro("fmath_test\n" OIIO_INTRO_STRING)
+      .usage("fmath_test [options]");
+
+    ap.arg("-v", &verbose)
+      .help("Verbose mode");
+    ap.arg("--iters %d", &iterations)
+      .help(Strutil::sprintf("Number of iterations (default: %d)", iterations));
+    ap.arg("--trials %d", &ntrials)
+      .help("Number of trials");
     // clang-format on
-    if (ap.parse(argc, (const char**)argv) < 0) {
-        std::cerr << ap.geterror() << std::endl;
-        ap.usage();
-        exit(EXIT_FAILURE);
-    }
-    if (help) {
-        ap.usage();
-        exit(EXIT_FAILURE);
-    }
+
+    ap.parse(argc, (const char**)argv);
 }
 
 

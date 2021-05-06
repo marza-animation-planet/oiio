@@ -29,7 +29,6 @@
 #include <OpenImageIO/thread.h>
 
 #include <boost/container/flat_map.hpp>
-#include <boost/thread/tss.hpp>
 
 #if 0
 
@@ -45,7 +44,7 @@ namespace {
 
 template<typename T> class Queue {
 public:
-    Queue(int size) {}
+    Queue(int /*size*/) {}
     bool push(T const& value)
     {
         std::unique_lock<Mutex> lock(this->mutex);

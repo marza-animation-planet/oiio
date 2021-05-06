@@ -1,7 +1,11 @@
 // Copyright 2008-present Contributors to the OpenImageIO project.
 // SPDX-License-Identifier: BSD-3-Clause
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
+
+
 #include "bmp_pvt.h"
+
+#include <OpenImageIO/fmath.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
@@ -116,14 +120,16 @@ DibInformationHeader::read_header(FILE* fd)
             }
         }
     } else if (size == OS2_V1) {
-        // some of theses fields are smaller then in WINDOWS_Vx headers,
-        // so we use hardcoded counts
-        width  = 0;
-        height = 0;
-        if (!fread(fd, &width, 2) || !fread(fd, &height, 2)
+        // some of theses fields are smaller than in WINDOWS_Vx headers,
+        // so we read into 16 bit ints and copy.
+        uint16_t width16  = 0;
+        uint16_t height16 = 0;
+        if (!fread(fd, &width16) || !fread(fd, &height16)
             || !fread(fd, &cplanes) || !fread(fd, &bpp)) {
             return false;
         }
+        width  = width16;
+        height = height16;
     }
     if (bigendian())
         swap_endian();

@@ -8,7 +8,6 @@
 #include <iostream>
 
 #include <OpenImageIO/filesystem.h>
-#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imageio.h>
 
 #include "rgbe.h"
@@ -47,6 +46,8 @@ private:
     FILE* m_fd;              ///< The open file handle
     int m_subimage;          ///< What subimage are we looking at?
     int m_next_scanline;     ///< Next scanline to read
+    std::vector<int64_t>
+        m_scanline_offsets;  ///< Cached scanline offsets for random access
     std::string rgbe_error;  ///< Buffer for RGBE library error msgs
 
     void init()
@@ -54,6 +55,7 @@ private:
         m_fd            = NULL;
         m_subimage      = -1;
         m_next_scanline = 0;
+        m_scanline_offsets.clear();
         rgbe_error.clear();
     }
 };
@@ -152,36 +154,36 @@ HdrInput::seek_subimage(int subimage, int miplevel)
 
     m_subimage      = subimage;
     m_next_scanline = 0;
+    m_scanline_offsets.clear();
+    m_scanline_offsets.push_back(Filesystem::ftell(m_fd));
     return true;
 }
 
 
 
 bool
-HdrInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+HdrInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                void* data)
 {
     lock_guard lock(m_mutex);
     if (!seek_subimage(subimage, miplevel))
         return false;
 
-    if (m_next_scanline > y) {
-        // User is trying to read an earlier scanline than the one we're
-        // up to.  Easy fix: close the file and re-open.
-        ImageSpec dummyspec;
-        int subimage = current_subimage();
-        int miplevel = current_miplevel();
-        if (!close() || !open(m_filename, dummyspec)
-            || !seek_subimage(subimage, miplevel))
-            return false;  // Somehow, the re-open failed
-        assert(m_next_scanline == 0 && current_subimage() == subimage
-               && current_miplevel() == miplevel);
+    if (m_next_scanline != y) {
+        // For random access, use cached file offsets of scanlines. This avoids
+        // re-reading the same pixels many times over.
+        m_next_scanline = std::min((size_t)y, m_scanline_offsets.size() - 1);
+        Filesystem::fseek(m_fd, m_scanline_offsets[m_next_scanline], SEEK_SET);
     }
+
     while (m_next_scanline <= y) {
-        // Keep reading until we're read the scanline we really need
+        // Keep reading until we've read the scanline we really need
         int r = RGBE_ReadPixels_RLE(m_fd, (float*)data, m_spec.width, 1,
                                     rgbe_error);
         ++m_next_scanline;
+        if ((size_t)m_next_scanline == m_scanline_offsets.size()) {
+            m_scanline_offsets.push_back(Filesystem::ftell(m_fd));
+        }
         if (r != RGBE_RETURN_SUCCESS) {
             errorf("%s", rgbe_error);
             return false;

@@ -8,7 +8,6 @@
 #include <openjpeg.h>
 
 #include <OpenImageIO/filesystem.h>
-#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imagebuf.h>
 #include <OpenImageIO/imageio.h>
 
@@ -30,13 +29,13 @@ openjpeg_error_callback(const char* msg, void* data)
 
 
 static void
-openjpeg_dummy_callback(const char* msg, void* data)
+openjpeg_dummy_callback(const char* /*msg*/, void* /*data*/)
 {
 }
 
 
 
-// TODO(sergey): This actually a stright duplication from the png reader,
+// TODO(sergey): This actually a straight duplication from the png reader,
 // consider de-duplicating the code somehow?
 template<class T>
 void
@@ -78,7 +77,7 @@ public:
     Jpeg2000Input() { init(); }
     virtual ~Jpeg2000Input() { close(); }
     virtual const char* format_name(void) const override { return "jpeg2000"; }
-    virtual int supports(string_view feature) const override
+    virtual int supports(string_view /*feature*/) const override
     {
         return false;
         // FIXME: we should support Exif/IPTC, but currently don't.
@@ -400,7 +399,7 @@ Jpeg2000Input::destroy_decompressor()
 
 template<typename T>
 void
-Jpeg2000Input::read_scanline(int y, int z, void* data)
+Jpeg2000Input::read_scanline(int y, int /*z*/, void* data)
 {
     T* scanline = static_cast<T*>(data);
     int nc      = m_spec.nchannels;

@@ -15,8 +15,6 @@
 #include <boost/container/flat_map.hpp>
 #include <boost/thread/tss.hpp>
 
-#include <OpenEXR/half.h>
-
 #include <OpenImageIO/export.h>
 #include <OpenImageIO/hash.h>
 #include <OpenImageIO/imagebuf.h>
@@ -254,6 +252,7 @@ public:
         bool untiled             = false;  ///< Not tiled
         bool unmipped            = false;  ///< Not really MIP-mapped
         bool volume              = false;  ///< It's a volume image
+        bool autotiled           = false;  ///< We are autotiling this image
         bool full_pixel_range
             = false;  ///< pixel data window matches image window
         bool is_constant_image = false;    ///< Is the image a constant color?
@@ -336,6 +335,7 @@ private:
     ustring m_filename;            ///< Filename
     bool m_used;                   ///< Recently used (in the LRU sense)
     bool m_broken;                 ///< has errors; can't be used properly
+    bool m_allow_release = true;   ///< Allow the file to release()?
     std::string m_broken_message;  ///< Error message for why it's broken
     std::shared_ptr<ImageInput> m_input;  ///< Open ImageInput, NULL if closed
         // Note that m_input, the shared pointer itself, is NOT safe to
@@ -409,9 +409,9 @@ private:
     /// Load the requested tile, from a file that's not really MIPmapped.
     /// Preconditions: the ImageInput is already opened, and we already did
     /// a seek_subimage to the right subimage.
-    bool read_unmipped(ImageCachePerThreadInfo* thread_info, ImageInput* inp,
-                       int subimage, int miplevel, int x, int y, int z,
-                       int chbegin, int chend, TypeDesc format, void* data);
+    bool read_unmipped(ImageCachePerThreadInfo* thread_info, int subimage,
+                       int miplevel, int x, int y, int z, int chbegin,
+                       int chend, TypeDesc format, void* data);
 
     // Initialize a bunch of fields based on the ImageSpec.
     // FIXME -- this is actually deeply flawed, many of these things only
@@ -795,6 +795,7 @@ public:
     bool accept_untiled() const { return m_accept_untiled; }
     bool accept_unmipped() const { return m_accept_unmipped; }
     bool unassociatedalpha() const { return m_unassociatedalpha; }
+    bool trust_file_extensions() const { return m_trust_file_extensions; }
     int failure_retries() const { return m_failure_retries; }
     bool latlong_y_up_default() const { return m_latlong_y_up_default; }
     void get_commontoworld(Imath::M44f& result) const { result = m_Mc2w; }
@@ -867,10 +868,11 @@ public:
     /// If header_only is true, we are finding the file only for the sake
     /// of header information (e.g., called by get_image_info).
     /// A call to verify_file() is still needed after find_file().
-    ImageCacheFile*
-    find_file(ustring filename, ImageCachePerThreadInfo* thread_info,
-              ImageInput::Creator creator = nullptr, bool header_only = false,
-              const ImageSpec* config = nullptr, bool replace = false);
+    ImageCacheFile* find_file(ustring filename,
+                              ImageCachePerThreadInfo* thread_info,
+                              ImageInput::Creator creator = nullptr,
+                              const ImageSpec* config     = nullptr,
+                              bool replace                = false);
 
     /// Verify & prep the ImageCacheFile record for the named image,
     /// return the pointer (which may have changed for deduplication),
@@ -900,7 +902,8 @@ public:
     }
 
     /// Is the tile specified by the TileID already in the cache?
-    bool tile_in_cache(const TileID& id, ImageCachePerThreadInfo* thread_info)
+    bool tile_in_cache(const TileID& id,
+                       ImageCachePerThreadInfo* /*thread_info*/)
     {
         TileCache::iterator found = m_tilecache.find(id);
         return (found != m_tilecache.end());
@@ -987,7 +990,7 @@ public:
     }
 
     /// Called when a file is closed, so that the system can track
-    /// the number of simultyaneously-opened files.
+    /// the number of simultaneously-opened files.
     void decr_open_files(void) { --m_stat_open_files_current; }
 
     /// Called when a new tile is created, to update all the stats.
@@ -1017,6 +1020,12 @@ public:
     void errorf(const char* fmt, const Args&... args) const
     {
         append_error(Strutil::sprintf(fmt, args...));
+    }
+    /// Internal error reporting routine, with std::format-like arguments.
+    template<typename... Args>
+    void error(const char* fmt, const Args&... args) const
+    {
+        append_error(Strutil::fmt::format(fmt, args...));
     }
     void error(const char* msg) const { append_error(msg); }
 
@@ -1105,8 +1114,9 @@ private:
     bool m_accept_unmipped;    ///< Accept unmipped images?
     bool m_deduplicate;        ///< Detect duplicate files?
     bool m_unassociatedalpha;  ///< Keep unassociated alpha files as they are?
-    int m_failure_retries;     ///< Times to re-try disk failures
     bool m_latlong_y_up_default;  ///< Is +y the default "up" for latlong?
+    bool m_trust_file_extensions = false;  ///< Assume file extensions don't lie?
+    int m_failure_retries;                 ///< Times to re-try disk failures
     int m_max_mip_res = 1 << 30;  ///< Don't use MIP levels higher than this
     Imath::M44f m_Mw2c;           ///< world-to-"common" matrix
     Imath::M44f m_Mc2w;           ///< common-to-world matrix

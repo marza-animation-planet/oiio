@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
+#include <cmath>
 #include <iomanip>
 #include <memory>
 
@@ -12,8 +13,6 @@
 #include "libdpx/DPX.h"
 #include "libdpx/DPXColorConverter.h"
 
-#include <OpenImageIO/filesystem.h>
-#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/strutil.h>
 #include <OpenImageIO/typedesc.h>
@@ -41,13 +40,11 @@ public:
                                       void* data) override;
     virtual bool read_native_scanlines(int subimage, int miplevel, int ybegin,
                                        int yend, int z, void* data) override;
-#if OIIO_VERSION >= 20200
     virtual bool set_ioproxy(Filesystem::IOProxy* ioproxy) override
     {
         m_io = ioproxy;
         return true;
     }
-#endif
 
 private:
     int m_subimage;
@@ -332,7 +329,7 @@ DPXInput::seek_subimage(int subimage, int miplevel)
         break;
     case dpx::kITUR709: m_spec.attribute("oiio:ColorSpace", "Rec709"); break;
     case dpx::kUserDefined:
-        if (!isnan(m_dpx.header.Gamma()) && m_dpx.header.Gamma() != 0) {
+        if (!std::isnan(m_dpx.header.Gamma()) && m_dpx.header.Gamma() != 0) {
             float g = float(m_dpx.header.Gamma());
             m_spec.attribute("oiio:ColorSpace",
                              Strutil::sprintf("GammaCorrected%.2g", g));
@@ -402,24 +399,24 @@ DPXInput::seek_subimage(int subimage, int miplevel)
     // set without checking for bogus attributes
 #define DPX_SET_ATTRIB_N(x) DPX_SET_ATTRIB(x, subimage)
     // set with checking for bogus attributes
-#define DPX_SET_ATTRIB_BYTE(x)                                                 \
-    if (m_dpx.header.x() != 0xFF)                                              \
+#define DPX_SET_ATTRIB_BYTE(x)    \
+    if (m_dpx.header.x() != 0xFF) \
     DPX_SET_ATTRIB(x, )
-#define DPX_SET_ATTRIB_INT_N(x)                                                \
-    if (m_dpx.header.x(subimage) != 0xFFFFFFFF)                                \
+#define DPX_SET_ATTRIB_INT_N(x)                 \
+    if (m_dpx.header.x(subimage) != 0xFFFFFFFF) \
     DPX_SET_ATTRIB(x, subimage)
-#define DPX_SET_ATTRIB_INT(x)                                                  \
-    if (m_dpx.header.x() != 0xFFFFFFFF)                                        \
+#define DPX_SET_ATTRIB_INT(x)           \
+    if (m_dpx.header.x() != 0xFFFFFFFF) \
     DPX_SET_ATTRIB(x, )
-#define DPX_SET_ATTRIB_FLOAT_N(x)                                              \
-    if (!isnan(m_dpx.header.x(subimage)))                                      \
+#define DPX_SET_ATTRIB_FLOAT_N(x)              \
+    if (!std::isnan(m_dpx.header.x(subimage))) \
     DPX_SET_ATTRIB(x, subimage)
-#define DPX_SET_ATTRIB_FLOAT(x)                                                \
-    if (!isnan(m_dpx.header.x()))                                              \
+#define DPX_SET_ATTRIB_FLOAT(x)        \
+    if (!std::isnan(m_dpx.header.x())) \
     DPX_SET_ATTRIB(x, )
     // see comment above Copyright, Software and DocumentName
-#define DPX_SET_ATTRIB_STR(X, x)                                               \
-    if (m_dpx.header.x[0] && m_dpx.header.x[0] != char(-1))                    \
+#define DPX_SET_ATTRIB_STR(X, x)                            \
+    if (m_dpx.header.x[0] && m_dpx.header.x[0] != char(-1)) \
     m_spec.attribute("dpx:" #X, m_dpx.header.x)
 
     DPX_SET_ATTRIB_INT(EncryptKey);

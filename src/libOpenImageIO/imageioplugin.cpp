@@ -41,6 +41,8 @@ static std::map<std::string, std::string> plugin_filepaths;
 // Map format name to underlying implementation library
 static std::map<std::string, std::string> format_library_versions;
 
+static std::vector<ustring> format_list_vector;  // Vector separated format_list
+static recursive_mutex format_list_vector_mutex;
 
 
 static std::string pattern = Strutil::sprintf(".imageio.%s",
@@ -98,6 +100,10 @@ declare_imageio_format(const std::string& format_name,
 
     // Add the name to the master list of format_names, and extensions to
     // their master list.
+    {
+        recursive_lock_guard lock(format_list_vector_mutex);
+        format_list_vector.emplace_back(Strutil::lower(format_name));
+    }
     recursive_lock_guard lock(pvt::imageio_mutex);
     if (format_list.length())
         format_list += std::string(",");
@@ -126,6 +132,23 @@ declare_imageio_format(const std::string& format_name,
 }
 
 
+
+bool
+is_imageio_format_name(string_view name)
+{
+    ustring namelower(Strutil::lower(name));
+    recursive_lock_guard lock(format_list_vector_mutex);
+    // If we were called before any plugins were loaded at all, catalog now
+    if (!format_list_vector.size())
+        pvt::catalog_all_plugins(pvt::plugin_searchpath.string());
+    for (const auto& n : format_list_vector)
+        if (namelower == n)
+            return true;
+    return false;
+}
+
+
+
 static void
 catalog_plugin(const std::string& format_name,
                const std::string& plugin_fullpath)
@@ -139,10 +162,10 @@ catalog_plugin(const std::string& format_name,
             // It's ok if they're both the same file; just skip it.
             return;
         }
-        OIIO::debug("OpenImageIO WARNING: %s had multiple plugins:\n"
-                    "\t\"%s\"\n    as well as\n\t\"%s\"\n"
-                    "    Ignoring all but the first one.\n",
-                    format_name, found_path->second, plugin_fullpath);
+        OIIO::debugf("OpenImageIO WARNING: %s had multiple plugins:\n"
+                     "\t\"%s\"\n    as well as\n\t\"%s\"\n"
+                     "    Ignoring all but the first one.\n",
+                     format_name, found_path->second, plugin_fullpath);
         return;
     }
 
@@ -196,15 +219,19 @@ catalog_plugin(const std::string& format_name,
 // list of file extensions, for the standard plugins that come with OIIO.
 // These won't be used unless EMBED_PLUGINS is defined.  Use the PLUGENTRY
 // macro to make the declaration compact and easy to read.
-#    define PLUGENTRY(name)                                                    \
-        ImageInput* name##_input_imageio_create();                             \
-        ImageOutput* name##_output_imageio_create();                           \
-        extern const char* name##_output_extensions[];                         \
-        extern const char* name##_input_extensions[];                          \
+#    define PLUGENTRY(name)                            \
+        ImageInput* name##_input_imageio_create();     \
+        ImageOutput* name##_output_imageio_create();   \
+        extern const char* name##_output_extensions[]; \
+        extern const char* name##_input_extensions[];  \
         extern const char* name##_imageio_library_version();
-#    define PLUGENTRY_RO(name)                                                 \
-        ImageInput* name##_input_imageio_create();                             \
-        extern const char* name##_input_extensions[];                          \
+#    define PLUGENTRY_RO(name)                        \
+        ImageInput* name##_input_imageio_create();    \
+        extern const char* name##_input_extensions[]; \
+        extern const char* name##_imageio_library_version();
+#    define PLUGENTRY_WO(name)                         \
+        ImageOutput* name##_output_imageio_create();   \
+        extern const char* name##_output_extensions[]; \
         extern const char* name##_imageio_library_version();
 
 PLUGENTRY(bmp);
@@ -234,6 +261,7 @@ PLUGENTRY(rla);
 PLUGENTRY(sgi);
 PLUGENTRY(socket);
 PLUGENTRY_RO(softimage);
+PLUGENTRY_WO(term);
 PLUGENTRY(tiff);
 PLUGENTRY(targa);
 PLUGENTRY(webp);
@@ -265,6 +293,12 @@ catalog_builtin_plugins()
         declare_imageio_format(                                          \
             #name, (ImageInput::Creator)name##_input_imageio_create,     \
             name##_input_extensions, nullptr, nullptr,                   \
+            name##_imageio_library_version())
+#define DECLAREPLUG_WO(name)                                             \
+        declare_imageio_format(                                          \
+            #name, nullptr, nullptr,                                     \
+            (ImageOutput::Creator)name##_output_imageio_create,          \
+            name##_output_extensions,                                    \
             name##_imageio_library_version())
 
 #if !defined(DISABLE_BMP)
@@ -374,6 +408,9 @@ catalog_builtin_plugins()
 #if !defined(DISABLE_TARGA)
     DECLAREPLUG (targa);
 #endif
+#if !defined(DISABLE_TERM)
+    DECLAREPLUG_WO (term);
+#endif
 #ifdef USE_WEBP
 #if !defined(DISABLE_WEBP)
     DECLAREPLUG (webp);
@@ -410,14 +447,14 @@ append_if_env_exists(std::string& searchpath, const char* env,
 
 
 /// Look at ALL imageio plugins in the searchpath and add them to the
-/// catalog.  This routine is not reentrant and should only be called
-/// by a routine that is holding a lock on imageio_mutex.
+/// catalog.
 void
 pvt::catalog_all_plugins(std::string searchpath)
 {
     static std::once_flag builtin_flag;
     std::call_once(builtin_flag, catalog_builtin_plugins);
 
+    recursive_lock_guard lock(imageio_mutex);
     append_if_env_exists(searchpath, "OIIO_LIBRARY_PATH", true);
 #ifdef __APPLE__
     append_if_env_exists(searchpath, "DYLD_LIBRARY_PATH");
@@ -448,8 +485,8 @@ pvt::catalog_all_plugins(std::string searchpath)
 
 
 std::unique_ptr<ImageOutput>
-ImageOutput::create(const std::string& filename,
-                    const std::string& plugin_searchpath)
+ImageOutput::create(string_view filename, Filesystem::IOProxy* ioproxy,
+                    string_view plugin_searchpath)
 {
     std::unique_ptr<ImageOutput> out;
     if (filename.empty()) {  // Can't even guess if no filename given
@@ -475,7 +512,7 @@ ImageOutput::create(const std::string& filename,
         if (found == output_formats.end()) {
             catalog_all_plugins(plugin_searchpath.size()
                                     ? plugin_searchpath
-                                    : pvt::plugin_searchpath.string());
+                                    : string_view(pvt::plugin_searchpath));
             found = output_formats.find(format);
         }
         if (found != output_formats.end()) {
@@ -504,7 +541,27 @@ ImageOutput::create(const std::string& filename,
         // Safety in case the ctr throws an exception
         out.reset();
     }
+    if (out && ioproxy) {
+        if (!out->supports("ioproxy")) {
+            out.reset();
+            OIIO::pvt::errorf(
+                "ImageOutput::create called with IOProxy, but format %s does not support IOProxy",
+                out->format_name());
+        } else {
+            out->set_ioproxy(ioproxy);
+        }
+    }
     return out;
+}
+
+
+
+// DEPRECATED(2.2)
+std::unique_ptr<ImageOutput>
+ImageOutput::create(const std::string& filename,
+                    const std::string& plugin_searchpath)
+{
+    return create(filename, nullptr, plugin_searchpath);
 }
 
 
@@ -517,6 +574,7 @@ ImageOutput::destroy(ImageOutput* x)
 
 
 
+// DEPRECATED(2.1)
 std::unique_ptr<ImageInput>
 ImageInput::create(const std::string& filename,
                    const std::string& plugin_searchpath)
@@ -526,6 +584,7 @@ ImageInput::create(const std::string& filename,
 
 
 
+// DEPRECATED(2.1)
 std::unique_ptr<ImageInput>
 ImageInput::create(const std::string& filename, bool do_open,
                    const std::string& plugin_searchpath)
@@ -535,9 +594,19 @@ ImageInput::create(const std::string& filename, bool do_open,
 
 
 
+// DEPRECATED(2.2)
 std::unique_ptr<ImageInput>
 ImageInput::create(const std::string& filename, bool do_open,
                    const ImageSpec* config, string_view plugin_searchpath)
+{
+    return create(filename, do_open, config, nullptr, plugin_searchpath);
+}
+
+
+
+std::unique_ptr<ImageInput>
+ImageInput::create(string_view filename, bool do_open, const ImageSpec* config,
+                   Filesystem::IOProxy* ioproxy, string_view plugin_searchpath)
 {
     // In case the 'filename' was really a REST-ful URI with query/config
     // details tacked on to the end, strip them off so we can correctly
@@ -603,10 +672,13 @@ ImageInput::create(const std::string& filename, bool do_open,
         }
         ImageSpec tmpspec;
         bool ok = false;
-        if (in && config)
-            ok = in->open(filename, tmpspec, *config);
-        else if (in)
-            ok = in->open(filename, tmpspec);
+        if (in) {
+            in->set_ioproxy(ioproxy);
+            if (config)
+                ok = in->open(filename, tmpspec, *config);
+            else
+                ok = in->open(filename, tmpspec);
+        }
         if (ok) {
             // It worked
             if (!do_open)
@@ -652,7 +724,7 @@ ImageInput::create(const std::string& filename, bool do_open,
             }
             if (!in)
                 continue;
-            if (!do_open && !in->valid_file(filename)) {
+            if (!do_open && !ioproxy && !in->valid_file(filename)) {
                 // Since we didn't need to open it, we just checked whether
                 // it was a valid file, and it's not.  Try the next one.
                 in.reset();
@@ -660,6 +732,7 @@ ImageInput::create(const std::string& filename, bool do_open,
             }
             // We either need to open it, or we already know it appears
             // to be a file of the right type.
+            in->set_ioproxy(ioproxy);
             bool ok = in->open(filename, tmpspec, myconfig);
             if (ok) {
                 if (!do_open)

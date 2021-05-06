@@ -9,6 +9,7 @@
 
 #include <OpenImageIO/argparse.h>
 #include <OpenImageIO/benchmark.h>
+#include <OpenImageIO/parallel.h>
 #include <OpenImageIO/strutil.h>
 #include <OpenImageIO/sysutil.h>
 #include <OpenImageIO/thread.h>
@@ -28,6 +29,7 @@ static int numthreads = 16;
 static int ntrials    = 1;
 static bool verbose   = false;
 static bool wedge     = false;
+static int collide    = 1;  // Millions
 static std::vector<std::array<char, 16>> strings;
 
 
@@ -51,32 +53,26 @@ create_lotso_ustrings(int iterations)
 static void
 getargs(int argc, char* argv[])
 {
-    bool help = false;
-    ArgParse ap;
     // clang-format off
-    ap.options(
-        "ustring_test\n" OIIO_INTRO_STRING "\n"
-        "Usage:  ustring_test [options]",
-        // "%*", parse_files, "",
-        "--help", &help, "Print help message",
-        "-v", &verbose, "Verbose mode",
-        "--threads %d", &numthreads,
-            ustring::sprintf("Number of threads (default: %d)", numthreads).c_str(),
-        "--iters %d", &iterations,
-            ustring::sprintf("Number of iterations (default: %d)", iterations).c_str(),
-        "--trials %d", &ntrials, "Number of trials",
-        "--wedge", &wedge, "Do a wedge test",
-        nullptr);
+    ArgParse ap;
+    ap.intro("ustring_test\n" OIIO_INTRO_STRING)
+      .usage("ustring_test [options]");
+
+    ap.arg("-v", &verbose)
+      .help("Verbose mode");
+    ap.arg("--threads %d", &numthreads)
+      .help(Strutil::sprintf("Number of threads (default: %d)", numthreads));
+    ap.arg("--iters %d", &iterations)
+      .help(Strutil::sprintf("Number of iterations (default: %d)", iterations));
+    ap.arg("--trials %d", &ntrials)
+      .help("Number of trials");
+    ap.arg("--wedge", &wedge)
+      .help("Do a wedge test");
+    ap.arg("--collide %d", &collide)
+      .help("Strings (x 1M) to create to make hash collisions");
     // clang-format on
-    if (ap.parse(argc, (const char**)argv) < 0) {
-        std::cerr << ap.geterror() << std::endl;
-        ap.usage();
-        exit(EXIT_FAILURE);
-    }
-    if (help) {
-        ap.usage();
-        exit(EXIT_FAILURE);
-    }
+
+    ap.parse(argc, (const char**)argv);
 }
 
 
@@ -122,6 +118,19 @@ main(int argc, char* argv[])
                            numthreads /* just this one thread count */);
     }
     OIIO_CHECK_ASSERT(true);  // If we make it here without crashing, pass
+
+    // Try to force a hash collision
+    parallel_for(0LL, 1000000LL * int64_t(collide),
+                 [](int64_t i) { ustring u = ustring::fmtformat("{:x}", i); });
+    std::vector<ustring> collisions;
+    size_t ncollisions = ustring::hash_collisions(&collisions);
+    OIIO_CHECK_ASSERT(ncollisions == 0);
+    if (ncollisions) {
+        Strutil::print("  Hash collisions: {}\n", ncollisions);
+        for (auto c : collisions)
+            Strutil::print("    \"{}\" (orig {:08x} rehashed {:08x})\n", c,
+                           Strutil::strhash(c), c.hash());
+    }
 
     if (verbose)
         std::cout << "\n" << ustring::getstats() << "\n";

@@ -133,8 +133,8 @@ enum TIFFTAG {
 
 
 /// Given a TIFF data type code (defined in tiff.h) and a count, return the
-/// equivalent TypeDesc where one exists. .Return TypeUndefined if there
-/// is no obvious equivalent.
+/// equivalent TypeDesc where one exists. Return TypeUnknown if there is no
+/// obvious equivalent.
 OIIO_API TypeDesc tiff_datatype_to_typedesc (TIFFDataType tifftype, size_t tiffcount=1);
 
 inline TypeDesc tiff_datatype_to_typedesc (const TIFFDirEntry& dir) {
@@ -207,7 +207,7 @@ OIIO_API bool decode_xmp (const char* xml, ImageSpec &spec);
 OIIO_API bool decode_xmp (const std::string& xml, ImageSpec &spec);
 
 
-/// Find all the relavant metadata (IPTC, Exif, etc.) in spec and
+/// Find all the relevant metadata (IPTC, Exif, etc.) in spec and
 /// assemble it into an XMP XML string.  This is a utility function to
 /// make it easy for multiple format plugins to support embedding XMP
 /// metadata without having to duplicate functionality within each

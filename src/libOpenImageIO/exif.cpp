@@ -327,7 +327,7 @@ dumpdata(cspan<uint8_t> blob, cspan<size_t> ifdoffsets, size_t start,
 static void
 version4char_handler(const TagInfo& taginfo, const TIFFDirEntry& dir,
                      cspan<uint8_t> buf, ImageSpec& spec,
-                     bool swapendian = false, int offset_adjustment = 0)
+                     bool /*swapendian*/ = false, int offset_adjustment = 0)
 {
     const char* data = (const char*)dataptr(dir, buf, offset_adjustment);
     if (tiff_data_size(dir) == 4 && data != nullptr)  // sanity check
@@ -338,7 +338,7 @@ version4char_handler(const TagInfo& taginfo, const TIFFDirEntry& dir,
 static void
 version4uint8_handler(const TagInfo& taginfo, const TIFFDirEntry& dir,
                       cspan<uint8_t> buf, ImageSpec& spec,
-                      bool swapendian = false, int offset_adjustment = 0)
+                      bool /*swapendian*/ = false, int offset_adjustment = 0)
 {
     const char* data = (const char*)dataptr(dir, buf, offset_adjustment);
     if (tiff_data_size(dir) == 4 && data != nullptr)  // sanity check
@@ -348,7 +348,7 @@ version4uint8_handler(const TagInfo& taginfo, const TIFFDirEntry& dir,
 
 
 static void
-makernote_handler(const TagInfo& taginfo, const TIFFDirEntry& dir,
+makernote_handler(const TagInfo& /*taginfo*/, const TIFFDirEntry& dir,
                   cspan<uint8_t> buf, ImageSpec& spec, bool swapendian = false,
                   int offset_adjustment = 0)
 {
@@ -786,7 +786,7 @@ read_exif_tag(ImageSpec& spec, const TIFFDirEntry* dirp, cspan<uint8_t> buf,
         unsigned int offset = dirp->tdir_offset;  // int stored in offset itself
         if (swab)
             swap_endian(&offset);
-        if (offset >= buf.size()) {
+        if (offset >= size_t(buf.size())) {
 #if DEBUG_EXIF_READ
             unsigned int off2 = offset;
             swap_endian(&off2);
@@ -841,6 +841,16 @@ read_exif_tag(ImageSpec& spec, const TIFFDirEntry* dirp, cspan<uint8_t> buf,
         unsigned int offset = dirp->tdir_offset;  // int stored in offset itself
         if (swab)
             swap_endian(&offset);
+        if (offset >= size_t(buf.size())) {
+#if DEBUG_EXIF_READ
+            unsigned int off2 = offset;
+            swap_endian(&off2);
+            std::cerr << "Bad Exif block? ExifIFD has offset " << offset
+                      << " inexplicably greater than exif buffer length "
+                      << buf.size() << " (byte swapped = " << off2 << ")\n";
+#endif
+            return;
+        }
         // Don't recurse if we've already visited this IFD
         if (ifd_offsets_seen.find(offset) != ifd_offsets_seen.end())
             return;
@@ -1087,14 +1097,24 @@ decode_exif(string_view exif, ImageSpec& spec)
 bool
 decode_exif(cspan<uint8_t> exif, ImageSpec& spec)
 {
+    // Sometimes an exif blob starts with "Exif". Skip it.
+    if (exif.size() >= 6 && exif[0] == 'E' && exif[1] == 'x' && exif[2] == 'i'
+        && exif[3] == 'f' && exif[4] == 0 && exif[5] == 0) {
+        exif = exif.subspan(6);
+    }
+
 #if DEBUG_EXIF_READ
     std::cerr << "Exif dump:\n";
-    for (size_t i = 0; i < exif.size(); ++i) {
+    for (size_t i = 0; i < std::min(200L, exif.size()); ++i) {
+        if ((i % 16) == 0)
+            std::cerr << "[" << i << "] ";
         if (exif[i] >= ' ')
             std::cerr << (char)exif[i] << ' ';
         std::cerr << "(" << (int)exif[i] << ") ";
+        if ((i % 16) == 15)
+            std::cerr << "\n";
     }
-    std::cerr << "\n";
+    std::cerr << std::endl;
 #endif
 
     // The first item should be a standard TIFF header.  Note that HERE,

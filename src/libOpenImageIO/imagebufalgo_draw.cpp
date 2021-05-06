@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
-#include <OpenEXR/half.h>
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -210,7 +208,7 @@ ImageBufAlgo::zero(ROI roi, int nthreads)
 template<typename T>
 static bool
 render_point_(ImageBuf& dst, int x, int y, const float* color, float alpha,
-              ROI roi, int nthreads)
+              ROI roi, int /*nthreads*/)
 {
     ImageBuf::Iterator<T> r(dst, x, y);
     for (int c = roi.chbegin; c < roi.chend; ++c)
@@ -334,7 +332,7 @@ template<typename T> struct IB_drawer {
 template<typename T>
 static bool
 render_line_(ImageBuf& dst, int x1, int y1, int x2, int y2, cspan<float> color,
-             float alpha, bool skip_first, ROI roi, int nthreads)
+             float alpha, bool skip_first, ROI roi, int /*nthreads*/)
 {
     ImageBuf::Iterator<T> r(dst, roi);
     IB_drawer<T> draw(r, color, alpha, roi);
@@ -696,7 +694,7 @@ text_size_from_unicode(std::vector<uint32_t>& utext, FT_Face face)
 // If not found, return false and put an error message in result.
 // Not thread-safe! The caller must use the mutex.
 static bool
-resolve_font(int fontsize, string_view font_, std::string& result)
+resolve_font(string_view font_, std::string& result)
 {
     result.clear();
 
@@ -825,7 +823,7 @@ ImageBufAlgo::text_size(string_view text, int fontsize, string_view font_)
     lock_guard ft_lock(ft_mutex);
 
     std::string font;
-    bool ok = resolve_font(fontsize, font_, font);
+    bool ok = resolve_font(font_, font);
     if (!ok) {
         return size;
     }
@@ -880,7 +878,8 @@ bool
 ImageBufAlgo::render_text(ImageBuf& R, int x, int y, string_view text,
                           int fontsize, string_view font_,
                           cspan<float> textcolor, TextAlignX alignx,
-                          TextAlignY aligny, int shadow, ROI roi, int nthreads)
+                          TextAlignY aligny, int shadow, ROI roi,
+                          int /*nthreads*/)
 {
     pvt::LoggedTimer logtime("IBA::render_text");
     if (R.spec().depth > 1) {
@@ -893,7 +892,7 @@ ImageBufAlgo::render_text(ImageBuf& R, int x, int y, string_view text,
     lock_guard ft_lock(ft_mutex);
 
     std::string font;
-    bool ok = resolve_font(fontsize, font_, font);
+    bool ok = resolve_font(font_, font);
     if (!ok) {
         std::string err = font.size() ? font : "Font error";
         R.errorf("%s", err);

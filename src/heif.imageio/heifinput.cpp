@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
+#include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/tiffutils.h>
 
@@ -11,7 +12,7 @@
 // This plugin utilises libheif:
 //   https://github.com/strukturag/libheif
 //
-// General information about HEIF/HEIC:
+// General information about HEIF/HEIC/AVIF:
 //
 // Sources of sample images:
 //     https://github.com/nokiatech/heif/tree/gh-pages/content
@@ -28,7 +29,9 @@ public:
     {
         return feature == "exif";
     }
-    // virtual bool valid_file(const std::string& filename) const override;
+#if LIBHEIF_HAVE_VERSION(1, 4, 0)
+    virtual bool valid_file(const std::string& filename) const override;
+#endif
     virtual bool open(const std::string& name, ImageSpec& newspec) override;
     virtual bool open(const std::string& name, ImageSpec& newspec,
                       const ImageSpec& config) override;
@@ -69,25 +72,25 @@ heif_input_imageio_create()
 }
 
 OIIO_EXPORT const char* heif_input_extensions[] = { "heic", "heif", "heics",
+#if LIBHEIF_HAVE_VERSION(1, 7, 0)
+                                                    "avif",
+#endif
                                                     nullptr };
 
 OIIO_PLUGIN_EXPORTS_END
 
 
-#if 0
+#if LIBHEIF_HAVE_VERSION(1, 4, 0)
 bool
 HeifInput::valid_file(const std::string& filename) const
 {
-    const size_t magic_size = 12;
-    uint8_t magic[magic_size];
-    FILE *file = Filesystem::fopen(filename, "rb");
-    fread (magic, magic_size, 1, file);
-    fclose (file);
-    heif_filetype_result filetype_check = heif_check_filetype(magic,12);
+    uint8_t magic[12];
+    if (Filesystem::read_bytes(filename, magic, sizeof(magic)) != sizeof(magic))
+        return false;
+    heif_filetype_result filetype_check = heif_check_filetype(magic,
+                                                              sizeof(magic));
     return filetype_check != heif_filetype_no
-            && filetype_check != heif_filetype_yes_unsupported
-    // This is what the libheif example said to do, but I can't find
-    // the filetype constants declared anywhere. Are they obsolete?
+           && filetype_check != heif_filetype_yes_unsupported;
 }
 #endif
 
@@ -105,7 +108,7 @@ HeifInput::open(const std::string& name, ImageSpec& newspec)
 
 bool
 HeifInput::open(const std::string& name, ImageSpec& newspec,
-                const ImageSpec& config)
+                const ImageSpec& /*config*/)
 {
     m_filename = name;
     m_subimage = -1;
@@ -200,7 +203,17 @@ HeifInput::seek_subimage(int subimage, int miplevel)
     auto meta_ids = m_ihandle.get_list_of_metadata_block_IDs();
     // std::cout << "nmeta? " << meta_ids.size() << "\n";
     for (auto m : meta_ids) {
-        auto metacontents = m_ihandle.get_metadata(m);
+        std::vector<uint8_t> metacontents;
+        try {
+            metacontents = m_ihandle.get_metadata(m);
+        } catch (const heif::Error& err) {
+            if (err.get_code() == heif_error_Usage_error
+                && err.get_subcode() == heif_suberror_Null_pointer_argument) {
+                // a bug in heif_cxx.h means a 0 byte metadata causes a null
+                // ptr error code, which we ignore
+                continue;
+            }
+        }
         if (Strutil::iequals(m_ihandle.get_metadata_type(m), "Exif")
             && metacontents.size() >= 10) {
             cspan<uint8_t> s(&metacontents[10], metacontents.size() - 10);
@@ -235,7 +248,7 @@ HeifInput::seek_subimage(int subimage, int miplevel)
 
 
 bool
-HeifInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+HeifInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                 void* data)
 {
     lock_guard lock(m_mutex);

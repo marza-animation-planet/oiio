@@ -9,11 +9,8 @@
 #include <OpenImageIO/export.h>
 #include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imageio.h>
-#include <OpenImageIO/oiioversion.h>
 #include <OpenImageIO/typedesc.h>
 #include <OpenImageIO/ustring.h>
-
-#include <OpenEXR/ImathMatrix.h> /* because we need M44f */
 
 
 OIIO_NAMESPACE_BEGIN
@@ -37,12 +34,13 @@ public:
     // Convert a single 3-color
     void apply(float* data)
     {
-        apply((float*)data, 1, 1, 3, sizeof(float), 0, 0);
+        apply((float*)data, 1, 1, 3, sizeof(float), 3 * sizeof(float),
+              3 * sizeof(float));
     }
 };
 
 // Preprocessor symbol to allow conditional compilation depending on
-// whether the ColorProcesor class is exposed (it was not prior to OIIO 1.9).
+// whether the ColorProcessor class is exposed (it was not prior to OIIO 1.9).
 #define OIIO_HAS_COLORPROCESSOR 1
 
 
@@ -137,7 +135,7 @@ public:
 
     /// Given the specified input and output ColorSpace, request a handle to
     /// a ColorProcessor.  It is possible that this will return an empty
-    /// handle, if the inputColorSpace doesnt exist, the outputColorSpace
+    /// handle, if the inputColorSpace doesn't exist, the outputColorSpace
     /// doesn't exist, or if the specified transformation is illegal (for
     /// example, it may require the inversion of a 3D-LUT, etc).
     ///
@@ -277,10 +275,16 @@ public:
     std::string configname() const;
 
     // DEPRECATED(1.9) -- no longer necessary, because it's a shared ptr
-    static void deleteColorProcessor(const ColorProcessorHandle& processor) {}
+    static void deleteColorProcessor(const ColorProcessorHandle& /*processor*/)
+    {
+    }
 
     /// Return if OpenImageIO was built with OCIO support
     static bool supportsOpenColorIO();
+
+    /// Return the hex OCIO version (maj<<24 + min<<16 + patch), or 0 if no
+    /// OCIO support is available.
+    static int OpenColorIO_version_hex();
 
 private:
     ColorConfig(const ColorConfig&) = delete;

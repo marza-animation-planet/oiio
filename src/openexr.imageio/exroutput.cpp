@@ -19,14 +19,14 @@
 #include <OpenEXR/ImfTiledOutputFile.h>
 
 #ifdef OPENEXR_VERSION_MAJOR
-#    define OPENEXR_CODED_VERSION                                              \
-        (OPENEXR_VERSION_MAJOR * 10000 + OPENEXR_VERSION_MINOR * 100           \
+#    define OPENEXR_CODED_VERSION                                    \
+        (OPENEXR_VERSION_MAJOR * 10000 + OPENEXR_VERSION_MINOR * 100 \
          + OPENEXR_VERSION_PATCH)
 #else
 #    define OPENEXR_CODED_VERSION 20000
 #endif
 
-#if OPENEXR_CODED_VERSION >= 20400                                             \
+#if OPENEXR_CODED_VERSION >= 20400 \
     || __has_include(<OpenEXR/ImfFloatVectorAttribute.h>)
 #    define OPENEXR_HAS_FLOATVECTOR 1
 #else
@@ -35,9 +35,9 @@
 
 // The way that OpenEXR uses dynamic casting for attributes requires
 // temporarily suspending "hidden" symbol visibility mode.
-#ifdef __GNUC__
-#    pragma GCC visibility push(default)
-#endif
+OIIO_PRAGMA_VISIBILITY_PUSH
+OIIO_PRAGMA_WARNING_PUSH
+OIIO_GCC_PRAGMA(GCC diagnostic ignored "-Wunused-parameter")
 #include <OpenEXR/IexBaseExc.h>
 #include <OpenEXR/ImfBoxAttribute.h>
 #include <OpenEXR/ImfCRgbaFile.h>  // JUST to get symbols to figure out version!
@@ -48,6 +48,7 @@
 #if OPENEXR_HAS_FLOATVECTOR
 #    include <OpenEXR/ImfFloatVectorAttribute.h>
 #endif
+#include <OpenEXR/ImfHeader.h>
 #include <OpenEXR/ImfIntAttribute.h>
 #include <OpenEXR/ImfKeyCodeAttribute.h>
 #include <OpenEXR/ImfMatrixAttribute.h>
@@ -56,10 +57,7 @@
 #include <OpenEXR/ImfTimeCodeAttribute.h>
 #include <OpenEXR/ImfVecAttribute.h>
 
-#ifdef __GNUC__
-#    pragma GCC visibility pop
-#endif
-
+#include <OpenEXR/ImfDeepFrameBuffer.h>
 #include <OpenEXR/ImfDeepScanLineOutputPart.h>
 #include <OpenEXR/ImfDeepTiledOutputPart.h>
 #include <OpenEXR/ImfDoubleAttribute.h>
@@ -68,6 +66,8 @@
 #include <OpenEXR/ImfPartType.h>
 #include <OpenEXR/ImfStringVectorAttribute.h>
 #include <OpenEXR/ImfTiledOutputPart.h>
+OIIO_PRAGMA_WARNING_POP
+OIIO_PRAGMA_VISIBILITY_POP
 
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/deepdata.h>
@@ -96,12 +96,21 @@ public:
         if (m_io->write(c, n) != size_t(n))
             throw Iex::IoExc("File output failed.");
     }
+#if OIIO_USING_IMATH >= 3
+    virtual uint64_t tellp() { return m_io->tell(); }
+    virtual void seekp(uint64_t pos)
+    {
+        if (!m_io->seek(pos))
+            throw Iex::IoExc("File output failed.");
+    }
+#else
     virtual Imath::Int64 tellp() { return m_io->tell(); }
     virtual void seekp(Imath::Int64 pos)
     {
         if (!m_io->seek(pos))
             throw Iex::IoExc("File output failed.");
     }
+#endif
 
 private:
     Filesystem::IOProxy* m_io = nullptr;
@@ -137,6 +146,11 @@ public:
     virtual bool write_deep_tiles(int xbegin, int xend, int ybegin, int yend,
                                   int zbegin, int zend,
                                   const DeepData& deepdata) override;
+    virtual bool set_ioproxy(Filesystem::IOProxy* ioproxy) override
+    {
+        m_io = ioproxy;
+        return true;
+    }
 
 private:
     std::unique_ptr<OpenEXROutputStream>
@@ -221,8 +235,8 @@ OIIO_EXPORT int openexr_imageio_version = OIIO_PLUGIN_VERSION;
 OIIO_EXPORT const char*
 openexr_imageio_library_version()
 {
-#ifdef OPENEXR_PACKAGE_STRING
-    return OPENEXR_PACKAGE_STRING;
+#ifdef OPENEXR_VERSION_STRING
+    return "OpenEXR " OPENEXR_VERSION_STRING;
 #else
     return "OpenEXR 1.x";
 #endif
@@ -235,17 +249,9 @@ OIIO_PLUGIN_EXPORTS_END
 
 
 
-static std::string format_string("openexr");
-
-
 namespace pvt {
 void
 set_exr_threads();
-
-// format-specific metadata prefixes
-static std::vector<std::string> format_prefixes;
-static atomic_int format_prefixes_initialized;
-static spin_mutex format_prefixes_mutex;  // guard
 
 }  // namespace pvt
 
@@ -340,7 +346,8 @@ OpenEXROutput::open(const std::string& name, const ImageSpec& userspec,
         sanity_check_channelnames();
         const ParamValue* param = m_spec.find_attribute("oiio:ioproxy",
                                                         TypeDesc::PTR);
-        m_io = param ? param->get<Filesystem::IOProxy*>() : nullptr;
+        if (param)
+            m_io = param->get<Filesystem::IOProxy*>();
 
         if (!spec_to_header(m_spec, m_subimage, m_headers[m_subimage]))
             return false;
@@ -349,6 +356,15 @@ OpenEXROutput::open(const std::string& name, const ImageSpec& userspec,
             if (!m_io) {
                 m_io = new Filesystem::IOFile(name, Filesystem::IOProxy::Write);
                 m_local_io.reset(m_io);
+            }
+            OIIO_ASSERT(m_io);
+            if (m_io->mode() != Filesystem::IOProxy::Write) {
+                // If the proxy couldn't be opened in write mode, try to
+                // return an error.
+                std::string e = m_io->error();
+                errorf("Could not open \"%s\" (%s)", name,
+                       e.size() ? e : std::string("unknown error"));
+                return false;
             }
             m_output_stream.reset(new OpenEXROutputStream(name.c_str(), m_io));
             if (m_spec.tile_width) {
@@ -814,7 +830,8 @@ struct ExrMeta {
 static ExrMeta exr_meta_translation[] = {
     // Translate OIIO standard metadata names to OpenEXR standard names
     ExrMeta("worldtocamera", "worldToCamera", TypeMatrix),
-    ExrMeta("worldtoscreen", "worldToNDC", TypeMatrix),
+    ExrMeta("worldtoNDC", "worldToNDC", TypeMatrix),
+    ExrMeta("worldtoscreen", "worldToScreen", TypeMatrix),
     ExrMeta("DateTime", "capDate", TypeString),
     ExrMeta("ImageDescription", "comments", TypeString),
     ExrMeta("description", "comments", TypeString),
@@ -886,9 +903,9 @@ OpenEXROutput::put_parameter(const std::string& name, TypeDesc type,
             else if (Strutil::iequals(str, "b44a"))
                 header.compression() = Imf::B44A_COMPRESSION;
 #endif
-#if defined(OPENEXR_VERSION_MAJOR)                                             \
-    && (OPENEXR_VERSION_MAJOR * 10000 + OPENEXR_VERSION_MINOR * 100            \
-        + OPENEXR_VERSION_PATCH)                                               \
+#if defined(OPENEXR_VERSION_MAJOR)                                  \
+    && (OPENEXR_VERSION_MAJOR * 10000 + OPENEXR_VERSION_MINOR * 100 \
+        + OPENEXR_VERSION_PATCH)                                    \
            >= 20200
             else if (Strutil::iequals(str, "dwaa"))
                 header.compression() = Imf::DWAA_COMPRESSION;
@@ -926,23 +943,13 @@ OpenEXROutput::put_parameter(const std::string& name, TypeDesc type,
         }
     }
 
-    // Before handling general named metadata, suppress non-openexr
-    // format-specific metadata.
+    // Before handling general named metadata, suppress format-specific
+    // metadata meant for other formats.
     if (const char* colon = strchr(xname.c_str(), ':')) {
         std::string prefix(xname.c_str(), colon);
-        if (!Strutil::iequals(prefix, "openexr")) {
-            if (!pvt::format_prefixes_initialized) {
-                // Retrieve and split the list, only the first time
-                spin_lock lock(pvt::format_prefixes_mutex);
-                std::string format_list;
-                OIIO::getattribute("format_list", format_list);
-                Strutil::split(format_list, pvt::format_prefixes, ",");
-                pvt::format_prefixes_initialized = true;
-            }
-            for (const auto& f : pvt::format_prefixes)
-                if (Strutil::iequals(prefix, f))
-                    return false;
-        }
+        Strutil::to_lower(prefix);
+        if (prefix != format_name() && is_imageio_format_name(prefix))
+            return false;
     }
 
     if (!xname.length())
@@ -968,7 +975,7 @@ OpenEXROutput::put_parameter(const std::string& name, TypeDesc type,
     // Now if we still don't match a specific type OpenEXR is looking for,
     // skip it.
     if (exrtype != TypeDesc() && !exrtype.equivalent(type)) {
-        OIIO::debug(
+        OIIO::debugf(
             "OpenEXR output metadata \"%s\" type mismatch: expected %s, got %s\n",
             name, exrtype, type);
         return false;
@@ -1236,12 +1243,12 @@ OpenEXROutput::put_parameter(const std::string& name, TypeDesc type,
 #endif
         }
     } catch (const std::exception& e) {
-        OIIO::debug("Caught OpenEXR exception: %s\n", e.what());
+        OIIO::debugf("Caught OpenEXR exception: %s\n", e.what());
     } catch (...) {  // catch-all for edge cases or compiler bugs
         OIIO::debug("Caught unknown OpenEXR exception\n");
     }
 
-    OIIO::debug("Don't know what to do with %s %s\n", type, xname);
+    OIIO::debugf("Don't know what to do with %s %s\n", type, xname);
     return false;
 }
 
@@ -1295,8 +1302,8 @@ OpenEXROutput::close()
 
 
 bool
-OpenEXROutput::write_scanline(int y, int z, TypeDesc format, const void* data,
-                              stride_t xstride)
+OpenEXROutput::write_scanline(int y, int /*z*/, TypeDesc format,
+                              const void* data, stride_t xstride)
 {
     if (!(m_output_scanline || m_scanline_output_part)) {
         errorf("called OpenEXROutput::write_scanline without an open file");
@@ -1554,7 +1561,7 @@ OpenEXROutput::write_tiles(int xbegin, int xend, int ybegin, int yend,
 
 
 bool
-OpenEXROutput::write_deep_scanlines(int ybegin, int yend, int z,
+OpenEXROutput::write_deep_scanlines(int ybegin, int yend, int /*z*/,
                                     const DeepData& deepdata)
 {
     if (m_deep_scanline_output_part == NULL) {

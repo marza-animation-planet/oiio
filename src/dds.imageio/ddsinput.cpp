@@ -6,13 +6,13 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include "dds_pvt.h"
-
 #include <OpenImageIO/dassert.h>
+#include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/typedesc.h>
 
+#include "dds_pvt.h"
 #include "squish.h"
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
@@ -139,10 +139,10 @@ DDSInput::open(const std::string& name, ImageSpec& newspec)
     }
 
 // due to struct packing, we may get a corrupt header if we just load the
-// struct from file; to adress that, read every member individually
+// struct from file; to address that, read every member individually
 // save some typing
-#define RH(memb)                                                               \
-    if (!fread(&m_dds.memb, sizeof(m_dds.memb), 1))                            \
+#define RH(memb)                                    \
+    if (!fread(&m_dds.memb, sizeof(m_dds.memb), 1)) \
     return false
 
     RH(fourCC);

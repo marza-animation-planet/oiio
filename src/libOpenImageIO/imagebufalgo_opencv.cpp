@@ -10,12 +10,12 @@
 #ifdef USE_OPENCV
 #    include <opencv2/core/version.hpp>
 #    ifdef CV_VERSION_EPOCH
-#        define OIIO_OPENCV_VERSION                                            \
-            (10000 * CV_VERSION_EPOCH + 100 * CV_VERSION_MAJOR                 \
+#        define OIIO_OPENCV_VERSION                            \
+            (10000 * CV_VERSION_EPOCH + 100 * CV_VERSION_MAJOR \
              + CV_VERSION_MINOR)
 #    else
-#        define OIIO_OPENCV_VERSION                                            \
-            (10000 * CV_VERSION_MAJOR + 100 * CV_VERSION_MINOR                 \
+#        define OIIO_OPENCV_VERSION                            \
+            (10000 * CV_VERSION_MAJOR + 100 * CV_VERSION_MINOR \
              + CV_VERSION_REVISION)
 #    endif
 #    include <opencv2/opencv.hpp>
@@ -29,8 +29,6 @@
 #include <iostream>
 #include <map>
 #include <vector>
-
-#include <OpenEXR/half.h>
 
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/imagebuf.h>
@@ -46,10 +44,11 @@
 OIIO_NAMESPACE_BEGIN
 
 
+namespace ImageBufAlgo {
 
 // Note: DEPRECATED(2.0)
 ImageBuf
-ImageBufAlgo::from_IplImage(const IplImage* ipl, TypeDesc convert)
+from_IplImage(const IplImage* ipl, TypeDesc convert)
 {
     pvt::LoggedTimer logtime("IBA::from_IplImage");
     ImageBuf dst;
@@ -123,7 +122,7 @@ ImageBufAlgo::from_IplImage(const IplImage* ipl, TypeDesc convert)
 
 // Note: DEPRECATED(2.0)
 IplImage*
-ImageBufAlgo::to_IplImage(const ImageBuf& src)
+to_IplImage(const ImageBuf& src)
 {
     pvt::LoggedTimer logtime("IBA::to_IplImage");
 #ifdef USE_OPENCV
@@ -219,6 +218,7 @@ RBswap(ImageBuf& R, ROI roi, int nthreads)
     return true;
 }
 
+}  // end namespace ImageBufAlgo
 
 
 ImageBuf

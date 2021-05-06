@@ -47,7 +47,7 @@ redirect = " >> out.txt "
 def oiio_relpath (path, start=os.curdir):
     "Wrapper around os.path.relpath which always uses '/' as the separator."
     p = os.path.relpath (path, start)
-    return p if sys.platform != "win32" else p.replace ('\\', '/')
+    return p if platform.system() != 'Windows' else p.replace ('\\', '/')
 
 # Try to figure out where some key things are. Go by env variables set by
 # the cmake tests, but if those aren't set, assume somebody is running
@@ -101,11 +101,11 @@ failpercent = 0.02
 anymatch = False
 cleanup_on_success = False
 if int(os.getenv('TESTSUITE_CLEANUP_ON_SUCCESS', '0')) :
-    cleanup_on_success = True;
+    cleanup_on_success = True
 
 image_extensions = [ ".tif", ".tx", ".exr", ".jpg", ".png", ".rla",
                      ".dpx", ".iff", ".psd", ".bmp", ".fits", ".ico",
-                     ".jp2", ".sgi", ".tga", ".TGA" ]
+                     ".jp2", ".sgi", ".tga", ".TGA", ".zfile" ]
 
 # print ("srcdir = " + srcdir)
 # print ("tmpdir = " + tmpdir)
@@ -137,16 +137,12 @@ else :
         newsymlink (test_source_dir, "./data")
 
 
-# Disable this test on Travis when using leak sanitizer, because the error
-# condition makes a leak we can't stop, but that's ok.
-import os
-if (os.getenv("TRAVIS") and (os.getenv("SANITIZE") in ["leak","address"])
-    and os.path.exists(os.path.join (test_source_dir,"TRAVIS_SKIP_LSAN"))) :
-    sys.exit (0)
-
-pythonbin = 'python'
-if os.getenv("PYTHON_VERSION") :
-    pythonbin += os.getenv("PYTHON_VERSION")
+if os.getenv("Python_EXECUTABLE") :
+    pythonbin = os.getenv("Python_EXECUTABLE")
+else :
+    pythonbin = 'python'
+    if os.getenv("PYTHON_VERSION") :
+        pythonbin += os.getenv("PYTHON_VERSION")
 #print ("pythonbin = ", pythonbin)
 
 
@@ -190,15 +186,19 @@ def text_diff (fromfile, tofile, diff_file=None):
     return 1
 
 
+def run_app(app, silent=False, concat=True):
+    command = app
+    if not silent:
+        command += redirect
+    if concat:
+        command += " ;\n"
+    return command
+
 def oiio_app (app):
     if (platform.system () != 'Windows' or options.devenv_config == ""):
         return os.path.join (path, "bin", app) + " "
     else:
-        return os.path.join (path, "bin", app) + " "
-        # Old... not true any more?
-        # When we use Visual Studio, built applications are stored
-        # in the app/$(OutDir)/ directory, e.g., Release or Debug.
-        # return os.path.join (path, "src", app, options.devenv_config, app) + " "
+        return os.path.join (path, "bin", options.devenv_config, app) + " "
 
 
 # Construct a command that will print info for an image, appending output to
@@ -289,9 +289,12 @@ def rw_command (dir, filename, testwrite=True, use_oiiotool=False, extraargs="",
 
 
 # Construct a command that will testtex
-def testtex_command (file, extraargs="") :
-    cmd = (oiio_app("testtex") + " " + file + " " + extraargs + " " +
-           redirect + ";\n")
+def testtex_command (file, extraargs="", silent=False, concat=True) :
+    cmd = oiio_app("testtex") + " " + file + " " + extraargs + " "
+    if not silent :
+        cmd += redirect
+    if concat:
+        cmd += " ;\n"
     return cmd
 
 
@@ -386,12 +389,21 @@ def runtest (command, outputs, failureok=0) :
 
     for out in outputs :
         (prefix, extension) = os.path.splitext(out)
+        # On Windows, change line endings of text files to unix style before
+        # comparison to reference output.
+        if (platform.system() == 'Windows' and os.path.exists(out)
+                and extension == '.txt') :
+            os.rename (out, "crlf.txt")
+            os.system ("tr -d '\\r' < crlf.txt > " + out)
+            if os.path.exists('crlf.txt') :
+                os.remove('crlf.txt')
+
         (ok, testfile) = checkref (out, refdirlist)
 
         if ok :
             if extension in image_extensions :
                 # If we got a match for an image, save the idiff results
-                os.system (diff_command (out, testfile, silent=False))
+                os.system (diff_command (out, testfile, silent=False, concat=False))
             print ("PASS: " + out + " matches " + testfile)
         else :
             err = 1
@@ -410,7 +422,7 @@ def runtest (command, outputs, failureok=0) :
             if extension in image_extensions :
                 # If we failed to get a match for an image, send the idiff
                 # results to the console
-                os.system (diff_command (out, testfile, silent=False))
+                os.system (diff_command (out, testfile, silent=False, concat=False))
             if os.path.isfile("debug.log") and os.path.getsize("debug.log") :
                 print ("---   DEBUG LOG   ---\n")
                 #flog = open("debug.log", "r")
@@ -434,8 +446,8 @@ with open(os.path.join(test_source_dir,"run.py")) as f:
     exec (code)
 
 # Allow a little more slop for slight pixel differences when in DEBUG
-# mode or when running on remote Travis-CI or Appveyor machines.
-if (os.getenv('TRAVIS') or os.getenv('APPVEYOR') or os.getenv('DEBUG')) :
+# mode or when running on remote CI machines.
+if (os.getenv('CI') or os.getenv('DEBUG')) :
     failthresh *= 2.0
     hardfail *= 2.0
     failpercent *= 2.0

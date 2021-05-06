@@ -6,8 +6,6 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include <OpenEXR/ImathColor.h>
-
 #include "png_pvt.h"
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
@@ -20,7 +18,7 @@ public:
     virtual const char* format_name(void) const override { return "png"; }
     virtual int supports(string_view feature) const override
     {
-        return (feature == "ioproxy");
+        return (feature == "ioproxy" || feature == "exif");
     }
     virtual bool valid_file(const std::string& filename) const override;
     virtual bool open(const std::string& name, ImageSpec& newspec) override;
@@ -34,6 +32,11 @@ public:
     }
     virtual bool read_native_scanline(int subimage, int miplevel, int y, int z,
                                       void* data) override;
+    virtual bool set_ioproxy(Filesystem::IOProxy* ioproxy) override
+    {
+        m_io = ioproxy;
+        return true;
+    }
 
 private:
     std::string m_filename;            ///< Stash the filename
@@ -60,6 +63,7 @@ private:
         m_subimage = -1;
         m_png      = nullptr;
         m_info     = nullptr;
+        m_io       = nullptr;
         m_buf.clear();
         m_next_scanline           = 0;
         m_keep_unassociated_alpha = false;
@@ -144,7 +148,7 @@ PNGInput::open(const std::string& name, ImageSpec& newspec)
         errorf("Could not open file \"%s\"", name);
         return false;
     }
-    m_io_offset = m_io->tell();
+    m_io->seek(0);
 
     unsigned char sig[8];
     if (m_io->pread(sig, sizeof(sig), 0) != sizeof(sig)
@@ -186,6 +190,7 @@ PNGInput::open(const std::string& name, ImageSpec& newspec,
     // Check 'config' for any special requests
     if (config.get_int_attribute("oiio:UnassociatedAlpha", 0) == 1)
         m_keep_unassociated_alpha = true;
+    m_io_local.reset();
     auto ioparam = config.find_attribute("oiio:ioproxy", TypeDesc::PTR);
     if (ioparam)
         m_io = ioparam->get<Filesystem::IOProxy*>();
@@ -198,8 +203,7 @@ PNGInput::open(const std::string& name, ImageSpec& newspec,
 bool
 PNGInput::readimg()
 {
-    std::string s = PNG_pvt::read_into_buffer(m_png, m_info, m_spec,
-                                              m_bit_depth, m_color_type, m_buf);
+    std::string s = PNG_pvt::read_into_buffer(m_png, m_info, m_spec, m_buf);
     if (s.length()) {
         close();
         errorf("%s", s);
@@ -219,11 +223,6 @@ PNGInput::close()
         // If we allocated our own ioproxy, close it.
         m_io_local.reset();
         m_io = nullptr;
-    } else if (m_io) {
-        // We were passed an ioproxy from the user. Don't actually close it,
-        // just reset it to the original position. This makes it possible to
-        // "re-open".
-        m_io->seek(m_io_offset);
     }
     init();  // Reset to initial state
     return true;
@@ -266,7 +265,7 @@ associateAlpha(T* data, int size, int channels, int alpha_channel, float gamma)
 
 
 bool
-PNGInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+PNGInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                void* data)
 {
     lock_guard lock(m_mutex);

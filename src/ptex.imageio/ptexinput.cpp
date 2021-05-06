@@ -5,7 +5,6 @@
 #include <Ptexture.h>
 
 #include <OpenImageIO/dassert.h>
-#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/typedesc.h>
 
@@ -191,13 +190,13 @@ PtexInput::seek_subimage(int subimage, int miplevel)
         wrapmode += "periodic";
     m_spec.attribute("wrapmode", wrapmode);
 
-#define GETMETA(pmeta, key, ptype, basetype, typedesc, value)                  \
-    {                                                                          \
-        const ptype* v;                                                        \
-        int count;                                                             \
-        pmeta->getValue(key, v, count);                                        \
-        typedesc = TypeDesc(basetype, count);                                  \
-        value    = (const void*)v;                                             \
+#define GETMETA(pmeta, key, ptype, basetype, typedesc, value) \
+    {                                                         \
+        const ptype* v;                                       \
+        int count;                                            \
+        pmeta->getValue(key, v, count);                       \
+        typedesc = TypeDesc(basetype, count);                 \
+        value    = (const void*)v;                            \
     }
 
     PtexMetaData* pmeta = m_ptex->getMetaData();
@@ -255,8 +254,8 @@ PtexInput::close()
 
 
 bool
-PtexInput::read_native_scanline(int subimage, int miplevel, int y, int z,
-                                void* data)
+PtexInput::read_native_scanline(int /*subimage*/, int /*miplevel*/, int /*y*/,
+                                int /*z*/, void* /*data*/)
 {
     return false;  // Not scanline oriented
 }
@@ -264,7 +263,7 @@ PtexInput::read_native_scanline(int subimage, int miplevel, int y, int z,
 
 
 bool
-PtexInput::read_native_tile(int subimage, int miplevel, int x, int y, int z,
+PtexInput::read_native_tile(int subimage, int miplevel, int x, int y, int /*z*/,
                             void* data)
 {
     lock_guard lock(m_mutex);

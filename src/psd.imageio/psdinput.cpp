@@ -16,6 +16,7 @@
 #include <memory>
 #include <vector>
 
+#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/tiffutils.h>
 
 #include "jpeg_memory_src.h"
@@ -461,10 +462,10 @@ private:
 // 1) Add ADD_LOADER(<ResourceID>) below
 // 2) Add a method in PSDInput:
 //    bool load_resource_<ResourceID> (uint32_t length);
-#define ADD_LOADER(id)                                                         \
-    {                                                                          \
-        id, std::bind(&PSDInput::load_resource_##id, std::placeholders::_1,    \
-                      std::placeholders::_2)                                   \
+#define ADD_LOADER(id)                                                      \
+    {                                                                       \
+        id, std::bind(&PSDInput::load_resource_##id, std::placeholders::_1, \
+                      std::placeholders::_2)                                \
     }
 const PSDInput::ResourceLoader PSDInput::resource_loaders[]
     = { ADD_LOADER(1005), ADD_LOADER(1006), ADD_LOADER(1010), ADD_LOADER(1033),
@@ -476,7 +477,7 @@ const PSDInput::ResourceLoader PSDInput::resource_loaders[]
 
 const char* PSDInput::additional_info_psb[]
     = { "LMsk", "Lr16", "Lr32", "Layr", "Mt16", "Mt32", "Mtrn",
-        "Alph", "FMsk", "Ink2", "FEid", "FXid", "PxSD" };
+        "Alph", "FMsk", "Ink2", "FEid", "FXid", "PxSD", "cinf" };
 
 const unsigned int PSDInput::additional_info_psb_count
     = sizeof(additional_info_psb) / sizeof(additional_info_psb[0]);
@@ -709,7 +710,7 @@ PSDInput::unassalpha_to_assocalpha(int n, void* data)
 
 
 bool
-PSDInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+PSDInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                void* data)
 {
     lock_guard lock(m_mutex);
@@ -1067,8 +1068,7 @@ PSDInput::handle_resources(ImageResourceMap& resources)
     return true;
 }
 
-bool
-PSDInput::load_resource_1005(uint32_t length)
+bool PSDInput::load_resource_1005(uint32_t /*length*/)
 {
     ResolutionInfo resinfo;
     // Fixed 16.16
@@ -1131,8 +1131,7 @@ PSDInput::load_resource_1006(uint32_t length)
 
 
 
-bool
-PSDInput::load_resource_1010(uint32_t length)
+bool PSDInput::load_resource_1010(uint32_t /*length*/)
 {
     const double int8_to_dbl = 1.0 / 0xFF;
     int8_t color_id;
@@ -1167,8 +1166,7 @@ PSDInput::load_resource_1036(uint32_t length)
 
 
 
-bool
-PSDInput::load_resource_1047(uint32_t length)
+bool PSDInput::load_resource_1047(uint32_t /*length*/)
 {
     read_bige<int16_t>(m_transparency_index);
     if (m_transparency_index < 0 || m_transparency_index >= 768) {
@@ -1224,8 +1222,7 @@ PSDInput::load_resource_1060(uint32_t length)
 
 
 
-bool
-PSDInput::load_resource_1064(uint32_t length)
+bool PSDInput::load_resource_1064(uint32_t /*length*/)
 {
     uint32_t version;
     if (!read_bige<uint32_t>(version))
@@ -1616,7 +1613,7 @@ PSDInput::load_global_mask_info()
     uint32_t length;
 
     // This section should be at least 17 bytes, but some files lack
-    // global mask info and additional layer info, not convered in the spec
+    // global mask info and additional layer info, not covered in the spec
     if (remaining < 17) {
         m_file.seekg(m_layer_mask_info.end);
         return true;

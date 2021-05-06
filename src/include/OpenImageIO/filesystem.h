@@ -16,6 +16,8 @@
 
 #pragma once
 
+#define OIIO_FILESYSTEM_H
+
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
@@ -81,6 +83,9 @@ OIIO_API std::string parent_path (const std::string &filepath) noexcept;
 /// should contain a leading '.' dot.
 OIIO_API std::string replace_extension (const std::string &filepath, 
                                         const std::string &new_extension) noexcept;
+
+/// Return the filepath in generic format, not any OS-specific conventions.
+OIIO_API std::string generic_filepath (string_view filepath) noexcept;
 
 /// Turn a searchpath (multiple directory paths separated by ':' or ';')
 /// into a vector<string> containing each individual directory.  If
@@ -209,6 +214,13 @@ OIIO_API void open (OIIO::ifstream &stream, string_view path,
 OIIO_API void open (OIIO::ofstream &stream, string_view path,
                     std::ios_base::openmode mode = std::ios_base::out);
 
+/// Version of C open() that can handle UTF-8 paths, returning an integer
+/// file descriptor. Note that the flags are passed to underlying calls to
+/// open()/_open() and therefore may be OS specific -- use with caution! If
+/// you want more OS-agnostic file opening, prefer the FILE or stream
+/// methods of IO. (N.B.: use of this function requires the caller to
+/// `#include <fcntl.h>` in order to get the definitions of the flags.)
+OIIO_API int open (string_view path, int flags);
 
 /// Read the entire contents of the named text file and place it in str,
 /// returning true on success, false on failure.
@@ -254,7 +266,7 @@ OIIO_API void convert_native_arguments (int argc, const char *argv[]);
 ///                           NOT have been selected by 'x'.
 ///     Note that START may be > FINISH, or STEP may be negative.
 ///  * Multiple values or ranges, separated by a comma (e.g., "3,4,10-20x2")
-/// Retrn true upon success, false if the description was too malformed
+/// Return true upon success, false if the description was too malformed
 /// to generate a sequence.
 OIIO_API bool enumerate_sequence (string_view desc,
                                   std::vector<int> &numbers);
@@ -333,12 +345,12 @@ public:
     virtual bool opened () const { return mode() != Closed; }
     virtual int64_t tell () { return m_pos; }
     virtual bool seek (int64_t offset) { m_pos = offset; return true; }
-    virtual size_t read (void *buf, size_t size) { return 0; }
-    virtual size_t write (const void *buf, size_t size) { return 0; }
+    virtual size_t read (void *buf, size_t size);
+    virtual size_t write (const void *buf, size_t size);
     // pread(), pwrite() are stateless, do not alter the current file
     // position, and are thread-safe (against each other).
-    virtual size_t pread (void *buf, size_t size, int64_t offset) { return 0; }
-    virtual size_t pwrite (const void *buf, size_t size, int64_t offset) { return 0; }
+    virtual size_t pread (void *buf, size_t size, int64_t offset);
+    virtual size_t pwrite (const void *buf, size_t size, int64_t offset);
     virtual size_t size () const { return 0; }
     virtual void flush () const { }
 
@@ -359,22 +371,15 @@ public:
                      (origin == SEEK_END ? offset+int64_t(size()) : 0));
     }
 
-#if OIIO_VERSION >= 20101
     #define OIIO_IOPROXY_HAS_ERROR 1
-    std::string error() const { return m_error; }
-    void error(string_view e) { m_error = e; }
-#else
-    std::string error() const { return ""; }
-    void error(string_view e) { }
-#endif
+    std::string error() const;
+    void error(string_view e);
 
 protected:
     std::string m_filename;
     int64_t m_pos = 0;
     Mode m_mode   = Closed;
-#ifdef OIIO_IOPROXY_HAS_ERROR
     std::string m_error;
-#endif
 };
 
 

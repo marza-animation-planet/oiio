@@ -17,11 +17,8 @@
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/imagebuf.h>
 #include <OpenImageIO/fmath.h>
-#include <OpenImageIO/color.h>
 #include <OpenImageIO/parallel.h>
 #include <OpenImageIO/span.h>
-
-#include <OpenEXR/ImathMatrix.h>       /* because we need M33f */
 
 #include <limits>
 
@@ -36,7 +33,10 @@ namespace cv {
 
 OIIO_NAMESPACE_BEGIN
 
-class Filter2D;  // forward declaration
+// forward declarations
+class ColorConfig;
+class ColorProcessor;
+class Filter2D;
 
 
 /// @defgroup ImageBufAlgo_intro (ImageBufAlgo common principles)
@@ -196,7 +196,7 @@ typedef parallel_options parallel_image_options;
 /// Create an all-black `float` image of size and channels as described by
 /// the ROI.
 ImageBuf OIIO_API zero (ROI roi, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API zero (ImageBuf &dst, ROI roi={}, int nthreads=0);
 
 
@@ -211,7 +211,7 @@ bool OIIO_API zero (ImageBuf &dst, ROI roi={}, int nthreads=0);
 /// Three varieties of fill() exist: (a) a single set of channel values that
 /// will apply to the whole ROI, (b) two sets of values that will create a
 /// linearly interpolated gradient from top to bottom of the ROI, (c) four
-/// sets of values that will be bilnearly interpolated across all four
+/// sets of values that will be bilinearly interpolated across all four
 /// corners of the ROI.
 
 ImageBuf OIIO_API fill (cspan<float> values, ROI roi, int nthreads=0);
@@ -232,14 +232,14 @@ bool OIIO_API fill (ImageBuf &dst, cspan<float> topleft, cspan<float> topright,
 
 /// Create a checkerboard pattern of size given by `roi`, with origin given
 /// by the `offset` values, checker size given by the `width`, `height`,
-/// `depth` values, and alternting between `color1[]` and `color2[]`.  The
-/// pattern is definied in abstract "image space" independently of the pixel
+/// `depth` values, and alternating between `color1[]` and `color2[]`.  The
+/// pattern is defined in abstract "image space" independently of the pixel
 /// data window of `dst` or the ROI.
 ImageBuf OIIO_API checker (int width, int height, int depth,
                            cspan<float> color1, cspan<float> color2,
                            int xoffset, int yoffset, int zoffset,
                            ROI roi, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API checker (ImageBuf &dst, int width, int height, int depth,
                        cspan<float> color1, cspan<float> color2,
                        int xoffset=0, int yoffset=0, int zoffset=0,
@@ -253,7 +253,7 @@ bool OIIO_API checker (ImageBuf &dst, int width, int height, int depth,
 ///
 /// - "gaussian"   adds Gaussian (normal distribution) noise values with
 ///                   mean value A and standard deviation B.
-/// - "uniform"    adds noise values uninformly distributed on range [A,B).
+/// - "uniform"    adds noise values uniformly distributed on range [A,B).
 /// - "salt"       changes to value A a portion of pixels given by B.
 ///
 /// If the `mono` flag is true, a single noise value will be applied to all
@@ -269,7 +269,7 @@ bool OIIO_API checker (ImageBuf &dst, int width, int height, int depth,
 ImageBuf OIIO_API noise (string_view noisetype,
                          float A = 0.0f, float B = 0.1f, bool mono = false,
                          int seed = 0, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API noise (ImageBuf &dst, string_view noisetype,
                      float A = 0.0f, float B = 0.1f, bool mono = false,
                      int seed = 0, ROI roi={}, int nthreads=0);
@@ -311,8 +311,8 @@ enum class TextAlignX { Left, Right, Center };
 enum class TextAlignY { Baseline, Top, Bottom, Center };
 
 /// Render a text string (encoded as UTF-8) into image `dst`. If the `dst`
-/// image is not yet initiailzed, it will be initialized to be a black
-/// background exactly large enought to contain the rasterized text.  If
+/// image is not yet initialized, it will be initialized to be a black
+/// background exactly large enough to contain the rasterized text.  If
 /// `dst` is already initialized, the text will be rendered into the
 /// existing image by essentially doing an "over" of the character into the
 /// existing pixel data.
@@ -403,7 +403,7 @@ ImageBuf OIIO_API channels (const ImageBuf &src,
                         cspan<float> channelvalues={},
                         cspan<std::string> newchannelnames={},
                         bool shuffle_channel_names=false, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API channels (ImageBuf &dst, const ImageBuf &src,
                         int nchannels, cspan<int> channelorder,
                         cspan<float> channelvalues={},
@@ -418,7 +418,7 @@ bool OIIO_API channels (ImageBuf &dst, const ImageBuf &src,
 /// it will be resized to be big enough for the region.
 ImageBuf OIIO_API channel_append (const ImageBuf &A, const ImageBuf &B,
                                   ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API channel_append (ImageBuf &dst, const ImageBuf &A,
                               const ImageBuf &B, ROI roi={}, int nthreads=0);
 
@@ -428,7 +428,7 @@ bool OIIO_API channel_append (ImageBuf &dst, const ImageBuf &A,
 /// type overridden by convert (if it is not `TypeUnknown`).
 ImageBuf OIIO_API copy (const ImageBuf &src, TypeDesc convert=TypeUnknown,
                         ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 /// If `dst` is not already initialized, it will be set to the same size as
 /// `roi` (defaulting to all of `src`)
 bool OIIO_API copy (ImageBuf &dst, const ImageBuf &src, TypeDesc convert=TypeUnknown,
@@ -447,7 +447,7 @@ bool OIIO_API copy (ImageBuf &dst, const ImageBuf &src, TypeDesc convert=TypeUnk
 /// pixels are copied from `src` to `dst`.  (Note the difference compared to
 /// `cut()`).
 ImageBuf OIIO_API crop (const ImageBuf &src, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API crop (ImageBuf &dst, const ImageBuf &src, ROI roi={}, int nthreads=0);
 
 
@@ -455,7 +455,7 @@ bool OIIO_API crop (ImageBuf &dst, const ImageBuf &src, ROI roi={}, int nthreads
 /// origin and with the full/display window set to exactly cover the new
 /// pixel data window. (Note the difference compared to `crop()`).
 ImageBuf OIIO_API cut (const ImageBuf &src, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API cut (ImageBuf &dst, const ImageBuf &src, ROI roi={}, int nthreads=0);
 
 
@@ -528,7 +528,7 @@ bool OIIO_API transpose (ImageBuf &dst, const ImageBuf &src,
 /// the configuration suggested by the "Orientation" metadata of the image
 /// (and the "Orientation" metadata is then set to 1, ordinary orientation).
 ImageBuf OIIO_API reorient (const ImageBuf &src, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API reorient (ImageBuf &dst, const ImageBuf &src, int nthreads=0);
 
 
@@ -538,7 +538,7 @@ bool OIIO_API reorient (ImageBuf &dst, const ImageBuf &src, int nthreads=0);
 ImageBuf OIIO_API circular_shift (const ImageBuf &src,
                                   int xshift, int yshift, int zshift=0,
                                   ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API circular_shift (ImageBuf &dst, const ImageBuf &src,
                               int xshift, int yshift, int zshift=0,
                               ROI roi={}, int nthreads=0);
@@ -557,12 +557,12 @@ bool OIIO_API circular_shift (ImageBuf &dst, const ImageBuf &src,
 /// pixels in `dst`. If `dst` is uninitialized, it will be resized to be an
 /// ImageBuf large enough to hold the rotated image if recompute_roi is
 /// true, or will have the same ROI as `src` if `recompute_roi` is `false`.
-/// It is an error to pass both an uninitialied `dst` and an undefined
+/// It is an error to pass both an uninitialized `dst` and an undefined
 /// `roi`.
 ///
 /// The filter is used to weight the `src` pixels falling underneath it for
 /// each `dst` pixel.  The caller may specify a reconstruction filter by
-/// name and width (expressed in pixels unts of the `dst` image), or
+/// name and width (expressed in pixels units of the `dst` image), or
 /// `rotate()` will choose a reasonable default high-quality default filter
 /// (lanczos3) if the empty string is passed, and a reasonable filter width
 /// if `filterwidth` is 0. (Note that some filter choices only make sense
@@ -650,7 +650,7 @@ bool OIIO_API resize (ImageBuf &dst, const ImageBuf &src, Filter2D *filter,
 /// the value of `interpolate`).
 ImageBuf OIIO_API resample (const ImageBuf &src, bool interpolate = true,
                         ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API resample (ImageBuf &dst, const ImageBuf &src,
                         bool interpolate = true, ROI roi={}, int nthreads=0);
 
@@ -671,7 +671,7 @@ bool OIIO_API resample (ImageBuf &dst, const ImageBuf &src,
 ///
 /// The filter is used to weight the `src` pixels falling underneath it for
 /// each `dst` pixel.  The caller may specify a reconstruction filter by
-/// name and width (expressed in pixels unts of the `dst` image), or
+/// name and width (expressed in pixels units of the `dst` image), or
 /// `rotate()` will choose a reasonable default high-quality default filter
 /// (lanczos3) if the empty string is passed, and a reasonable filter width
 /// if `filterwidth` is 0. (Note that some filter choices only make sense
@@ -701,7 +701,7 @@ bool OIIO_API fit (ImageBuf &dst, const ImageBuf &src, Filter2D *filter,
 /// pixels in dst. If `dst` is uninitialized, it will be sized to be an
 /// ImageBuf large enough to hold the warped image if recompute_roi is true,
 /// or will have the same ROI as src if recompute_roi is false. It is an
-/// error to pass both an uninitialied `dst` and an undefined `roi`.
+/// error to pass both an uninitialized `dst` and an undefined `roi`.
 ///
 /// The caller may explicitly pass a reconstruction filter, or specify one
 /// by name and size, or if the name is the empty string `resize()` will
@@ -738,7 +738,7 @@ bool OIIO_API warp (ImageBuf &dst, const ImageBuf &src, const Imath::M33f &M,
 /// channels. (But at least one must be an image.)
 ImageBuf OIIO_API add (Image_or_Const A, Image_or_Const B,
                        ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API add (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
                    ROI roi={}, int nthreads=0);
 
@@ -750,7 +750,7 @@ bool OIIO_API add (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
 /// channels. (But at least one must be an image.)
 ImageBuf OIIO_API sub (Image_or_Const A, Image_or_Const B,
                        ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API sub (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
                    ROI roi={}, int nthreads=0);
 
@@ -763,14 +763,14 @@ bool OIIO_API sub (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
 /// channels. (But at least one must be an image.)
 ImageBuf OIIO_API absdiff (Image_or_Const A, Image_or_Const B,
                            ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API absdiff (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
                        ROI roi={}, int nthreads=0);
 
 
 /// Compute per-pixel absolute value `abs(A)`, returning the result image.
 ImageBuf OIIO_API abs (const ImageBuf &A, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API abs (ImageBuf &dst, const ImageBuf &A, ROI roi={}, int nthreads=0);
 
 
@@ -781,20 +781,20 @@ bool OIIO_API abs (ImageBuf &dst, const ImageBuf &A, ROI roi={}, int nthreads=0)
 /// used for all channels.
 ImageBuf OIIO_API mul (Image_or_Const A, Image_or_Const B,
                        ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API mul (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
                    ROI roi={}, int nthreads=0);
 
 
 /// Compute per-pixel division `A / B`, returning the result image.
-/// Division by zero is definied to result in zero.
+/// Division by zero is defined to result in zero.
 ///
 /// `A` is always an image, and `B` is either an image or a `cspan<float>`
 /// giving a per-channel constant or a single constant used for all
 /// channels.
 ImageBuf OIIO_API div (Image_or_Const A, Image_or_Const B,
                        ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API div (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
                    ROI roi={}, int nthreads=0);
 
@@ -807,7 +807,7 @@ bool OIIO_API div (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
 /// at least one must be an image.)
 ImageBuf OIIO_API mad (Image_or_Const A, Image_or_Const B,
                        Image_or_Const C, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API mad (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
                    Image_or_Const C, ROI roi={}, int nthreads=0);
 
@@ -837,7 +837,7 @@ bool OIIO_API mad (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
 /// pixel data window will be treated as having "zero" (0,0,0...) value.
 ImageBuf OIIO_API over (const ImageBuf &A, const ImageBuf &B,
                         ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API over (ImageBuf &dst, const ImageBuf &A, const ImageBuf &B,
                     ROI roi={}, int nthreads=0);
 
@@ -849,7 +849,7 @@ bool OIIO_API over (ImageBuf &dst, const ImageBuf &A, const ImageBuf &B,
 /// values will be treated as if they are infinitely far away.
 ImageBuf OIIO_API zover (const ImageBuf &A, const ImageBuf &B,
                          bool z_zeroisinf=false, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API zover (ImageBuf &dst, const ImageBuf &A, const ImageBuf &B,
                      bool z_zeroisinf=false, ROI roi={}, int nthreads=0);
 
@@ -864,7 +864,7 @@ bool OIIO_API zover (ImageBuf &dst, const ImageBuf &A, const ImageBuf &B,
 /// `unpremult()` before the invert, then `premult()` the result, so that
 /// you are computing the inverse of the unmasked color.
 ImageBuf OIIO_API invert (const ImageBuf &A, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API invert (ImageBuf &dst, const ImageBuf &A, ROI roi={}, int nthreads=0);
 
 
@@ -876,7 +876,7 @@ bool OIIO_API invert (ImageBuf &dst, const ImageBuf &A, ROI roi={}, int nthreads
 /// channels.
 ImageBuf OIIO_API pow (const ImageBuf &A, cspan<float> B,
                        ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API pow (ImageBuf &dst, const ImageBuf &A, cspan<float> B,
                    ROI roi={}, int nthreads=0);
 
@@ -890,11 +890,34 @@ bool OIIO_API pow (ImageBuf &dst, const ImageBuf &A, cspan<float> B,
 /// supplied, default to `{ 1, 1, 1, ... }`).
 ImageBuf OIIO_API channel_sum (const ImageBuf &src, cspan<float> weights=1.0f,
                                ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API channel_sum (ImageBuf &dst, const ImageBuf &src,
                            cspan<float> weights=1.0f,
                            ROI roi={}, int nthreads=0);
-/// @}
+
+
+/// Compute per-pixel `max(A, B)`, returning the result image.
+///
+/// Either both `A` and `B` are images, or one is an image and the other is
+/// a `cspan<float>` giving a per-channel constant or a single constant
+/// used for all channels.
+ImageBuf OIIO_API max (Image_or_Const A, Image_or_Const B,
+                       ROI roi={}, int nthreads=0);
+/// Write to an existing image `dst` (allocating if it is uninitialized).
+bool OIIO_API max (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
+                   ROI roi={}, int nthreads=0);
+
+/// Compute per-pixel `min(A, B)`, returning the result image.
+///
+/// Either both `A` and `B` are images, or one is an image and the other is
+/// a `cspan<float>` giving a per-channel constant or a single constant
+/// used for all channels.
+ImageBuf OIIO_API min (Image_or_Const A, Image_or_Const B,
+                       ROI roi={}, int nthreads=0);
+/// Write to an existing image `dst` (allocating if it is uninitialized).
+bool OIIO_API min (ImageBuf &dst, Image_or_Const A, Image_or_Const B,
+                   ROI roi={}, int nthreads=0);
+
 
 
 /// Return pixels of `src` with pixel values clamped as follows:
@@ -908,7 +931,7 @@ ImageBuf OIIO_API clamp (const ImageBuf &src,
                          cspan<float> min=-std::numeric_limits<float>::max(),
                          cspan<float> max=std::numeric_limits<float>::max(),
                          bool clampalpha01 = false, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API clamp (ImageBuf &dst, const ImageBuf &src,
                      cspan<float> min=-std::numeric_limits<float>::max(),
                      cspan<float> max=std::numeric_limits<float>::max(),
@@ -950,7 +973,7 @@ OIIO_API ImageBuf contrast_remap (const ImageBuf &src,
                     cspan<float> min=0.0f, cspan<float> max=1.0f,
                     cspan<float> scontrast=1.0f, cspan<float> sthresh=0.5f,
                     ROI={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 OIIO_API bool contrast_remap (ImageBuf &dst, const ImageBuf &src,
                     cspan<float> black=0.0f, cspan<float> white=1.0f,
                     cspan<float> min=0.0f, cspan<float> max=1.0f,
@@ -1068,12 +1091,14 @@ PixelStats OIIO_API computePixelStats (const ImageBuf &src,
 
 // DEPRECATED(1.9): with C++11 move semantics, there's no reason why
 // stats needs to be passed as a parameter instead of returned.
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 bool OIIO_API computePixelStats (PixelStats &stats, const ImageBuf &src,
                                  ROI roi={}, int nthreads=0);
+#endif
 
 
 // Struct holding all the results computed by ImageBufAlgo::compare().
-// (maxx,maxy,maxz,maxc) gives the pixel coordintes (x,y,z) and color
+// (maxx,maxy,maxz,maxc) gives the pixel coordinates (x,y,z) and color
 // channel of the pixel that differed maximally between the two images.
 // nwarn and nfail are the number of "warnings" and "failures",
 // respectively.
@@ -1116,12 +1141,13 @@ int OIIO_API compare_Yee (const ImageBuf &A, const ImageBuf &B,
                           float luminance = 100, float fov = 45,
                           ROI roi={}, int nthreads=0);
 
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 // DEPRECATED(1.9): with C++11 move semantics, there's no reason why
 // result needs to be passed as a parameter instead of returned.
 bool OIIO_API compare (const ImageBuf &A, const ImageBuf &B,
                        float failthresh, float warnthresh,
                        CompareResults &result, ROI roi={}, int nthreads=0);
-
+#endif
 
 
 /// Do all pixels within the ROI have the same values for channels
@@ -1133,10 +1159,12 @@ bool OIIO_API compare (const ImageBuf &A, const ImageBuf &B,
 OIIO_API bool isConstantColor (const ImageBuf &src, float threshold=0.0f,
                                span<float> color = {},
                                ROI roi={}, int nthreads=0);
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 inline bool isConstantColor (const ImageBuf &src, span<float> color,
                              ROI roi={}, int nthreads=0) {
     return isConstantColor (src, 0.0f, color, roi, nthreads);
 }
+#endif
 
 
 /// Does the requested channel have a given value (within a tolerance of +/-
@@ -1147,10 +1175,12 @@ inline bool isConstantColor (const ImageBuf &src, span<float> color,
 OIIO_API bool isConstantChannel (const ImageBuf &src, int channel,
                                  float val, float threshold=0.0f,
                                  ROI roi={}, int nthreads=0);
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 inline bool isConstantChannel (const ImageBuf &src, int channel, float val,
                                ROI roi, int nthreads=0) {
     return isConstantChannel (src, channel, val, 0.0f, roi, nthreads);
 }
+#endif
 
 
 /// Is the image monochrome within the ROI, i.e., for every pixel within the
@@ -1160,9 +1190,11 @@ inline bool isConstantChannel (const ImageBuf &src, int channel, float val,
 /// channels of source.
 OIIO_API bool isMonochrome (const ImageBuf &src, float threshold=0.0f,
                             ROI roi={}, int nthreads=0);
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 inline bool isMonochrome (const ImageBuf &src, ROI roi, int nthreads=0) {
     return isMonochrome (src, 0.0f, roi, nthreads);
 }
+#endif
 
 
 /// Count how many pixels in the ROI match a list of colors. The colors to
@@ -1251,6 +1283,7 @@ std::vector<imagesize_t> histogram (const ImageBuf &src, int channel=0,
                                     ROI roi={}, int nthreads=0);
 
 
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 /// DEPRECATED(1.9)
 bool OIIO_API histogram (const ImageBuf &src, int channel,
                          std::vector<imagesize_t> &histogram, int bins=256,
@@ -1260,6 +1293,7 @@ bool OIIO_API histogram (const ImageBuf &src, int channel,
 // DEPRECATED(1.9): never liked this.
 bool OIIO_API histogram_draw (ImageBuf &dst,
                               const std::vector<imagesize_t> &histogram);
+#endif
 
 
 
@@ -1281,6 +1315,7 @@ bool OIIO_API histogram_draw (ImageBuf &dst,
 ///
 ImageBuf OIIO_API make_kernel (string_view name, float width, float height,
                                float depth = 1.0f, bool normalize = true);
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 // DEPRECATED(1.9):
 inline bool make_kernel (ImageBuf &dst, string_view name,
                          float width, float height, float depth = 1.0f,
@@ -1288,6 +1323,7 @@ inline bool make_kernel (ImageBuf &dst, string_view name,
     dst = make_kernel (name, width, height, depth, normalize);
     return ! dst.has_error();
 }
+#endif
 
 
 /// Return the convolution of `src` and a `kernel`. If `roi` is not defined,
@@ -1296,7 +1332,7 @@ inline bool make_kernel (ImageBuf &dst, string_view name,
 /// be used.
 ImageBuf OIIO_API convolve (const ImageBuf &src, const ImageBuf &kernel,
                             bool normalize = true, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 /// If `roi` is not defined, it defaults to the full size of `dst` (or
 /// `src`, if `dst` was uninitialized).  If `dst` is uninitialized, it will
 /// be allocated to be the size specified by `roi`.
@@ -1317,7 +1353,7 @@ bool OIIO_API convolve (ImageBuf &dst, const ImageBuf &src, const ImageBuf &kern
 ///                     [ 0  1  0 ]
 ///
 ImageBuf OIIO_API laplacian (const ImageBuf &src, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API laplacian (ImageBuf &dst, const ImageBuf &src,
                          ROI roi={}, int nthreads=0);
 
@@ -1425,7 +1461,7 @@ ImageBuf OIIO_API fixNonFinite (const ImageBuf &src,
                                 int *pixelsFixed = nullptr,
                                 ROI roi={}, int nthreads=0);
 
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API fixNonFinite (ImageBuf &dst, const ImageBuf &src,
                             NonFiniteFixMode mode=NONFINITE_BOX3,
                             int *pixelsFixed = nullptr,
@@ -1440,7 +1476,7 @@ bool OIIO_API fixNonFinite (ImageBuf &dst, const ImageBuf &src,
 /// that is a plausible "filling" of the original alpha hole.
 ImageBuf OIIO_API fillholes_pushpull (const ImageBuf &src,
                                       ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API fillholes_pushpull (ImageBuf &dst, const ImageBuf &src,
                                   ROI roi={}, int nthreads=0);
 
@@ -1456,7 +1492,7 @@ bool OIIO_API fillholes_pushpull (ImageBuf &dst, const ImageBuf &src,
 ImageBuf OIIO_API median_filter (const ImageBuf &src,
                                  int width = 3, int height = -1,
                                  ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API median_filter (ImageBuf &dst, const ImageBuf &src,
                              int width = 3, int height = -1,
                              ROI roi={}, int nthreads=0);
@@ -1486,7 +1522,7 @@ ImageBuf OIIO_API unsharp_mask (const ImageBuf &src,
                             string_view kernel="gaussian", float width = 3.0f,
                             float contrast = 1.0f, float threshold = 0.0f,
                             ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API unsharp_mask (ImageBuf &dst, const ImageBuf &src,
                             string_view kernel="gaussian", float width = 3.0f,
                             float contrast = 1.0f, float threshold = 0.0f,
@@ -1501,7 +1537,7 @@ bool OIIO_API unsharp_mask (ImageBuf &dst, const ImageBuf &src,
 /// and removes small isolated dark spots.
 ImageBuf OIIO_API dilate (const ImageBuf &src, int width=3, int height=-1,
                           ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API dilate (ImageBuf &dst, const ImageBuf &src,
                       int width=3, int height=-1, ROI roi={}, int nthreads=0);
 
@@ -1514,7 +1550,7 @@ bool OIIO_API dilate (ImageBuf &dst, const ImageBuf &src,
 /// isolated bright spots.
 ImageBuf OIIO_API erode (const ImageBuf &src, int width=3, int height=-1,
                          ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API erode (ImageBuf &dst, const ImageBuf &src,
                      int width=3, int height=-1, ROI roi={}, int nthreads=0);
 
@@ -1550,9 +1586,9 @@ bool OIIO_API erode (ImageBuf &dst, const ImageBuf &src,
 ///             object created by a `ColorConfig` (see `OpenImageIO/color.h`
 ///             for details).
 /// @param  unpremult
-///             If true, divide the RGB channels by alpha (if it exists and
-///             is nonzero) before color conversion, then re-multiply by
-///             alpha after the after the color conversion. Passing
+///             If true, unpremultiply the image (divide the RGB channels by
+///             alpha if it exists and is nonzero) before color conversion,
+///             then repremult after the after the color conversion. Passing
 ///             unpremult=false skips this step, which may be desirable if
 ///             you know that the image is "unassociated alpha" (a.k.a.,
 ///             "not pre-multiplied colors").
@@ -1611,9 +1647,9 @@ inline bool colorconvert (float *color, int nchannels,
 ///             elements [12..14] (matching the memory layout of OpenGL or
 ///             RenderMan), so the math is `color * Matrix` (NOT `M*c`).
 /// @param  unpremult
-///             If true, divide the RGB channels by alpha (if it exists and
-///             is nonzero) before color conversion, then re-multiply by
-///             alpha after the after the color conversion. Passing
+///             If true, unpremultiply the image (divide the RGB channels by
+///             alpha if it exists and is nonzero) before color conversion,
+///             then repremult after the after the color conversion. Passing
 ///             unpremult=false skips this step, which may be desirable if
 ///             you know that the image is "unassociated alpha" (a.k.a.,
 ///             "not pre-multiplied colors").
@@ -1622,7 +1658,7 @@ inline bool colorconvert (float *color, int nchannels,
 ImageBuf OIIO_API colormatrixtransform (const ImageBuf &src,
                                     const Imath::M44f& M, bool unpremult=true,
                                     ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API colormatrixtransform (ImageBuf &dst, const ImageBuf &src,
                                     const Imath::M44f& M, bool unpremult=true,
                                     ROI roi={}, int nthreads=0);
@@ -1638,9 +1674,9 @@ bool OIIO_API colormatrixtransform (ImageBuf &dst, const ImageBuf &src,
 ///             For the varieties of `colorconvert()` that use named color
 ///             spaces, these specify the color spaces by name.
 /// @param  unpremult
-///             If true, divide the RGB channels by alpha (if it exists and
-///             is nonzero) before color conversion, then re-multiply by
-///             alpha after the after the color conversion. Passing
+///             If true, unpremultiply the image (divide the RGB channels by
+///             alpha if it exists and is nonzero) before color conversion,
+///             then repremult after the after the color conversion. Passing
 ///             unpremult=false skips this step, which may be desirable if
 ///             you know that the image is "unassociated alpha" (a.k.a.,
 ///             "not pre-multiplied colors").
@@ -1661,7 +1697,7 @@ ImageBuf OIIO_API ociolook (const ImageBuf &src, string_view looks,
                             string_view context_key="", string_view context_value="",
                             ColorConfig *colorconfig=nullptr,
                             ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API ociolook (ImageBuf &dst, const ImageBuf &src, string_view looks,
                         string_view fromspace, string_view tospace,
                         bool unpremult=true, bool inverse=false,
@@ -1690,9 +1726,9 @@ bool OIIO_API ociolook (ImageBuf &dst, const ImageBuf &src, string_view looks,
 ///             in which case no "look" is used. Note: this parameter value
 ///             is not used when building against OpenColorIO 2.x.
 /// @param  unpremult
-///             If true, divide the RGB channels by alpha (if it exists and
-///             is nonzero) before color conversion, then re-multiply by
-///             alpha after the after the color conversion. Passing
+///             If true, unpremultiply the image (divide the RGB channels by
+///             alpha if it exists and is nonzero) before color conversion,
+///             then repremult after the after the color conversion. Passing
 ///             unpremult=false skips this step, which may be desirable if
 ///             you know that the image is "unassociated alpha" (a.k.a.,
 ///             "not pre-multiplied colors").
@@ -1714,7 +1750,7 @@ ImageBuf OIIO_API ociodisplay (const ImageBuf &src,
                                string_view context_key="", string_view context_value="",
                                ColorConfig *colorconfig=nullptr,
                                ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API ociodisplay (ImageBuf &dst, const ImageBuf &src,
                            string_view display, string_view view,
                            string_view fromspace="", string_view looks="",
@@ -1730,9 +1766,9 @@ bool OIIO_API ociodisplay (ImageBuf &dst, const ImageBuf &src,
 /// @param  name
 ///             The name of the file containing the transform information.
 /// @param  unpremult
-///             If true, divide the RGB channels by alpha (if it exists and
-///             is nonzero) before color conversion, then re-multiply by
-///             alpha after the after the color conversion. Passing
+///             If true, unpremultiply the image (divide the RGB channels by
+///             alpha if it exists and is nonzero) before color conversion,
+///             then repremult after the after the color conversion. Passing
 ///             unpremult=false skips this step, which may be desirable if
 ///             you know that the image is "unassociated alpha" (a.k.a.,
 ///             "not pre-multiplied colors").
@@ -1748,7 +1784,7 @@ ImageBuf OIIO_API ociofiletransform (const ImageBuf &src,
                                      bool unpremult=true, bool inverse=false,
                                      ColorConfig *colorconfig=nullptr,
                                      ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API ociofiletransform (ImageBuf &dst, const ImageBuf &src,
                                  string_view name,
                                  bool unpremult=true, bool inverse=false,
@@ -1765,16 +1801,26 @@ bool OIIO_API ociofiletransform (ImageBuf &dst, const ImageBuf &src,
 /// `src` within the ROI, and in the process divides all color channels
 /// (those not alpha or z) by the alpha value, to "un-premultiply" them.
 /// This presumes that the image starts of as "associated alpha" a.k.a.
-/// "premultipled."
-/// 
+/// "premultipled," and you are converting to "unassociated alpha." For
+/// pixels with alpha == 0, the color values are not modified.
+///
 /// The `premult` operation returns (or copies into `dst`) the pixels of
 /// `src` within the ROI, and in the process multiplies all color channels
 /// (those not alpha or z) by the alpha value, to "premultiply" them.  This
 /// presumes that the image starts of as "unassociated alpha" a.k.a.
-/// "non-premultipled."
-/// 
-/// Both operations are simply a copy if there is no identified alpha channel
-/// (and a no-op if `dst` and `src` are the same image).
+/// "non-premultipled" and converts it to "associated alpha / premultipled."
+///
+/// The `repremult` operation is like `premult`, but preserves the color
+/// values of pixels whose alpha is 0. This is intended for cases where you
+/// unpremult, do an operation (such as color transforms), then want to
+/// return to associated/premultiplied alpha -- in that case, you want to
+/// make sure that "glow" pixels (those with alpha=0 but RGB > 0) are
+/// preserved for the round trip, and not crushed to black. This use case is
+/// distinct from a simple `premult` that is a one-time conversion from
+/// unassociated to associated alpha.
+///
+/// All three operations are simply a copy if there is no identified alpha
+/// channel (and a no-op if `dst` and `src` are the same image).
 
 ImageBuf OIIO_API unpremult (const ImageBuf &src, ROI roi={}, int nthreads=0);
 bool OIIO_API unpremult (ImageBuf &dst, const ImageBuf &src,
@@ -1782,6 +1828,9 @@ bool OIIO_API unpremult (ImageBuf &dst, const ImageBuf &src,
 ImageBuf OIIO_API premult (const ImageBuf &src, ROI roi={}, int nthreads=0);
 bool OIIO_API premult (ImageBuf &dst, const ImageBuf &src,
                        ROI roi={}, int nthreads=0);
+ImageBuf OIIO_API repremult (const ImageBuf &src, ROI roi={}, int nthreads=0);
+bool OIIO_API repremult (ImageBuf &dst, const ImageBuf &src,
+                         ROI roi={}, int nthreads=0);
 /// @}
 
 
@@ -1814,6 +1863,7 @@ enum MakeTextureMode {
 ///    - `planarconfig` (string) :  Default: "separate"
 ///    - `worldtocamera` (matrix) : World-to-camera matrix of the view.
 ///    - `worldtoscreen` (matrix) : World-to-screen space matrix of the view.
+///    - `worldtoNDC` (matrix) :    World-to-NDC space matrix of the view.
 ///    - `wrapmodes` (string) :     Default: "black,black"
 ///    - `maketx:verbose` (int) :   How much detail should go to outstream (0).
 ///    - `maketx:runstats` (int) :  If nonzero, print run stats to outstream (0).
@@ -1863,13 +1913,13 @@ enum MakeTextureMode {
 ///    - `maketx:highlightcomp` (int) :
 ///                           If nonzero, performs highlight compensation --
 ///                           range compression and expansion around
-///                           the resize, plus clamping negative plxel
+///                           the resize, plus clamping negative pixel
 ///                           values to zero. This reduces ringing when
 ///                           using filters with negative lobes on HDR
 ///                           images.
 ///    - `maketx:sharpen` (float) : If nonzero, sharpens details when creating
 ///                           MIPmap levels. The amount is the contrast
-///                           matric. The default is 0, meaning no
+///                           metric. The default is 0, meaning no
 ///                           sharpening.
 ///    - `maketx:nchannels` (int) : If nonzero, will specify how many channels
 ///                           the output texture should have, padding with
@@ -2011,13 +2061,21 @@ ImageBuf OIIO_API capture_image (int cameranum = 0,
                                  TypeDesc convert=TypeUnknown);
 
 
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 // DEPRECATED(1.9):
 inline bool capture_image (ImageBuf &dst, int cameranum = 0,
                            TypeDesc convert=TypeUnknown) {
     dst = capture_image (cameranum, convert);
     return !dst.has_error();
 }
+#endif  // DOXYGEN_SHOULD_SKIP_THIS
 
+
+#if defined(__OPENCV_CORE_TYPES_H__) || defined(OPENCV_CORE_TYPES_H)
+// These declarations are only visible if the OpenCV headers have already
+// been encountered.
+
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 // DEPRECATED(2.0). The OpenCV 1.x era IplImage-based functions should be
 // avoided, giving preference to from_OpenCV.
 ImageBuf OIIO_API from_IplImage (const IplImage *ipl,
@@ -2032,7 +2090,9 @@ inline bool from_IplImage (ImageBuf &dst, const IplImage *ipl,
 // DEPRECATED(2.0). The OpenCV 1.x era IplImage-based functions should be
 // avoided, giving preference to from_OpenCV.
 OIIO_API IplImage* to_IplImage (const ImageBuf &src);
+#endif  // DOXYGEN_SHOULD_SKIP_THIS
 
+#endif
 
 
 
@@ -2041,7 +2101,7 @@ OIIO_API IplImage* to_IplImage (const ImageBuf &src);
 ///
 /// * If the `src` image has a "Z" channel: if the source pixel's Z channel
 ///   value is not infinite, the corresponding pixel of `dst` will get a
-///   single depth sample that copies the data from the soruce pixel;
+///   single depth sample that copies the data from the source pixel;
 ///   otherwise, dst will get an empty pixel. In other words, infinitely far
 ///   pixels will not turn into deep samples.
 ///
@@ -2056,7 +2116,7 @@ OIIO_API IplImage* to_IplImage (const ImageBuf &src);
 /// `src`.
 ImageBuf OIIO_API deepen (const ImageBuf &src, float zvalue = 1.0f,
                           ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API deepen (ImageBuf &dst, const ImageBuf &src, float zvalue = 1.0f,
                       ROI roi={}, int nthreads=0);
 
@@ -2068,7 +2128,7 @@ bool OIIO_API deepen (ImageBuf &dst, const ImageBuf &src, float zvalue = 1.0f,
 /// If `dst` is not already an initialized ImageBuf, it will be sized to
 /// match `src` (but made non-deep).
 ImageBuf OIIO_API flatten (const ImageBuf &src, ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API flatten (ImageBuf &dst, const ImageBuf &src,
                        ROI roi={}, int nthreads=0);
 
@@ -2080,7 +2140,7 @@ bool OIIO_API flatten (ImageBuf &dst, const ImageBuf &src,
 ImageBuf OIIO_API deep_merge (const ImageBuf &A, const ImageBuf &B,
                               bool occlusion_cull = true,
                               ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API deep_merge (ImageBuf &dst, const ImageBuf &A,
                           const ImageBuf &B, bool occlusion_cull = true,
                           ROI roi={}, int nthreads=0);
@@ -2094,7 +2154,7 @@ bool OIIO_API deep_merge (ImageBuf &dst, const ImageBuf &A,
 /// values from holdout are themselves copied to `dst`.
 ImageBuf OIIO_API deep_holdout (const ImageBuf &src, const ImageBuf &holdout,
                             ROI roi={}, int nthreads=0);
-/// Write to an exsisting image `dst` (allocating if it is uninitialized).
+/// Write to an existing image `dst` (allocating if it is uninitialized).
 bool OIIO_API deep_holdout (ImageBuf &dst, const ImageBuf &src,
                             const ImageBuf &holdout,
                             ROI roi={}, int nthreads=0);
@@ -2106,6 +2166,8 @@ bool OIIO_API deep_holdout (ImageBuf &dst, const ImageBuf &src,
 // DEPRECATED(1.9): These are all functions that take raw pointers,
 // which we are deprecating as of 1.9, replaced by new versions that
 // take span<> for length safety.
+
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 
 inline bool fill (ImageBuf &dst, const float *values,
                   ROI roi={}, int nthreads=0) {
@@ -2231,6 +2293,8 @@ inline bool render_text (ImageBuf &dst, int x, int y, string_view text,
     return render_text (dst, x, y, text, fontsize, fontname,
                         {textcolor, textcolor?dst.nchannels():0});
 }
+
+#endif  // DOXYGEN_SHOULD_SKIP_THIS
 
 ///////////////////////////////////////////////////////////////////////
 

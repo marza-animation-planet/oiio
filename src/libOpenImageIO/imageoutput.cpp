@@ -12,6 +12,7 @@
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/deepdata.h>
 #include <OpenImageIO/filesystem.h>
+#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/plugin.h>
 #include <OpenImageIO/strutil.h>
@@ -56,8 +57,8 @@ ImageOutput::~ImageOutput() {}
 
 
 bool
-ImageOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
-                            stride_t xstride)
+ImageOutput::write_scanline(int /*y*/, int /*z*/, TypeDesc /*format*/,
+                            const void* /*data*/, stride_t /*xstride*/)
 {
     // Default implementation: don't know how to write scanlines
     return false;
@@ -88,8 +89,9 @@ ImageOutput::write_scanlines(int ybegin, int yend, int z, TypeDesc format,
 
 
 bool
-ImageOutput::write_tile(int x, int y, int z, TypeDesc format, const void* data,
-                        stride_t xstride, stride_t ystride, stride_t zstride)
+ImageOutput::write_tile(int /*x*/, int /*y*/, int /*z*/, TypeDesc /*format*/,
+                        const void* /*data*/, stride_t /*xstride*/,
+                        stride_t /*ystride*/, stride_t /*zstride*/)
 {
     // Default implementation: don't know how to write tiles
     return false;
@@ -152,10 +154,11 @@ ImageOutput::write_tiles(int xbegin, int xend, int ybegin, int yend, int zbegin,
 
 
 bool
-ImageOutput::write_rectangle(int xbegin, int xend, int ybegin, int yend,
-                             int zbegin, int zend, TypeDesc format,
-                             const void* data, stride_t xstride,
-                             stride_t ystride, stride_t zstride)
+ImageOutput::write_rectangle(int /*xbegin*/, int /*xend*/, int /*ybegin*/,
+                             int /*yend*/, int /*zbegin*/, int /*zend*/,
+                             TypeDesc /*format*/, const void* /*data*/,
+                             stride_t /*xstride*/, stride_t /*ystride*/,
+                             stride_t /*zstride*/)
 {
     return false;
 }
@@ -163,8 +166,8 @@ ImageOutput::write_rectangle(int xbegin, int xend, int ybegin, int yend,
 
 
 bool
-ImageOutput::write_deep_scanlines(int ybegin, int yend, int z,
-                                  const DeepData& deepdata)
+ImageOutput::write_deep_scanlines(int /*ybegin*/, int /*yend*/, int /*z*/,
+                                  const DeepData& /*deepdata*/)
 {
     return false;  // default: doesn't support deep images
 }
@@ -172,8 +175,9 @@ ImageOutput::write_deep_scanlines(int ybegin, int yend, int z,
 
 
 bool
-ImageOutput::write_deep_tiles(int xbegin, int xend, int ybegin, int yend,
-                              int zbegin, int zend, const DeepData& deepdata)
+ImageOutput::write_deep_tiles(int /*xbegin*/, int /*xend*/, int /*ybegin*/,
+                              int /*yend*/, int /*zbegin*/, int /*zend*/,
+                              const DeepData& /*deepdata*/)
 {
     return false;  // default: doesn't support deep images
 }
@@ -205,7 +209,7 @@ ImageOutput::write_deep_image(const DeepData& deepdata)
 
 
 int
-ImageOutput::send_to_output(const char* format, ...)
+ImageOutput::send_to_output(const char* /*format*/, ...)
 {
     // FIXME -- I can't remember how this is supposed to work
     return 0;
@@ -214,7 +218,7 @@ ImageOutput::send_to_output(const char* format, ...)
 
 
 int
-ImageOutput::send_to_client(const char* format, ...)
+ImageOutput::send_to_client(const char* /*format*/, ...)
 {
     // FIXME -- I can't remember how this is supposed to work
     return 0;
@@ -275,13 +279,10 @@ ImageOutput::to_native_rectangle(int xbegin, int xend, int ybegin, int yend,
     // native_pixel_bytes is the size of a pixel in the FILE, including
     // the per-channel format, if specified when the file was opened.
     stride_t native_pixel_bytes = (stride_t)m_spec.pixel_bytes(true);
-    // perchanfile is true if the file has different per-channel formats
+    // perchanfile is true if the spec has different per-channel data types
+    // and the file format supports that feature.
     bool perchanfile = m_spec.channelformats.size()
                        && supports("channelformats");
-    // It's an error to pass per-channel data formats to a writer that
-    // doesn't support it.
-    if (m_spec.channelformats.size() && !perchanfile)
-        return NULL;
     // native_data is true if the user is passing data in the native format
     bool native_data           = (format == TypeDesc::UNKNOWN
                         || (format == m_spec.format && !perchanfile));

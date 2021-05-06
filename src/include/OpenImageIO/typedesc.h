@@ -321,6 +321,11 @@ struct OIIO_API TypeDesc {
     /// containers and algorithms.
     bool operator< (const TypeDesc &x) const noexcept;
 
+    /// Given base data types of a and b, return a basetype that is a best
+    /// guess for one that can handle both without any loss of range or
+    /// precision.
+    static BASETYPE basetype_merge(TypeDesc a, TypeDesc b);
+
     // DEPRECATED(1.8): These static const member functions were mildly
     // problematic because they required external linkage (and possibly
     // even static initialization order fiasco) and were a memory reference
@@ -381,7 +386,7 @@ static constexpr TypeDesc TypePointer(TypeDesc::PTR);
 
 
 
-// DEPRECATED
+// DEPRECATED(2.1)
 OIIO_API
 std::string tostring (TypeDesc type, const void *data,
                       const char *float_fmt,                // E.g. "%g"
@@ -439,6 +444,8 @@ template<> struct TypeDescFromC<Imath::Color3f> { static const constexpr TypeDes
 #ifdef INCLUDED_IMATHMATRIX_H
 template<> struct TypeDescFromC<Imath::M33f> { static const constexpr TypeDesc value() { return TypeMatrix33; } };
 template<> struct TypeDescFromC<Imath::M44f> { static const constexpr TypeDesc value() { return TypeMatrix44; } };
+template<> struct TypeDescFromC<Imath::M33d> { static const constexpr TypeDesc value() { return TypeDesc(TypeDesc::DOUBLE, TypeDesc::MATRIX33); } };
+template<> struct TypeDescFromC<Imath::M44d> { static const constexpr TypeDesc value() { return TypeDesc(TypeDesc::DOUBLE, TypeDesc::MATRIX44); } };
 #endif
 
 
@@ -463,7 +470,8 @@ template<> struct CType<(int)TypeDesc::DOUBLE> { typedef double type; };
 
 /// Helper class for tostring() that contains a whole bunch of parameters
 /// that control exactly how all the data types that can be described as
-/// TypeDesc ought to be formatted as a string.
+/// TypeDesc ought to be formatted as a string. Uses printf-like
+/// conventions. This will someday be deprecated.
 struct tostring_formatting {
     // Printf-like formatting specs for int, float, string, pointer data.
     const char *int_fmt = "%d";
@@ -484,13 +492,28 @@ struct tostring_formatting {
     enum Flags { None=0, escape_strings=1, quote_single_string=2 };
     int flags = escape_strings;
     // Reserved space for future expansion without breaking the ABI.
-    const char *reserved1 = "";
+    const char *uint_fmt = "%u";
     const char *reserved2 = "";
     const char *reserved3 = "";
+    bool use_sprintf = true;
+
+    enum Notation { STDFORMAT };
 
     tostring_formatting() = default;
     tostring_formatting(const char *int_fmt, const char *float_fmt = "%g",
         const char *string_fmt = "\"%s\"", const char *ptr_fmt = "%p",
+        const char *aggregate_begin = "(", const char *aggregate_end = ")",
+        const char *aggregate_sep = ",", const char *array_begin = "{",
+        const char *array_end = "}", const char *array_sep = ",",
+        int flags = escape_strings,
+        const char *uint_fmt = "%u");
+
+    // Alternative ctr for std::format notation. You must pass STDFORMAT
+    // as the first argument.
+    tostring_formatting(Notation notation,
+        const char *int_fmt = "{}", const char *uint_fmt = "{}",
+        const char *float_fmt = "{}",
+        const char *string_fmt = "\"{}\"", const char *ptr_fmt = "{}",
         const char *aggregate_begin = "(", const char *aggregate_end = ")",
         const char *aggregate_sep = ",", const char *array_begin = "{",
         const char *array_end = "}", const char *array_sep = ",",
@@ -500,7 +523,8 @@ struct tostring_formatting {
 
 
 /// Return a string containing the data values formatted according
-/// to the type and the optional formatting control arguments.
+/// to the type and the optional formatting control arguments. Will be
+/// deprecated someday as printf formatting falls out of favor.
 OIIO_API std::string
 tostring(TypeDesc type, const void* data, const tostring_formatting& fmt = {});
 
@@ -515,7 +539,7 @@ tostring(TypeDesc type, const void* data, const tostring_formatting& fmt = {});
 ///   `char*`): it will always succeed, producing a string akin to calling
 ///   `tostring()`.
 /// * If dsttype is int32 or uint32: other integer types will do their best
-///   (caveat emptor if you mix signed/unsiged). Also a source string will
+///   (caveat emptor if you mix signed/unsigned). Also a source string will
 ///   convert to int if and only if its characters form a valid integer.
 /// * If dsttype is float: inteegers and other float types will do
 ///   their best conversion; strings will convert if and only if their

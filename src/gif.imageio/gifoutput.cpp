@@ -9,6 +9,7 @@
 #include <cstring>
 #include <vector>
 
+#include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/platform.h>
 
@@ -196,7 +197,7 @@ GIFOutput::finish_subimage()
 
 
 bool
-GIFOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
+GIFOutput::write_scanline(int y, int /*z*/, TypeDesc format, const void* data,
                           stride_t xstride)
 {
     return convert_image(spec().nchannels, spec().width, 1 /*1 scanline*/, 1,

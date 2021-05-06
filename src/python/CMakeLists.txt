@@ -3,7 +3,9 @@
 # https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 # from pythonutils.cmake
-find_python ()
+checked_find_package (pybind11 REQUIRED
+                      VERSION_MIN 2.4.2)
+
 
 file (GLOB python_srcs *.cpp)
 setup_python_module (TARGET    PyOpenImageIO

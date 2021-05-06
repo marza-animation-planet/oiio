@@ -41,7 +41,14 @@ tiles.
    * - ``ResolutionUnit``
      - string
      - always ``"m"`` (pixels per meter)
-
+   * - ``bmp:bitsperpixel``
+     - int
+     - When not a whole number of bytes per channel, this describes the
+       bits per pixel in the file (16 for R4G4B4, 8 for a 256-color palette
+       image, 4 for a 16-color palette image, 1 for a 2-color palette image).
+   * - ``bmp:version``
+     - int
+     - Version of the BMP file format
 
 |
 
@@ -163,6 +170,10 @@ options are supported:
      - If nonzero, reading images with non-RGB color models (such as YCbCr)
        will return unaltered pixel values (versus the default OIIO behavior
        of automatically converting to RGB).
+   * - ``oiio:ioproxy``
+     - ptr
+     - Pointer to a ``Filesystem::IOProxy`` that will handle the I/O, for
+       example by reading from memory rather than the file system.
 
 
 **Configuration settings for DPX output**
@@ -183,6 +194,12 @@ control aspects of the writing itself:
        will keep unaltered pixel values (versus the default OIIO behavior
        of automatically converting from RGB to the designated color space
        as the pixels are written).
+
+**Custom I/O Overrides**
+
+DPX input (but, currently, not output) supports the "custom I/O" feature
+via the `ImageInput::set_ioproxy()` method and the special
+``"oiio:ioproxy"`` attributes (see Section :ref:`sec-imageinput-ioproxy`).
 
 **DPX Attributes**
 
@@ -503,10 +520,13 @@ despite its technical limitations.
      - Frames per second
    * - ``oiio:Movie``
      - int
-     - If nonzero, indicates that it's an animated GIF.
-   * - ``gif:LoopCount``
+     - If nonzero, indicates that it's a multi-subimage file indended to represent an animation.
+   * - ``oiio:LoopCount``
      - int
      - Number of times the animation should be played (0-65535, 0 stands for infinity).
+   * - ``gif:LoopCount``
+     - int
+     - Deprecated synonym for ``oiio:LoopCount``.
    * - ``ImageDescription``
      - string
      - The GIF comment field.
@@ -565,17 +585,18 @@ preferred except when legacy file access is required.
 
 .. _sec-bundledplugins-heif:
 
-HEIF/HEIC
+HEIF/HEIC/AVIF
 ===============================================
 
-HEIF is a container format for images compressed with the HEIC compression
-standard (same compression as HEVC/H.265). It is used commonly for iPhone
-camera pictures, but it is not Apple-specific and will probably become more
-popualar on other platforms in coming years. HEIF files usually use the file
-extension :file:`.HEIC`.
+HEIF is a container format for images compressed with various compression
+standards (HEIC is based on HEVC/H.265, AVIF is based on AV1). HEIC is used
+commonly for iPhone camera pictures, but it is not Apple-specific and will
+probably become more popular on other platforms in coming years. HEIF files
+usually use the file extension :file:`.HEIC` or :file:`.AVIF` depending on their
+main compression type.
 
-HEIC compression is lossy, but is higher visual quality than JPEG while
-taking only half the file size. Currently, OIIO's HEIF reader supports
+HEIC and AVIF compression formats are lossy, but are higher visual quality than
+JPEG while taking <= half the file size. Currently, OIIO's HEIF reader supports
 reading files as RGB or RGBA, uint8 pixel values. Multi-image files are
 currently supported for reading, but not yet writing. All pixel data is
 uint8, though we hope to add support for HDR (more than 8 bits) in the
@@ -596,9 +617,9 @@ control aspects of the writing itself:
      - HEIF header data or explanation
    * - ``Compression``
      - string
-     - If supplied, must be ``"heic"``, but may optionally have a quality
-       value appended, like ``"heic:90"``. Quality can be 1-100, with 100
-       meaning lossless. The default is 75.
+     - If supplied, can be ``"heic"`` or ``"avif"``, but may optionally have a
+       quality value appended, like ``"heic:90"``. Quality can be 1-100, with
+       100 meaning lossless. The default is 75.
 
 
 
@@ -729,6 +750,36 @@ anywhere near the acceptance of the original JPEG/JFIF format.
        Appendix :ref:`chap-stdmetadata` is properly translated when using
        JPEG files.
 
+**Configuration settings for JPEG output**
+
+When opening a JPEG ImageOutput, the following special metadata tokens
+control aspects of the writing itself:
+
+.. list-table::
+   :widths: 30 10 65
+   :header-rows: 1
+
+   * - Output Configuration Attribute
+     - Type
+     - Meaning
+   * - ``oiio:dither``
+     - int
+     - If nonzero and outputting UINT8 values in the file, will add a small
+       amount of random dither to combat the appearance of banding.
+   * - ``oiio:ioproxy``
+     - ptr
+     - Pointer to a ``Filesystem::IOProxy`` that will handle the I/O, for
+       example by reading from memory rather than the file system.
+   * - ``jpeg:progressive``
+     - int
+     - If nonzero, will write a progressive JPEG file.
+
+
+**Custom I/O Overrides**
+
+JPEG input (but, currently, not output) supports the "custom I/O" feature
+via the `ImageInput::set_ioproxy()` method and the special
+``"oiio:ioproxy"`` attributes (see Section :ref:`sec-imageinput-ioproxy`).
 
 **Limitations**
 
@@ -910,6 +961,9 @@ The official OpenEXR site is http://www.openexr.com/.
      - worldToCamera
    * - ``worldtoscreen``
      - matrix
+     - worldToScreen
+   * - ``worldtoNDC``
+     - matrix
      - worldToNDC
    * - ``ImageDescription``
      - string
@@ -1029,8 +1083,9 @@ control aspects of the writing itself:
 **Custom I/O Overrides**
 
 OpenEXR input and output both support the "custom I/O" feature via the
-special ``"oiio:ioproxy"`` attributes (see
-Sections :ref:`sec-imageoutput-ioproxy` and :ref:`sec-imageinput-ioproxy`).
+special ``"oiio:ioproxy"`` attributes (see Sections
+:ref:`sec-imageoutput-ioproxy` and :ref:`sec-imageinput-ioproxy`) as well as
+the `set_ioproxy()` methods.
 
 **A note on channel names**
 
@@ -1203,8 +1258,11 @@ control aspects of the writing itself:
 
 **Custom I/O Overrides**
 
-PNG output supports the "custom I/O" feature via the special
-``"oiio:ioproxy"`` attributes (see Section :ref:`sec-imageoutput-ioproxy`).
+PNG input and output both support the "custom I/O" feature via the special
+``"oiio:ioproxy"`` attributes (see Sections :ref:`sec-imageoutput-ioproxy`
+and :ref:`sec-imageinput-ioproxy`) as well as the `set_ioproxy()` methods.
+
+
 
 **Limitations**
 
@@ -1413,6 +1471,10 @@ options are supported:
      - int
      - Set libraw highlight mode processing: 0 = clip, 1 = unclip, 2 =
        blend, 3+ = rebuild. (Default: 0.)
+   * - ``raw:user_flip``
+     - int
+     - Set libraw user flip value : -1 ignored, other values are between [0; 8] with the same 
+       definition than the Exif orientation code.
 
 
 
@@ -1664,6 +1726,64 @@ is the total number of channel samples in the thumbnail).
 
 |
 
+.. _sec-bundledplugins-term:
+
+Term (Terminal)
+===============================================
+
+This *experimental* output-only "format" is actually a procedural output
+that writes a low-res representation of the image to the console output. It
+requires a terminal application that supports Unicode and 24 bit color
+extensions.
+
+The `term` ImageOutput supports the following special metadata tokens to
+control aspects of the writing itself:
+
+.. list-table::
+   :widths: 30 10 65
+   :header-rows: 1
+
+   * - Output Configuration Attribute
+     - Type
+     - Meaning
+   * - ``term:method``
+     - string
+     - May be one of `iterm2`, `24bit` (default), `24bit-space`, `256color`,
+       or `dither`.
+   * - ``term:fit``
+     - int
+     - If 1 (the default), the image will be resized to fit on the console
+       window.
+
+
+
+The `iterm2` mode is the best quality and is the default mode when actually
+running on a Mac and launching using iTerm2 as the terminal. This mode uses
+iTerm2's nonstandard extension to directly output an pixel array to be
+visible in the terminal.
+
+The default in other circumstances is the `24bit` mode, which displays two
+approximately square pixels vertically in each character cell, by outputting
+the Unicode "upper half block" glyph (`\u2508`) with the foreground color
+set to the top pixel's color and the background color set to the bottom
+pixel's color.
+
+If this doesn't look right, or your terminal doesn't support Unicode,
+the `24bit-space` is an alternate mode that displays one elongated pixel
+in each character cell, writing a space character with the correct color.
+
+There's also a `256color` method that just uses the 6x6x6 color space in the
+256 color palette -- which looks horrible -- and an experimental `dither`
+which does a half-assed Floyd-Steinberg dithering, horizontally only, and
+frankly is not an improvement unless you squint really hard. These may
+change or be eliminted in the future.
+
+In all cases, the image will automatically be resized to fit in the terminal
+and keep approximately the correct aspect ratio, as well as converted to
+sRGB so it looks kinda ok.
+
+|
+
 .. _sec-bundledplugins-tiff:
 
 TIFF
@@ -1723,6 +1843,10 @@ options are supported:
      - If nonzero, reading images with non-RGB color models (such as YCbCr)
        will return unaltered pixel values (versus the default OIIO behavior
        of automatically converting to RGB).
+   * - ``oiio:ioproxy``
+     - ptr
+     - Pointer to a ``Filesystem::IOProxy`` that will handle the I/O, for
+       example by reading from memory rather than the file system.
 
 **Configuration settings for TIFF output**
 
@@ -1806,6 +1930,12 @@ part of the format name):
     ``T43``
     ``T85``
     ``thunderscan``
+
+**Custom I/O Overrides**
+
+TIFF input (but, currently, not output) supports the "custom I/O" feature
+via the `ImageInput::set_ioproxy()` method and the special
+``"oiio:ioproxy"`` attributes (see Section :ref:`sec-imageinput-ioproxy`).
 
 **Limitations**
 
@@ -1947,8 +2077,31 @@ aware of:
 Webp
 ===============================================
 
-FIXME
+WebP is an image file format developed by Google that is intended to be an
+open standard for lossy-compressed images for use on the web.
 
+.. list-table::
+   :widths: 30 10 65
+   :header-rows: 1
+
+   * - ImageSpec Attribute
+     - Type
+     - WebP header data or explanation
+   * - ``oiio:Movie``
+     - int
+     - If nonzero, indicates that it's a multi-subimage file indended to
+       represent an animation.
+   * - ``oiio:LoopCount``
+     - int
+     - Number of times the animation should be played (0-65535, 0 stands for infinity).
+   * - ``gif:LoopCount``
+     - int
+     - Deprecated synonym for ``oiio:LoopCount``.
+
+**Limitations**
+
+* WebP only supports 3-channel (RGB) or 4-channel (RGBA) images and must
+  be 8-bit unsigned integer pixel values (uint8).
 
 
 |

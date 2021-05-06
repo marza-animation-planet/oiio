@@ -6,8 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include <OpenEXR/half.h>
-
+#include <OpenImageIO/Imath.h>
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/paramlist.h>
 #include <OpenImageIO/ustring.h>
@@ -163,7 +162,7 @@ ParamValue::get_int_indexed(int index, int defaultval) const
         return get<unsigned long long>(index);
     if (base == TypeDesc::STRING) {
         // Only succeed for a string if it exactly holds something that
-        // excatly parses to an int value.
+        // exactly parses to an int value.
         string_view str = get<ustring>(index);
         int val         = defaultval;
         if (Strutil::parse_int(str, val) && str.empty())
@@ -225,7 +224,7 @@ ParamValue::get_float_indexed(int index, float defaultval) const
         return get<unsigned long long>(index);
     if (base == TypeDesc::STRING) {
         // Only succeed for a string if it exactly holds something
-        // that excatly parses to a float value.
+        // that exactly parses to a float value.
         string_view str = get<ustring>(index);
         float val       = defaultval;
         if (Strutil::parse_float(str, val) && str.empty())
@@ -283,99 +282,19 @@ bcdToBinary(unsigned int bcd)
 std::string
 ParamValue::get_string(int maxsize) const
 {
-#if OIIO_VERSION >= 20101
     int nfull  = int(type().numelements()) * nvalues();
     int n      = std::min(nfull, maxsize);
     TypeDesc t = type();
     if (nvalues() > 1 || n < nfull)
         t.arraylen = n;
-    static const tostring_formatting fmt
-        = { "%d", "%g", "\"%s\"", "%p", "", "", ", ", "", "", ", ", true };
-    std::string out = tostring(t, data(), fmt);
+    static const tostring_formatting fmt = { "%d", "%g", "\"%s\"", "%p",
+                                             "",   "",   ", ",     "",
+                                             "",   ", ", true,     "%u" };
+    std::string out                      = tostring(t, data(), fmt);
     if (n < nfull)
-        out += Strutil::sprintf(", ... [%d x %s]", nfull,
-                                TypeDesc(TypeDesc::BASETYPE(type().basetype)))
-                   .c_str();
-#else
-    std::string out;
-    TypeDesc element = type().elementtype();
-    int nfull        = int(type().numelements()) * nvalues();
-    int n            = std::min(nfull, maxsize);
-    if (element.basetype == TypeDesc::STRING) {
-        // Just a single scalar string -- return it directly, not quoted
-        if (n == 1 && !type().is_array())
-            return get<const char*>();
-        // Multiple strings or an array -- return a list of double-quoted
-        // strings.
-        for (int i = 0; i < n; ++i) {
-            const char* s = ((const char**)data())[i];
-            out += Strutil::sprintf("%s\"%s\"", (i ? ", " : ""),
-                                    s ? Strutil::escape_chars(s)
-                                      : std::string());
-        }
-    } else if (element.basetype == TypeDesc::FLOAT) {
-        formatType<float>(*this, 0, n, "%g", out);
-    } else if (element.basetype == TypeDesc::DOUBLE) {
-        formatType<double>(*this, 0, n, "%g", out);
-    } else if (element.basetype == TypeDesc::HALF) {
-        formatType<half>(*this, 0, n, "%g", out);
-    } else if (element.basetype == TypeDesc::INT) {
-        if (element == TypeRational) {
-            const int* val = (const int*)data();
-            for (int i = 0; i < n; ++i, val += 2) {
-                if (i)
-                    out += ", ";
-                out += Strutil::sprintf("%d/%d", val[0], val[1]);
-            }
-        } else {
-            formatType<int>(*this, 0, n, "%d", out);
-        }
-    } else if (element.basetype == TypeDesc::UINT) {
-        if (element.vecsemantics == TypeDesc::RATIONAL
-            && element.aggregate == TypeDesc::VEC2) {
-            const uint32_t* val = (const uint32_t*)data();
-            for (int i = 0; i < n; ++i, val += 2) {
-                if (i)
-                    out += ", ";
-                out += Strutil::sprintf("%d/%d", val[0], val[1]);
-            }
-        } else if (type() == TypeTimeCode) {
-            // Replicating the logic in OpenEXR, but this prevents us from
-            // needing to link to libIlmImf just to do this.
-            unsigned int t = get<unsigned int>(0);
-            int hours      = bcdToBinary(bitField(t, 24, 29));
-            int minutes    = bcdToBinary(bitField(t, 16, 22));
-            int seconds    = bcdToBinary(bitField(t, 8, 14));
-            int frame      = bcdToBinary(bitField(t, 0, 5));
-            out += Strutil::sprintf("%02d:%02d:%02d:%02d", hours, minutes,
-                                    seconds, frame);
-        } else {
-            formatType<unsigned int>(*this, 0, n, "%u", out);
-        }
-    } else if (element.basetype == TypeDesc::UINT16) {
-        formatType<unsigned short>(*this, 0, n, "%u", out);
-    } else if (element.basetype == TypeDesc::INT16) {
-        formatType<short>(*this, 0, n, "%d", out);
-    } else if (element.basetype == TypeDesc::UINT64) {
-        formatType<unsigned long long>(*this, 0, n, "%llu", out);
-    } else if (element.basetype == TypeDesc::INT64) {
-        formatType<long long>(*this, 0, n, "%lld", out);
-    } else if (element.basetype == TypeDesc::UINT8) {
-        formatType<unsigned char>(*this, 0, n, "%d", out);
-    } else if (element.basetype == TypeDesc::INT8) {
-        formatType<char>(*this, 0, n, "%d", out);
-    } else if (element.basetype == TypeDesc::PTR) {
-        out += "ptr ";
-        formatType<void*>(*this, 0, n, "%p", out);
-    } else {
-        out += Strutil::sprintf("<unknown data type> (base %d, agg %d vec %d)",
-                                type().basetype, type().aggregate,
-                                type().vecsemantics);
-    }
-    if (n < nfull)
-        out += Strutil::sprintf(", ... [%d x %s]", nfull,
-                                TypeDesc(TypeDesc::BASETYPE(type().basetype)));
-#endif
+        out += Strutil::sprintf(
+            ", ... [%d x %s]", nfull,
+            TypeDesc(TypeDesc::BASETYPE(type().basetype)).c_str());
     return out;
 }
 
@@ -427,9 +346,9 @@ ParamValue::get_string_indexed(int index) const
     } else if (element.basetype == TypeDesc::INT16) {
         formatType<short>(*this, index, index + 1, "%d", out);
     } else if (element.basetype == TypeDesc::UINT64) {
-        formatType<unsigned long long>(*this, index, index + 1, "%llu", out);
+        formatType<unsigned long long>(*this, index, index + 1, "%u", out);
     } else if (element.basetype == TypeDesc::INT64) {
-        formatType<long long>(*this, index, index + 1, "%lld", out);
+        formatType<long long>(*this, index, index + 1, "%d", out);
     } else if (element.basetype == TypeDesc::UINT8) {
         formatType<unsigned char>(*this, index, index + 1, "%d", out);
     } else if (element.basetype == TypeDesc::INT8) {

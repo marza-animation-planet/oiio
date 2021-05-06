@@ -7,8 +7,6 @@
 #include <png.h>
 #include <zlib.h>
 
-#include <OpenEXR/ImathColor.h>
-
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/fmath.h>
@@ -19,8 +17,8 @@
 #include <OpenImageIO/typedesc.h>
 
 
-#define OIIO_LIBPNG_VERSION                                                    \
-    (PNG_LIBPNG_VER_MAJOR * 10000 + PNG_LIBPNG_VER_MINOR * 100                 \
+#define OIIO_LIBPNG_VERSION                                    \
+    (PNG_LIBPNG_VER_MAJOR * 10000 + PNG_LIBPNG_VER_MINOR * 100 \
      + PNG_LIBPNG_VER_RELEASE)
 
 
@@ -49,14 +47,20 @@ rderr_handler(png_structp png, png_const_charp data)
 {
     ImageInput* inp = (ImageInput*)png_get_error_ptr(png);
     if (inp && data)
-        inp->errorf("PNG read error: %s", data);
+        inp->errorfmt("PNG read error: {}", data);
 }
 
 
 static void
-rdwarn_handler(png_structp png, png_const_charp data)
+wrerr_handler(png_structp png, png_const_charp data)
 {
+    ImageOutput* outp = (ImageOutput*)png_get_error_ptr(png);
+    if (outp && data)
+        outp->errorfmt("PNG write error: {}", data);
 }
+
+
+static void null_png_handler(png_structp /*png*/, png_const_charp /*data*/) {}
 
 
 
@@ -67,11 +71,11 @@ inline const std::string
 create_read_struct(png_structp& sp, png_infop& ip, ImageInput* inp = nullptr)
 {
     sp = png_create_read_struct(PNG_LIBPNG_VER_STRING, inp, rderr_handler,
-                                rdwarn_handler);
+                                null_png_handler);
     if (!sp)
         return "Could not create PNG read structure";
 
-    png_set_error_fn(sp, inp, rderr_handler, rdwarn_handler);
+    png_set_error_fn(sp, inp, rderr_handler, null_png_handler);
     ip = png_create_info_struct(sp);
     if (!ip)
         return "Could not create PNG info structure";
@@ -116,6 +120,55 @@ get_background(png_structp& sp, png_infop& ip, ImageSpec& spec, int& bit_depth,
         *blue  = bg->blue / 255.0;
     }
     return true;
+}
+
+
+
+inline int
+hex2int(char a)
+{
+    return a <= '9' ? a - '0' : tolower(a) - 'a' + 10;
+}
+
+
+
+// Recent libpng (>= 1.6.32) supports direct Exif chunks. But the old way
+// is more common, which is to embed it in a Text field (like a comment).
+// This decodes that raw text data, which is a string,that looks like:
+//
+//     <whitespace> exif
+//     <whitespace> <integer size>
+//     <72 hex digits>
+//     ...more lines of 72 hex digits...
+//
+static bool
+decode_png_text_exif(string_view raw, ImageSpec& spec)
+{
+    // Strutil::print("Found exif raw len={} '{}{}'\n", raw.size(),
+    //                raw.substr(0,200), raw.size() > 200 ? "..." : "");
+
+    Strutil::skip_whitespace(raw);
+    if (!Strutil::parse_prefix(raw, "exif"))
+        return false;
+    int rawlen = 0;
+    if (!Strutil::parse_int(raw, rawlen) || !rawlen)
+        return false;
+    Strutil::skip_whitespace(raw);
+    std::string decoded;  // Converted from hex to bytes goes here
+    decoded.reserve(raw.size() / 2 + 1);
+    while (raw.size() >= 2) {
+        if (!isxdigit(raw.front())) {  // not hex digit? skip
+            raw.remove_prefix(1);
+            continue;
+        }
+        int c = (hex2int(raw[0]) << 4) | hex2int(raw[1]);
+        decoded.append(1, char(c));
+        raw.remove_prefix(2);
+    }
+    if (Strutil::istarts_with(decoded, "Exif")) {
+        decode_exif(decoded, spec);
+    }
+    return false;
 }
 
 
@@ -219,8 +272,16 @@ read_info(png_structp& sp, png_infop& ip, int& bit_depth, int& color_type,
                 spec.attribute("DocumentName", text_ptr[i].text);
             else if (Strutil::iequals(text_ptr[i].key, "XML:com.adobe.xmp"))
                 decode_xmp(text_ptr[i].text, spec);
-            else
+            else if (Strutil::iequals(text_ptr[i].key,
+                                      "Raw profile type exif")) {
+                // Most PNG files seem to encode Exif by cramming it into a
+                // text field, with the key "Raw profile type exif" and then
+                // a special text encoding that we handle with the following
+                // function:
+                decode_png_text_exif(text_ptr[i].text, spec);
+            } else {
                 spec.attribute(text_ptr[i].key, text_ptr[i].text);
+            }
         }
     }
     spec.x = png_get_x_offset_pixels(sp, ip);
@@ -252,6 +313,18 @@ read_info(png_structp& sp, png_infop& ip, int& bit_depth, int& color_type,
 
     interlace_type = png_get_interlace_type(sp, ip);
 
+#ifdef PNG_eXIf_SUPPORTED
+    // Recent version of PNG and libpng (>= 1.6.32, I think) have direct
+    // support for Exif chunks. Older versions don't support it, and I'm not
+    // sure how common it is. Most files use the old way, which is the
+    // text embedding of Exif we handle with decode_png_text_exif.
+    png_uint_32 num_exif = 0;
+    png_bytep exif_data  = nullptr;
+    if (png_get_eXIf_1(sp, ip, &num_exif, &exif_data)) {
+        decode_exif(cspan<uint8_t>(exif_data, num_exif), spec);
+    }
+#endif
+
     // PNG files are always "unassociated alpha" but we convert to associated
     // unless requested otherwise
     if (keep_unassociated_alpha)
@@ -269,7 +342,6 @@ read_info(png_structp& sp, png_infop& ip, int& bit_depth, int& color_type,
 ///
 inline const std::string
 read_into_buffer(png_structp& sp, png_infop& ip, ImageSpec& spec,
-                 int& bit_depth, int& color_type,
                  std::vector<unsigned char>& buffer)
 {
     // Must call this setjmp in every function that does PNG reads
@@ -332,20 +404,13 @@ destroy_read_struct(png_structp& sp, png_infop& ip)
 }
 
 
-inline void
-null_png_errhandler(png_structp png, png_const_charp message)
-{
-    // ignore
-}
-
-
 
 /// Initializes a PNG write struct.
 /// \return empty string on success, C-string error message on failure.
 ///
 inline const std::string
 create_write_struct(png_structp& sp, png_infop& ip, int& color_type,
-                    ImageSpec& spec)
+                    ImageSpec& spec, ImageOutput* outp = nullptr)
 {
     // Check for things this format doesn't support
     if (spec.width < 1 || spec.height < 1)
@@ -381,8 +446,8 @@ create_write_struct(png_structp& sp, png_infop& ip, int& color_type,
     // N.B. PNG is very rigid about the meaning of the channels, so enforce
     // which channel is alpha, that's the only way PNG can do it.
 
-    sp = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr,
-                                 null_png_errhandler, nullptr);
+    sp = png_create_write_struct(PNG_LIBPNG_VER_STRING, outp, wrerr_handler,
+                                 null_png_handler);
     if (!sp)
         return "Could not create PNG write structure";
 

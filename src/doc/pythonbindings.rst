@@ -1529,7 +1529,7 @@ awaiting a call to `reset()` or `copy()` before it is useful.
 
 .. py:method:: ImageBuf (imagespec, zero = True)
 
-    Construct a writeable ImageBuf of the dimensions and data format
+    Construct a writable ImageBuf of the dimensions and data format
     specified by an ImageSpec. The pixels will be initialized to black/empty
     values if `zero` is True, otherwise the pixel values will remain
     uninitialized.
@@ -1569,7 +1569,7 @@ awaiting a call to `reset()` or `copy()` before it is useful.
 
 .. py:method:: ImageBuf.reset (imagespec, zero = True)
 
-    Restore the ImageBuf to the newly-constructed state of a writeable
+    Restore the ImageBuf to the newly-constructed state of a writable
     ImageBuf specified by an ImageSpec. The pixels will be iniialized to
     black/empty if `zero` is True, otherwise the pixel values will remain
     uninitialized.
@@ -1712,7 +1712,7 @@ awaiting a call to `reset()` or `copy()` before it is useful.
 
 .. py:method:: ImageBuf.specmod()
 
-    `ImageBuf.specmod()` provides a reference to the writeable ImageSpec
+    `ImageBuf.specmod()` provides a reference to the writable ImageSpec
     inside the ImageBuf.  Be very careful!  It is safe to modify certain
     metadata, but if you change the data format or resolution fields, you
     will get the chaos you deserve.
@@ -1829,7 +1829,7 @@ awaiting a call to `reset()` or `copy()` before it is useful.
 .. py:attribute:: ImageBuf.pixels_valid
 
     Will be `True` if the file has already been read and the pixels are
-    valid. (It is always `True` for writeable ImageBuf's.) There should be
+    valid. (It is always `True` for writable ImageBuf's.) There should be
     few good reasons to access these, since the spec and pixels will be
     automatically be read when they are needed.
 
@@ -2430,7 +2430,7 @@ Image transformations and data movement
 
 
 
-.. py:method:: bool ImageBufAlgo.paste (dst, xbegin, ybegin, zbegin, chbegin, src, ROI srcroi=ROI.All, nthreads=0)
+.. py:method:: bool ImageBufAlgo.paste (dst, xbegin, ybegin, zbegin, chbegin, src, srcroi=ROI.All, nthreads=0)
 
     Copy the specified region of `src` into `dst` with the given offset
     (`xbegin`, `ybegin`, `zbegin`).
@@ -3042,6 +3042,25 @@ Image comparison and statistics
 
 
 
+.. py:method:: bool ImageBufAlgo.color_range_check (src, low, high, roi=ROI.All, nthreads=0)
+
+    Count how many pixels in the `src` image (within the `roi`) are outside
+    the value range described by `low` and `hi` (which each may be either
+    one value or a tuple with per-channel values for each of `roi.chbegin
+    ... roi.chend`. The result returned is a tuple containing three values:
+    the number of values less than `low`, the number of values greater then
+    `hi`, and the number of values within the range.
+
+    Example:
+
+    .. code-block:: python
+
+        A = ImageBuf ("a.exr")
+        counts = ImageBufAlgo.color_range_check (A, 0.5, 0.75)
+        print ('{} values < 0.5, {} values > 0.75'.format(counts[0], counts[1])
+
+
+
 .. py:method:: ROI ImageBufAlgo.nonzero_region (src, roi=ROI.All, nthreads=0)
 
     Returns an ROI that tightly encloses the minimal region within `roi`
@@ -3367,9 +3386,16 @@ Color manipulation
                bool ImageBufAlgo.unpremult (dst, src, roi=ROI.All, nthreads=0)
                ImageBuf ImageBufAlgo.premult (src, roi=ROI.All, nthreads=0)
                bool ImageBufAlgo.premult (dst, src, roi=ROI.All, nthreads=0)
+               ImageBuf ImageBufAlgo.repremult (src, roi=ROI.All, nthreads=0)
+               bool ImageBufAlgo.repremult (dst, src, roi=ROI.All, nthreads=0)
 
-    Copy pixels from `src` to `dst`, and un-premultiply (or
-    premultiply) the colors by alpha.
+    Copy pixels from `src` to `dst`, and un-premultiply, premultiply, or
+    re-premultiply the colors by alpha.
+
+    `unpremult` divides colors by alpha, but preserves original color if
+    alpha is 0. `premult` multiplies colors by alpha (even if alpha is 0).
+    `repreumlt` is the true inverse of `unpremult`, multiplying color by
+    alpha, but preserving color values in the alpha = 0 case.
 
     Example:
 
@@ -3583,6 +3609,19 @@ details.
         formats = oiio.get_string_attribute ("format_list")
 
 
+.. py:method:: is_imageio_format_name (name)
+
+    Returns True if `name` is the name of a known and supported file format,
+    `False` if it is not.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> print (oiio.is_imageio_format_name('tiff'))
+        True
+        >>> print (oiio.is_imageio_format_name('Bob'))
+        False
 
 
 .. _sec-pythonrecipes:

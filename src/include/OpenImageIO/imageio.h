@@ -70,6 +70,11 @@ typedef ParamValue ImageIOParameter;
 typedef ParamValueList ImageIOParameterList;
 
 
+// Forward declaration of IOProxy
+namespace Filesystem {
+    class IOProxy;
+}
+
 
 /// ROI is a small helper struct describing a rectangular region of interest
 /// in an image. The region is [xbegin,xend) x [begin,yend) x [zbegin,zend),
@@ -460,7 +465,8 @@ public:
 
     /// Add a string attribute to `extra_attribs`.
     void attribute (string_view name, string_view value) {
-        const char *s = value.c_str();
+        std::string str(value);
+        const char *s = str.c_str();
         attribute (name, TypeDesc::STRING, &s);
     }
 
@@ -624,7 +630,7 @@ public:
     /// `ImageSpec::SerialXML`. The `verbose` argument may be one of:
     /// `ImageSpec::SerialBrief` (just resolution and other vital
     /// statistics, one line for `SerialText`, `ImageSpec::SerialDetailed`
-    /// (contains all metadata in orginal form), or
+    /// (contains all metadata in original form), or
     /// `ImageSpec::SerialDetailedHuman` (contains all metadata, in many
     /// cases with human-readable explanation).
     std::string serialize (SerialFormat format,
@@ -827,28 +833,51 @@ public:
     ///         Optional pointer to an ImageSpec whose metadata contains
     ///         "configuration hints."
     ///
+    /// @param ioproxy
+    ///         Optional pointer to an IOProxy to use (not supported by all
+    ///         formats, see `supports("ioproxy")`). The caller retains
+    ///         ownership of the proxy.
+    ///
     /// @returns
     ///         A `unique_ptr` that will close and free the ImageInput when
     ///         it exits scope or is reset. The pointer will be empty if the
     ///         required writer was not able to be created.
     static unique_ptr open (const std::string& filename,
-                            const ImageSpec *config = nullptr);
+                            const ImageSpec *config = nullptr,
+                            Filesystem::IOProxy* ioproxy = nullptr);
 
     /// Create and return an ImageInput implementation that is able to read
-    /// the given file.  If `do_open` is true, fully open it if possible
+    /// the given file or format.  If `do_open` is true (and the `filename`
+    /// is the name of a file, not just a format), fully open it if possible
     /// (using the optional `config` configuration spec, if supplied),
     /// otherwise just create the ImageInput but don't open it. The
     /// plugin_searchpath parameter is an override of the searchpath.
     /// colon-separated list of directories to search for ImageIO plugin
-    /// DSO/DLL's (not a searchpath for the image itself!).  This will
-    /// actually just try every imageio plugin it can locate, until it finds
-    /// one that's able to open the file without error.
+    /// DSO/DLL's (not a searchpath for the image itself!).
+    ///
+    /// If the `filename` parameter is the name of a file format (such as
+    /// "openexr"), it will create an ImageInput that reads that particular
+    /// format. If the name is a file extension (such as "exr" or ".exr"),
+    /// it will guess the file format from the extension and return that
+    /// type of ImageInput.
+    ///
+    /// If `filename` is a full file name (such as "hawaii.exr"), it will
+    /// create an ImageInput that reads the format implied by the file
+    /// extension (".tif") and try to open the file with that reader. If the
+    /// file can be opened and appears to be of the correct type, then that
+    /// ImageInput (after being closed) will be returned to the caller. But
+    /// if it fails (say, because the file type does not match the
+    /// extension), then every known kind of image reader will be tried in
+    /// turn, until one can be found that succeeds in opening that file. The
+    /// `create()` file will fail entirely only if no known image reader
+    /// type succeeds.
     ///
     /// If the caller intends to immediately open the file, then it is often
     /// simpler to call static `ImageInput::open()`.
     ///
     /// @param filename
-    ///         The name of the file to open.
+    ///         The name of an image file, or a file extension, or the name
+    ///         of a file format.
     ///
     /// @param do_open
     ///         If `true`, not only create but also open the file.
@@ -857,18 +886,30 @@ public:
     ///         Optional pointer to an ImageSpec whose metadata contains
     ///         "configuration hints" for the ImageInput implementation.
     ///
+    /// @param ioproxy
+    ///         Optional pointer to an IOProxy to use (not supported by all
+    ///         formats, see `supports("ioproxy")`). The caller retains
+    ///         ownership of the proxy. If this is not supplied, it is still
+    ///         possible to set the proxy with a call to `set_proxy()` prior
+    ///         to `open()`.
+    ///
     /// @param plugin_searchpath
-    ///                 An optional colon-separated list of directories to
-    ///                 search for OpenImageIO plugin DSO/DLL's.
+    ///         An optional colon-separated list of directories to search
+    ///         for OpenImageIO plugin DSO/DLL's.
     ///
     /// @returns
     ///         A `unique_ptr` that will close and free the ImageInput when
     ///         it exits scope or is reset. The pointer will be empty if the
     ///         required writer was not able to be created.
-    static unique_ptr create (const std::string& filename, bool do_open=false,
+    static unique_ptr create (string_view filename, bool do_open=false,
                               const ImageSpec *config=nullptr,
-                              string_view plugin_searchpath="");
+                              Filesystem::IOProxy* ioproxy = nullptr,
+                              string_view plugin_searchpath = "");
 
+    // DEPRECATED(2.2): back compatible version
+    static unique_ptr create (const std::string& filename, bool do_open,
+                              const ImageSpec *config,
+                              string_view plugin_searchpath);
     // DEPRECATED(2.1) This method should no longer be used, it is redundant.
     static unique_ptr create (const std::string& filename,
                               const std::string& plugin_searchpath);
@@ -920,7 +961,9 @@ public:
     /// require any new API entry points, addition of support for new
     /// queries does not break ``link compatibility'' with
     /// previously-compiled plugins.
-    virtual int supports (string_view feature) const { return false; }
+    virtual int supports (string_view feature OIIO_MAYBE_UNUSED) const {
+        return false;
+    }
 
     /// Return true if the `filename` names a file of the type for this
     /// ImageInput.  The implementation will try to determine this as
@@ -975,7 +1018,9 @@ public:
     /// @returns
     ///         `true` if the file was found and opened successfully.
     virtual bool open (const std::string& name, ImageSpec &newspec,
-                       const ImageSpec& config) { return open(name,newspec); }
+                       const ImageSpec& config OIIO_MAYBE_UNUSED) {
+        return open(name,newspec);
+    }
 
     /// Return a reference to the image specification of the current
     /// subimage/MIPlevel.  Note that the contents of the spec are invalid
@@ -1086,7 +1131,7 @@ public:
     ///   `end` is *one past the last item*. That means that the number of
     ///   items is `end - begin`.
     ///
-    /// * For ordinary 2D (non-volumetric) imaages, any `z` or `zbegin`
+    /// * For ordinary 2D (non-volumetric) images, any `z` or `zbegin`
     ///   coordinates should be 0 and any `zend` should be 1, indicating
     ///   that only a single image "plane" exists.
     ///
@@ -1474,7 +1519,7 @@ public:
                                         int chbegin, int chend, void *data);
 
     /// Read a single tile (all channels) of native data into contiguous
-    /// mamory. The base class read_native_tile fails. A format reader that
+    /// memory. The base class read_native_tile fails. A format reader that
     /// supports tiles MUST overload this virtual method that reads a single
     /// tile (all channels).
     virtual bool read_native_tile (int subimage, int miplevel,
@@ -1511,6 +1556,15 @@ public:
     virtual int send_to_input (const char *format, ...);
     int send_to_client (const char *format, ...);
 
+    /// Set an IOProxy for this reader. This must be called prior to
+    /// `open()`, and only for readers that support them
+    /// (`supports("ioproxy")`). The caller retains ownership of the proxy.
+    ///
+    /// @returns `true` for success, `false` for failure.
+    virtual bool set_ioproxy (Filesystem::IOProxy* ioproxy) {
+        return (ioproxy == nullptr);
+    }
+
     /// If any of the API routines returned false indicating an error, this
     /// method will return the error string (and clear any error flags).  If
     /// no error has occurred since the last time `geterror()` was called,
@@ -1541,6 +1595,14 @@ public:
     /// Error reporting for the plugin implementation: call this with
     /// fmt::format-like arguments.
     template<typename... Args>
+    void errorfmt(const char* fmt, const Args&... args) const {
+        append_error(Strutil::fmt::format (fmt, args...));
+    }
+
+    // Error reporting for the plugin implementation: call this with
+    // fmt::format-like arguments.
+    template<typename... Args>
+    OIIO_DEPRECATED("use `errorfmt` instead")
     void fmterror(const char* fmt, const Args&... args) const {
         append_error(Strutil::fmt::format (fmt, args...));
     }
@@ -1564,7 +1626,7 @@ public:
 
     /// Lock the internal mutex, block until the lock is acquired.
     void lock () { m_mutex.lock(); }
-    /// Try to loak the internal mutex, returning true if successful, or
+    /// Try to lock the internal mutex, returning true if successful, or
     /// false if the lock could not be immediately acquired.
     bool try_lock () { return m_mutex.try_lock(); }
     /// Ulock the internal mutex.
@@ -1614,21 +1676,35 @@ public:
     /// Create an `ImageOutput` that can be used to write an image file.
     /// The type of image file (and hence, the particular subclass of
     /// `ImageOutput` returned, and the plugin that contains its methods) is
-    /// inferred from the name.
+    /// inferred from the name, if it appears to be a full filename, or it
+    /// may also name the format.
     ///
-    /// @param filename The name of the file format (e.g., "openexr"), a
-    ///                 file extension (e.g., "exr"), or a filename from
-    ///                 which the the file format can be inferred from its
-    ///                 extension (e.g., "hawaii.exr").
+    /// @param filename
+    ///         The name of the file format (e.g., "openexr"), a file
+    ///         extension (e.g., "exr"), or a filename from which the the
+    ///         file format can be inferred from its extension (e.g.,
+    ///         "hawaii.exr").
+    ///
     /// @param plugin_searchpath
-    ///                 An optional colon-separated list of directories to
-    ///                 search for OpenImageIO plugin DSO/DLL's.
-    /// @returns        A `unique_ptr` that will close and free the
-    ///                 ImageOutput when it exits scope or is reset.
-    ///                 The pointer will be empty if the required writer
-    ///                 was not able to be created.
+    ///         An optional colon-separated list of directories to search
+    ///         for OpenImageIO plugin DSO/DLL's.
+    ///
+    /// @param ioproxy
+    ///         Optional pointer to an IOProxy to use (not supported by all
+    ///         formats, see `supports("ioproxy")`). The caller retains
+    ///         ownership of the proxy.
+    ///
+    /// @returns
+    ///         A `unique_ptr` that will close and free the ImageOutput when
+    ///         it exits scope or is reset. The pointer will be empty if the
+    ///         required writer was not able to be created.
+    static unique_ptr create (string_view filename,
+                              Filesystem::IOProxy* ioproxy = nullptr,
+                              string_view plugin_searchpath = "");
+
+    // DEPRECATED(2.2)
     static unique_ptr create (const std::string &filename,
-                              const std::string &plugin_searchpath="");
+                              const std::string &plugin_searchpath);
 
     /// @}
 
@@ -1643,7 +1719,7 @@ public:
     /// Return the name of the format implemented by this class.
     virtual const char *format_name (void) const = 0;
 
-    // Overrride these functions in your derived output class
+    // Override these functions in your derived output class
     // to inform the client which formats are supported
 
     /// @{
@@ -1752,12 +1828,18 @@ public:
     ///  - `"ioproxy"`
     ///         Does the image file format support writing to an `IOProxy`?
     ///
+    /// - `"procedural"` :
+    ///       Is this a purely procedural output that doesn't write an
+    ///       actual file?
+    ///
     /// This list of queries may be extended in future releases. Since this
     /// can be done simply by recognizing new query strings, and does not
     /// require any new API entry points, addition of support for new
     /// queries does not break ``link compatibility'' with
     /// previously-compiled plugins.
-    virtual int supports (string_view feature) const { return false; }
+    virtual int supports (string_view feature OIIO_MAYBE_UNUSED) const {
+        return false;
+    }
 
     /// Modes passed to the `open()` call.
     enum OpenMode { Create, AppendSubimage, AppendMIPLevel };
@@ -1789,7 +1871,7 @@ public:
     /// `open(name,spec,AppendMIPLevel)`).
     ///
     /// The purpose of this call is to accommodate format-writing
-    /// libraries that fmust know the number and specifications of the
+    /// libraries that must know the number and specifications of the
     /// subimages upon first opening the file; such formats can be
     /// detected by::
     ///     supports("multiimage") && !supports("appendsubimage")
@@ -1803,7 +1885,8 @@ public:
     ///                      Pointer to an array of `ImageSpec` objects
     ///                      describing each of the expected subimages.
     /// @returns            `true` upon success, or `false` upon failure.
-    virtual bool open (const std::string &name, int subimages,
+    virtual bool open (const std::string &name,
+                       int subimages OIIO_MAYBE_UNUSED,
                        const ImageSpec *specs) {
         // Default implementation: just a regular open, assume that
         // appending will work.
@@ -1850,7 +1933,7 @@ public:
     ///   `end` is *one past the last item*. That means that the number of
     ///   items is `end - begin`.
     ///
-    /// * For ordinary 2D (non-volumetric) imaages, any `z` or `zbegin`
+    /// * For ordinary 2D (non-volumetric) images, any `z` or `zbegin`
     ///   coordinates should be 0 and any `zend` should be 1, indicating
     ///   that only a single image "plane" exists.
     ///
@@ -2095,6 +2178,15 @@ public:
     virtual int send_to_output (const char *format, ...);
     int send_to_client (const char *format, ...);
 
+    /// Set an IOProxy for this writer. This must be called prior to
+    /// `open()`, and only for writers that support them
+    /// (`supports("ioproxy")`). The caller retains ownership of the proxy.
+    ///
+    /// @returns `true` for success, `false` for failure.
+    virtual bool set_ioproxy (Filesystem::IOProxy* ioproxy) {
+        return (ioproxy == nullptr);
+    }
+
     /// If any of the API routines returned false indicating an error, this
     /// method will return the error string (and clear any error flags).  If
     /// no error has occurred since the last time `geterror()` was called,
@@ -2124,6 +2216,14 @@ public:
     /// Error reporting for the plugin implementation: call this with
     /// fmt::format-like arguments.
     template<typename... Args>
+    void errorfmt(const char* fmt, const Args&... args) const {
+        append_error(Strutil::fmt::format (fmt, args...));
+    }
+
+    // Error reporting for the plugin implementation: call this with
+    // fmt::format-like arguments.
+    template<typename... Args>
+    OIIO_DEPRECATED("use `errorfmt` instead")
     void fmterror(const char* fmt, const Args&... args) const {
         append_error(Strutil::fmt::format (fmt, args...));
     }
@@ -2358,7 +2458,7 @@ OIIO_API std::string geterror ();
 ///
 ///    
 ///
-OIIO_API bool attribute (string_view name, TypeDesc type, const void *val);
+OIIO_API bool attribute(string_view name, TypeDesc type, const void* val);
 
 /// Shortcut attribute() for setting a single integer.
 inline bool attribute (string_view name, int val) {
@@ -2442,7 +2542,7 @@ inline bool attribute (string_view name, string_view val) {
 ///        IBA::resize                  20   0.24s   (avg  12.18ms)
 ///        IBA::zero                     8   0.66ms  (avg   0.08ms)
 ///
-OIIO_API bool getattribute (string_view name, TypeDesc type, void *val);
+OIIO_API bool getattribute(string_view name, TypeDesc type, void* val);
 
 /// Shortcut getattribute() for retrieving a single integer.
 /// The value is placed in `val`, and the function returns `true` if the
@@ -2502,6 +2602,9 @@ OIIO_API void declare_imageio_format (const std::string &format_name,
                                       const char **output_extensions,
                                       const char *lib_version);
 
+/// Is `name` one of the known format names?
+OIIO_API bool is_imageio_format_name(string_view name);
+
 /// Helper function: convert contiguous data between two arbitrary pixel
 /// data types (specified by TypeDesc's). Return true if ok, false if it
 /// didn't know how to do the conversion.  If dst_type is UNKNOWN, it will
@@ -2544,7 +2647,7 @@ inline bool convert_image(int nchannels, int width, int height, int depth,
             stride_t src_xstride, stride_t src_ystride, stride_t src_zstride,
             void *dst, TypeDesc dst_type,
             stride_t dst_xstride, stride_t dst_ystride, stride_t dst_zstride,
-            int alpha_channel, int z_channel = -1)
+            int /*alpha_channel*/, int /*z_channel*/ = -1)
 {
     return convert_image(nchannels, width, height, depth, src, src_type,
                          src_xstride, src_ystride, src_zstride, dst, dst_type,
@@ -2569,7 +2672,7 @@ inline bool parallel_convert_image(
             stride_t src_xstride, stride_t src_ystride, stride_t src_zstride,
             void *dst, TypeDesc dst_type,
             stride_t dst_xstride, stride_t dst_ystride, stride_t dst_zstride,
-            int alpha_channel, int z_channel, int nthreads=0)
+            int /*alpha_channel*/, int /*z_channel*/, int nthreads=0)
 {
     return parallel_convert_image (nchannels, width, height, depth,
            src, src_type, src_xstride, src_ystride, src_zstride,
@@ -2638,8 +2741,16 @@ typedef bool (*wrap_impl) (int &coord, int origin, int width);
 /// output to stderr for debugging statements.
 OIIO_API void debug (string_view str);
 
-/// debug output with `fmt`/`std::format` conventions.
+/// debug output with `std::format` conventions.
 template<typename T1, typename... Args>
+void debugfmt (const char* fmt, const T1& v1, const Args&... args)
+{
+    debug (Strutil::fmt::format(fmt, v1, args...));
+}
+
+// (Unfortunate old synonym)
+template<typename T1, typename... Args>
+OIIO_DEPRECATED("use `debugfmt` instead")
 void fmtdebug (const char* fmt, const T1& v1, const Args&... args)
 {
     debug (Strutil::fmt::format(fmt, v1, args...));

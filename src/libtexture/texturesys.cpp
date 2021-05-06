@@ -6,13 +6,9 @@
 #include <cmath>
 #include <cstring>
 #include <list>
+#include <random>
 #include <sstream>
 #include <string>
-
-#include <boost/random.hpp>
-
-#include <OpenEXR/ImathMatrix.h>
-#include <OpenEXR/half.h>
 
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/filter.h>
@@ -376,12 +372,12 @@ TextureSystemImpl::getstats(int level, bool icstats) const
         out << "OpenImageIO Texture statistics\n";
 
         std::string opt;
-#define BOOLOPT(name)                                                          \
-    if (m_##name)                                                              \
+#define BOOLOPT(name) \
+    if (m_##name)     \
     opt += #name " "
 #define INTOPT(name) opt += Strutil::sprintf(#name "=%d ", m_##name)
-#define STROPT(name)                                                           \
-    if (m_##name.size())                                                       \
+#define STROPT(name)     \
+    if (m_##name.size()) \
     opt += Strutil::sprintf(#name "=\"%s\" ", m_##name)
         INTOPT(gray_to_rgb);
         INTOPT(flip_t);
@@ -545,7 +541,7 @@ TextureSystemImpl::get_texture_info(ustring filename, int subimage,
     if (!ok) {
         std::string err = m_imagecache->geterror();
         if (!err.empty())
-            errorf("%s", err);
+            error("{}", err);
     }
     return ok;
 }
@@ -565,7 +561,7 @@ TextureSystemImpl::get_texture_info(TextureHandle* texture_handle,
     if (!ok) {
         std::string err = m_imagecache->geterror();
         if (!err.empty())
-            errorf("%s", err);
+            error("{}", err);
     }
     return ok;
 }
@@ -580,7 +576,7 @@ TextureSystemImpl::get_imagespec(ustring filename, int subimage,
     if (!ok) {
         std::string err = m_imagecache->geterror();
         if (!err.empty())
-            errorf("%s", err);
+            error("{}", err);
     }
     return ok;
 }
@@ -599,7 +595,7 @@ TextureSystemImpl::get_imagespec(TextureHandle* texture_handle,
     if (!ok) {
         std::string err = m_imagecache->geterror();
         if (!err.empty())
-            errorf("%s", err);
+            error("{}", err);
     }
     return ok;
 }
@@ -611,7 +607,7 @@ TextureSystemImpl::imagespec(ustring filename, int subimage)
 {
     const ImageSpec* spec = m_imagecache->imagespec(filename, subimage);
     if (!spec)
-        errorf("%s", m_imagecache->geterror());
+        error("{}", m_imagecache->geterror());
     return spec;
 }
 
@@ -628,7 +624,7 @@ TextureSystemImpl::imagespec(TextureHandle* texture_handle,
     if (!spec) {
         std::string err = m_imagecache->geterror();
         if (!err.empty())
-            errorf("%s", err);
+            error("{}", err);
     }
     return spec;
 }
@@ -644,7 +640,7 @@ TextureSystemImpl::get_texels(ustring filename, TextureOpt& options,
     PerThreadInfo* thread_info = m_imagecache->get_perthread_info();
     TextureFile* texfile       = find_texturefile(filename, thread_info);
     if (!texfile) {
-        errorf("Texture file \"%s\" not found", filename);
+        error("Texture file \"{}\" not found", filename);
         return false;
     }
     return get_texels((TextureHandle*)texfile, (Perthread*)thread_info, options,
@@ -666,25 +662,25 @@ TextureSystemImpl::get_texels(TextureHandle* texture_handle_,
     TextureFile* texfile = verify_texturefile((TextureFile*)texture_handle_,
                                               thread_info);
     if (!texfile) {
-        errorf("Invalid texture handle NULL");
+        error("Invalid texture handle NULL");
         return false;
     }
 
     if (texfile->broken()) {
         if (texfile->errors_should_issue())
-            errorf("Invalid texture file \"%s\"", texfile->filename());
+            error("Invalid texture file \"{}\"", texfile->filename());
         return false;
     }
     int subimage = options.subimage;
     if (subimage < 0 || subimage >= texfile->subimages()) {
-        errorf("get_texel asked for nonexistent subimage %d of \"%s\"",
-               subimage, texfile->filename());
+        error("get_texel asked for nonexistent subimage {} of \"{}\"", subimage,
+              texfile->filename());
         return false;
     }
     if (miplevel < 0 || miplevel >= texfile->miplevels(subimage)) {
         if (texfile->errors_should_issue())
-            errorf("get_texel asked for nonexistent MIP level %d of \"%s\"",
-                   miplevel, texfile->filename());
+            error("get_texel asked for nonexistent MIP level {} of \"{}\"",
+                  miplevel, texfile->filename());
         return false;
     }
     const ImageSpec& spec(texfile->spec(subimage, miplevel));
@@ -754,7 +750,7 @@ TextureSystemImpl::get_texels(TextureHandle* texture_handle_,
     if (!ok) {
         std::string err = m_imagecache->geterror();
         if (!err.empty())
-            errorf("%s", err);
+            error("{}", err);
     }
     return ok;
 }
@@ -1024,8 +1020,8 @@ TextureSystemImpl::texture(TextureHandle* texture_handle_,
         int s = m_imagecache->subimage_from_name(texturefile,
                                                  options.subimagename);
         if (s < 0) {
-            errorf("Unknown subimage \"%s\" in texture \"%s\"",
-                   options.subimagename, texturefile->filename());
+            error("Unknown subimage \"{}\" in texture \"{}\"",
+                  options.subimagename, texturefile->filename());
             return missing_texture(options, nchannels, result, dresultds,
                                    dresultdt);
         }
@@ -1093,7 +1089,7 @@ TextureSystemImpl::texture(TextureHandle* texture_handle_,
     // then copy back when we're done.
     // FIXME -- is this necessary at all? Can we eliminate the conditional
     // and the duplicated code by always doing the simd copy thing? Come
-    // back here and time whether for 4-channnel textures it really matters.
+    // back here and time whether for 4-channel textures it really matters.
     bool simd_copy = (nchannels != 4 || ((size_t)result & 0x0f)
                       || ((size_t)dresultds & 0x0f) || /* FIXME -- necessary? */
                       ((size_t)dresultdt & 0x0f));
@@ -1209,9 +1205,9 @@ TextureSystemImpl::texture(TextureHandle* texture_handle,
 bool
 TextureSystemImpl::texture_lookup_nomip(
     TextureFile& texturefile, PerThreadInfo* thread_info, TextureOpt& options,
-    int nchannels_result, int actualchannels, float s, float t, float dsdx,
-    float dtdx, float dsdy, float dtdy, float* result, float* dresultds,
-    float* dresultdt)
+    int nchannels_result, int actualchannels, float s, float t, float /*dsdx*/,
+    float /*dtdx*/, float /*dsdy*/, float /*dtdy*/, float* result,
+    float* dresultds, float* dresultdt)
 {
     // Initialize results to 0.  We'll add from here on as we sample.
     OIIO_DASSERT((dresultds == NULL) == (dresultdt == NULL));
@@ -1578,7 +1574,7 @@ ellipse_axes(float dsdx, float dtdx, float dsdy, float dtdy, float& majorlength,
     // derivatives, then majorlength/minorlength are the (diameter) axes
     // of the ellipse; if the derivs are the "to edge of pixel" 1/2
     // length derivs, then majorlength/minorlength are the major and
-    // minur radii of the elipse.  We do the former!  So it's important
+    // minor radii of the ellipse.  We do the former!  So it's important
     // to consider that factor of 2 in compute_ellipse_sampling.
 }
 
@@ -1818,9 +1814,9 @@ TextureSystemImpl::texture_lookup(TextureFile& texturefile,
 
 const float*
 TextureSystemImpl::pole_color(TextureFile& texturefile,
-                              PerThreadInfo* thread_info,
+                              PerThreadInfo* /*thread_info*/,
                               const ImageCacheFile::LevelInfo& levelinfo,
-                              TileRef& tile, int subimage, int miplevel,
+                              TileRef& tile, int subimage, int /*miplevel*/,
                               int pole)
 {
     if (!levelinfo.onetile)
@@ -1936,7 +1932,7 @@ TextureSystemImpl::sample_closest(
         float s = s_[sample], t = t_[sample];
         float weight = weight_[sample];
 
-        int stex, ttex;  // Texel coordintes
+        int stex, ttex;  // Texel coordinates
         float sfrac, tfrac;
         st_to_texel(s, t, texturefile, spec, stex, ttex, sfrac, tfrac);
 
@@ -1965,7 +1961,7 @@ TextureSystemImpl::sample_closest(
         id.xy(stex - tile_s, ttex - tile_t);
         bool ok = find_tile(id, thread_info, sample == 0);
         if (!ok)
-            errorf("%s", m_imagecache->geterror());
+            error("{}", m_imagecache->geterror());
         TileRef& tile(thread_info->tile);
         if (!tile || !ok) {
             allok = false;
@@ -2081,7 +2077,7 @@ TextureSystemImpl::sample_bilinear(
     // N.B. What's up with "nofill"? We need to consider fill only when we
     // are inside the valid texture region. Outside, i.e. in the black wrap
     // region, black takes precedence over fill. By keeping track of when
-    // we don't need to worry about fill, which is the comparitively rare
+    // we don't need to worry about fill, which is the comparatively rare
     // case, we do a lot less math and have fewer rounding errors.
 
     vfloat4 accum, daccumds, daccumdt;
@@ -2150,7 +2146,7 @@ TextureSystemImpl::sample_bilinear(
             id.xy(sttex[S0] - tile_st[S0], sttex[T0] - tile_st[T0]);
             bool ok = find_tile(id, thread_info, sample == 0);
             if (!ok)
-                errorf("%s", m_imagecache->geterror());
+                error("{}", m_imagecache->geterror());
             TileRef& tile(thread_info->tile);
             if (!tile->valid())
                 return false;
@@ -2211,7 +2207,7 @@ TextureSystemImpl::sample_bilinear(
                         id.xy(tile_edge[S0 + i], tile_edge[T0 + j]);
                         bool ok = find_tile(id, thread_info, sample == 0);
                         if (!ok)
-                            errorf("%s", m_imagecache->geterror());
+                            error("{}", m_imagecache->geterror());
                         if (!thread_info->tile->valid()) {
                             return false;
                         }
@@ -2419,7 +2415,7 @@ TextureSystemImpl::sample_bicubic(
     // N.B. What's up with "nofill"? We need to consider fill only when we
     // are inside the valid texture region. Outside, i.e. in the black wrap
     // region, black takes precedence over fill. By keeping track of when
-    // we don't need to worry about fill, which is the comparitively rare
+    // we don't need to worry about fill, which is the comparatively rare
     // case, we do a lot less math and have fewer rounding errors.
 
     // need_pole: do we potentially need to fade to special pole color?
@@ -2515,7 +2511,7 @@ TextureSystemImpl::sample_bicubic(
             id.xy(stex[0] - tile_s, ttex[0] - tile_t);
             bool ok = find_tile(id, thread_info, sample == 0);
             if (!ok)
-                errorf("%s", m_imagecache->geterror());
+                error("{}", m_imagecache->geterror());
             TileRef& tile(thread_info->tile);
             if (!tile) {
                 return false;
@@ -2585,8 +2581,8 @@ TextureSystemImpl::sample_bicubic(
                         id.xy(tile_s_edge[i], tile_t_edge[j]);
                         bool ok = find_tile(id, thread_info, sample == 0);
                         if (!ok)
-                            errorf("%s", m_imagecache->geterror());
-                        OIIO_DASSERT(thread_info->tile->id() == id);
+                            error("{}", m_imagecache->geterror());
+                        DASSERT(thread_info->tile->id() == id);
                         if (!thread_info->tile->valid())
                             return false;
                     }
@@ -2914,13 +2910,13 @@ TextureSystemImpl::unit_test_texture()
     dtdy = 0.2;
     visualize_ellipse("6.tif", dsdx, dtdx, dsdy, dtdy, 0.0, 0.5);
 
-    boost::mt19937 rndgen;
-    boost::uniform_01<boost::mt19937, float> rnd(rndgen);
+    std::mt19937 gen;
+    std::uniform_real_distribution<float> rnd(0.0f, 1.0f);
     for (int i = 0; i < 100; ++i) {
-        dsdx = 1.5f * (rnd() - 0.5f);
-        dtdx = 1.5f * (rnd() - 0.5f);
-        dsdy = 1.5f * (rnd() - 0.5f);
-        dtdy = 1.5f * (rnd() - 0.5f);
+        dsdx = 1.5f * (rnd(gen) - 0.5f);
+        dtdx = 1.5f * (rnd(gen) - 0.5f);
+        dsdy = 1.5f * (rnd(gen) - 0.5f);
+        dtdy = 1.5f * (rnd(gen) - 0.5f);
         visualize_ellipse(Strutil::sprintf("%04d.tif", 100 + i), dsdx, dtdx,
                           dsdy, dtdy, sblur, tblur);
     }

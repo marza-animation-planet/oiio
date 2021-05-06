@@ -67,9 +67,9 @@ OIIO_NAMESPACE_BEGIN
 ///     no allocation, no character copying, no reference counting.
 ///   - Equality testing (do the strings contain the same characters) is
 ///     a single operation, the comparison of the pointer.
-///   - Memory allocation only occurs when a new ustring is construted from
+///   - Memory allocation only occurs when a new ustring is constructed from
 ///     raw characters the FIRST time -- subsequent constructions of the
-///     same string just finds it in the canonial string set, but doesn't
+///     same string just finds it in the canonical string set, but doesn't
 ///     need to allocate new storage.  Destruction of a ustring is trivial,
 ///     there is no de-allocation because the canonical version stays in
 ///     the set.  Also, therefore, no user code mistake can lead to
@@ -684,6 +684,14 @@ public:
 
     /// Return the amount of memory consumed by the ustring table.
     static size_t memory();
+
+    /// Return the total number of ustrings in the internal table.
+    static size_t total_ustrings();
+
+    /// Return the total number ustrings that have the exact hash as another
+    /// ustring. If `collisions` is passed, store all the colliding ustrings
+    /// in the vector.
+    static size_t hash_collisions(std::vector<ustring>* collisions = nullptr);
 
     /// Given a string_view, return a pointer to the unique
     /// version kept in the internal table (creating a new table entry

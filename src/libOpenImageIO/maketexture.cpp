@@ -11,10 +11,8 @@
 #include <memory>
 #include <sstream>
 
-#include <OpenEXR/ImathMatrix.h>
-#include <OpenEXR/half.h>
-
 #include <OpenImageIO/argparse.h>
+#include <OpenImageIO/color.h>
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/filter.h>
@@ -608,6 +606,13 @@ write_mipmap(ImageBufAlgo::MakeTextureMode mode, std::shared_ptr<ImageBuf>& img,
     ImageSpec outspec      = outspec_template;
     outspec.set_format(outputdatatype);
 
+    // Going from float to half is prone to generating Inf values if we had
+    // any floats that were out of the range that half can represent. Nobody
+    // wants Inf in textures; better to clamp.
+    bool clamp_half = (outspec.format == TypeHalf
+                       && (img->spec().format == TypeFloat
+                           || img->spec().format == TypeHalf));
+
     if (mipmap && !out->supports("multiimage") && !out->supports("mipmap")) {
         outstream << "maketx ERROR: \"" << outputfilename
                   << "\" format does not support multires images\n";
@@ -675,6 +680,11 @@ write_mipmap(ImageBufAlgo::MakeTextureMode mode, std::shared_ptr<ImageBuf>& img,
         outstream << "  Top level is " << formatres(outspec) << std::endl;
     }
 
+    if (clamp_half) {
+        std::shared_ptr<ImageBuf> tmp(new ImageBuf);
+        ImageBufAlgo::clamp(*tmp, *img, -HALF_MAX, HALF_MAX, true);
+        std::swap(tmp, img);
+    }
     if (!img->write(out)) {
         // ImageBuf::write transfers any errors from the ImageOutput to
         // the ImageBuf.
@@ -812,6 +822,8 @@ write_mipmap(ImageBufAlgo::MakeTextureMode mode, std::shared_ptr<ImageBuf>& img,
                     Filter2D::destroy(filter);
                 }
             }
+            if (clamp_half)
+                ImageBufAlgo::clamp(*small, *small, -HALF_MAX, HALF_MAX, true);
 
             stat_miptime += miptimer();
             outspec = smallspec;
@@ -950,18 +962,27 @@ make_texture_impl(ImageBufAlgo::MakeTextureMode mode, const ImageBuf* input,
     size_t peak_mem              = 0;
     Timer alltime;
 
-#define STATUS(task, timer)                                                    \
-    {                                                                          \
-        size_t mem = Sysutil::memory_used(true);                               \
-        peak_mem   = std::max(peak_mem, mem);                                  \
-        if (verbose)                                                           \
-            outstream << Strutil::sprintf("  %-25s %s   (%s)\n", task,         \
-                                          Strutil::timeintervalformat(timer,   \
-                                                                      2),      \
-                                          Strutil::memformat(mem));            \
+#define STATUS(task, timer)                                                  \
+    {                                                                        \
+        size_t mem = Sysutil::memory_used(true);                             \
+        peak_mem   = std::max(peak_mem, mem);                                \
+        if (verbose)                                                         \
+            outstream << Strutil::sprintf("  %-25s %s   (%s)\n", task,       \
+                                          Strutil::timeintervalformat(timer, \
+                                                                      2),    \
+                                          Strutil::memformat(mem));          \
     }
 
     ImageSpec configspec = _configspec;
+
+    // Set default tile size if no specific one was requested via config
+    if (!configspec.tile_width)
+        configspec.tile_width = 64;
+    if (!configspec.tile_height)
+        configspec.tile_height = 64;
+    if (!configspec.tile_depth)
+        configspec.tile_depth = 1;
+
     std::stringstream localstream;  // catch output when user doesn't want it
     std::ostream& outstream(outstream_ptr ? *outstream_ptr : localstream);
 
@@ -1237,7 +1258,7 @@ make_texture_impl(ImageBufAlgo::MakeTextureMode mode, const ImageBuf* input,
     if (channelnames.size()) {
         std::vector<std::string> newchannelnames;
         Strutil::split(channelnames, newchannelnames, ",");
-        ImageSpec& spec(src->specmod());  // writeable version
+        ImageSpec& spec(src->specmod());  // writable version
         for (int c = 0; c < spec.nchannels; ++c) {
             if (c < (int)newchannelnames.size() && newchannelnames[c].size()) {
                 std::string name     = newchannelnames[c];

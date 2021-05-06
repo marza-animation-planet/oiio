@@ -3,8 +3,6 @@
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
-#include <OpenEXR/half.h>
-
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -136,7 +134,7 @@ ImageBufAlgo::flatten(const ImageBuf& src, ROI roi, int nthreads)
 
 bool
 ImageBufAlgo::deepen(ImageBuf& dst, const ImageBuf& src, float zvalue, ROI roi,
-                     int nthreads)
+                     int /*nthreads*/)
 {
     pvt::LoggedTimer logtime("IBA::deepen");
     if (src.deep()) {
@@ -364,7 +362,7 @@ ImageBufAlgo::deep_merge(const ImageBuf& A, const ImageBuf& B,
 
 bool
 ImageBufAlgo::deep_holdout(ImageBuf& dst, const ImageBuf& src,
-                           const ImageBuf& thresh, ROI roi, int nthreads)
+                           const ImageBuf& thresh, ROI roi, int /*nthreads*/)
 {
     pvt::LoggedTimer logtime("IBA::deep_holdout");
     if (!src.deep() || !thresh.deep()) {
@@ -418,7 +416,7 @@ ImageBufAlgo::deep_holdout(ImageBuf& dst, const ImageBuf& src,
         }
         // Now split any samples that straddle the z.
         if (dstdd.split(dstpixel, zthresh)) {
-            // If a split did occur, do anohter discard pass.
+            // If a split did occur, do another discard pass.
             for (int s = 0, n = dstdd.samples(dstpixel); s < n; ++s) {
                 if (dstdd.deep_value(dstpixel, Zbackchan, s) > zthresh) {
                     dstdd.set_samples(dstpixel, s);

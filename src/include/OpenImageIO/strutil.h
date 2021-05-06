@@ -16,6 +16,7 @@
 
 #include <cstdio>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -25,11 +26,7 @@
 #include <OpenImageIO/platform.h>
 #include <OpenImageIO/string_view.h>
 
-// For now, let a prior set of OIIO_USE_FMT=0 cause us to fall back to
-// tinyformat and/or disable its functionality. Use with caution!
-#ifndef OIIO_USE_FMT
-#    define OIIO_USE_FMT 1
-#endif
+#include <OpenImageIO/detail/farmhash.h>
 
 #if OIIO_GNUC_VERSION >= 70000
 #    pragma GCC diagnostic push
@@ -44,11 +41,9 @@
 #ifndef FMT_USE_GRISU
 #    define FMT_USE_GRISU 1
 #endif
-#if OIIO_USE_FMT
-#    include "fmt/ostream.h"
-#    include "fmt/format.h"
-#    include "fmt/printf.h"
-#endif
+#include "detail/fmt/ostream.h"
+#include "detail/fmt/format.h"
+#include "detail/fmt/printf.h"
 #if OIIO_GNUC_VERSION >= 70000
 #    pragma GCC diagnostic pop
 #endif
@@ -66,36 +61,6 @@
 // was locale dependent.
 #define OIIO_FMT_LOCALE_INDEPENDENT 1
 
-// Use fmt rather than tinyformat, even for printf-style formatting
-#ifndef OIIO_USE_FMT_FOR_SPRINTF
-#    define OIIO_USE_FMT_FOR_SPRINTF 0
-#endif
-
-#if !OIIO_USE_FMT_FOR_SPRINTF
-#    ifndef TINYFORMAT_USE_VARIADIC_TEMPLATES
-#        define TINYFORMAT_USE_VARIADIC_TEMPLATES
-#    endif
-#    include <OpenImageIO/tinyformat.h>
-#endif
-
-#ifndef OPENIMAGEIO_PRINTF_ARGS
-#   ifndef __GNUC__
-#       define __attribute__(x)
-#   endif
-    // Enable printf-like warnings with gcc by attaching
-    // OPENIMAGEIO_PRINTF_ARGS to printf-like functions.  Eg:
-    //
-    // void foo (const char* fmt, ...) OPENIMAGEIO_PRINTF_ARGS(1,2);
-    //
-    // The arguments specify the positions of the format string and the the
-    // beginning of the varargs parameter list respectively.
-    //
-    // For member functions with arguments like the example above, you need
-    // OPENIMAGEIO_PRINTF_ARGS(2,3) instead.  (gcc includes the implicit this
-    // pointer when it counts member function arguments.)
-#   define OPENIMAGEIO_PRINTF_ARGS(fmtarg_pos, vararg_pos) \
-        __attribute__ ((format (printf, fmtarg_pos, vararg_pos) ))
-#endif
 
 
 OIIO_NAMESPACE_BEGIN
@@ -117,18 +82,14 @@ void OIIO_API sync_output (std::ostream &file, string_view str);
 ///
 ///    std::string s = Strutil::sprintf ("blah %d %g", (int)foo, (float)bar);
 ///
-/// Uses the tinyformat or fmt library underneath, so it's fully type-safe, and
+/// Uses the fmt library underneath, so it's fully type-safe, and
 /// works with any types that understand stream output via '<<'.
 /// The formatting of the string will always use the classic "C" locale
 /// conventions (in particular, '.' as decimal separator for float values).
 template<typename... Args>
 inline std::string sprintf (const char* fmt, const Args&... args)
 {
-#if OIIO_USE_FMT_FOR_SPRINTF
     return ::fmt::sprintf (fmt, args...);
-#else
-    return tinyformat::format (fmt, args...);
-#endif
 }
 
 
@@ -162,12 +123,7 @@ namespace fmt {
 template<typename... Args>
 inline std::string format (const char* fmt, const Args&... args)
 {
-#if OIIO_USE_FMT
     return ::fmt::format (fmt, args...);
-#else
-    // Disabled for some reason
-    return std::string(fmt);
-#endif
 }
 } // namespace fmt
 
@@ -259,13 +215,20 @@ inline void print (std::ostream &file, const char* fmt, const Args&... args)
 /// already as a va_list.  This is not guaranteed type-safe and is not
 /// extensible like format(). Use with caution!
 std::string OIIO_API vsprintf (const char *fmt, va_list ap)
-                                         OPENIMAGEIO_PRINTF_ARGS(1,0);
+#if defined(__GNUC__) && !defined(__CUDACC__)
+    __attribute__ ((format (printf, 1, 0) ))
+#endif
+    ;
 
 /// Return a std::string formatted like Strutil::format, but passed
 /// already as a va_list.  This is not guaranteed type-safe and is not
 /// extensible like format(). Use with caution!
+OIIO_DEPRECATED("use `vsprintf` instead")
 std::string OIIO_API vformat (const char *fmt, va_list ap)
-                                         OPENIMAGEIO_PRINTF_ARGS(1,0);
+#if defined(__GNUC__) && !defined(__CUDACC__)
+    __attribute__ ((format (printf, 1, 0) ))
+#endif
+    ;
 
 /// Return a string expressing a number of bytes, in human readable form.
 ///  - memformat(153)           -> "153 B"
@@ -315,11 +278,25 @@ std::string OIIO_API wordwrap (string_view src, int columns = 80,
                                int prefix = 0, string_view sep = " ",
                                string_view presep = "");
 
-/// Hash a string_view.
-inline size_t
+
+/// Our favorite "string" hash of a length of bytes. Currently, it is just
+/// a wrapper for an inlined, constexpr (if C++ >= 14), Cuda-safe farmhash.
+inline OIIO_CONSTEXPR14 size_t
+strhash (size_t len, const char *s)
+{
+    return OIIO::farmhash::inlined::Hash(s, len);
+}
+
+
+/// Hash a string_view. This is OIIO's default favorite string hasher.
+/// Currently, it uses farmhash, is constexpr (for C++14), and works in
+/// Cuda. This is rigged, though, so that empty strings hash always hash to
+/// 0 (that isn't would a raw farmhash would give you, but it's a useful
+/// property, especially for trivial initialization).
+inline OIIO_CONSTEXPR14 size_t
 strhash (string_view s)
 {
-    return s.length() ? farmhash::Hash (s) : 0;
+    return s.length() ? strhash(s.length(), s.data()) : 0;
 }
 
 
@@ -554,28 +531,18 @@ template<> inline float from_string<float> (string_view s) {
 
 
 
-// Template function to convert any type to a string. The default
-// implementation is just to use sprintf. The template can be
-// overloaded if there is a better method for particular types.
-// Eventually, we want this to use fmt::to_string, but for now that doesn't
-// work because {fmt} doesn't correctly support locale-independent
-// formatting of floating-point types.
+/// Template function to convert any type to a string. The default
+/// implementation is just to use sprintf or fmt::to_string. The template
+/// can be overloaded if there is a better method for particular types.
 template<typename T>
 inline std::string to_string (const T& value) {
-    return Strutil::sprintf("%s",value);
+    return ::fmt::to_string(value);
 }
 
-template<> inline std::string to_string (const std::string& value) { return value; }
-template<> inline std::string to_string (const string_view& value) { return value; }
+// Some special pass-through cases
+inline std::string to_string (const std::string& value) { return value; }
+inline std::string to_string (string_view value) { return value; }
 inline std::string to_string (const char* value) { return value; }
-
-
-#if !OIIO_USE_FMT_FOR_SPRINTF && OIIO_USE_FMT
-// When not using fmt, nonetheless fmt::to_string is incredibly faster than
-// tinyformat for ints, so speciaize to use the fast one.
-inline std::string to_string (int value) { return ::fmt::to_string(value); }
-inline std::string to_string (size_t value) { return ::fmt::to_string(value); }
-#endif
 
 
 
@@ -626,7 +593,7 @@ int extract_from_list_string (std::vector<T, Allocator> &vals,
         if (nvals == 0)
             vals.push_back (v);
         else if (valuestrings[i].size()) {
-            if (vals.size() > i)  // don't replace non-existnt entries
+            if (vals.size() > i)  // don't replace non-existant entries
                 vals[i] = from_string<T> (valuestrings[i]);
         }
         /* Otherwise, empty space between commas, so leave default alone */

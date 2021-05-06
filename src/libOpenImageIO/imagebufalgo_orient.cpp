@@ -2,13 +2,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
-/// \file
-/// Implementation of ImageBufAlgo algorithms that merely move pixels
-/// or channels between images without altering their values.
-
-
-#include <OpenEXR/half.h>
-
 #include <cmath>
 #include <iostream>
 
@@ -26,7 +19,7 @@ OIIO_NAMESPACE_BEGIN
 
 template<class D, class S = D>
 static bool
-flip_(ImageBuf& dst, const ImageBuf& src, ROI dst_roi, int nthreads)
+flip_(ImageBuf& dst, const ImageBuf& src, ROI dst_roi, int /*nthreads*/)
 {
     ROI src_roi_full = src.roi_full();
     ROI dst_roi_full = dst.roi_full();
@@ -75,7 +68,7 @@ ImageBufAlgo::flip(ImageBuf& dst, const ImageBuf& src, ROI roi, int nthreads)
 
 template<class D, class S = D>
 static bool
-flop_(ImageBuf& dst, const ImageBuf& src, ROI dst_roi, int nthreads)
+flop_(ImageBuf& dst, const ImageBuf& src, ROI dst_roi, int /*nthreads*/)
 {
     ROI src_roi_full = src.roi_full();
     ROI dst_roi_full = dst.roi_full();
@@ -148,7 +141,7 @@ ImageBufAlgo::flop(const ImageBuf& src, ROI roi, int nthreads)
 
 template<class D, class S = D>
 static bool
-rotate90_(ImageBuf& dst, const ImageBuf& src, ROI dst_roi, int nthreads)
+rotate90_(ImageBuf& dst, const ImageBuf& src, ROI dst_roi, int /*nthreads*/)
 {
     ROI dst_roi_full = dst.roi_full();
     ImageBuf::ConstIterator<S, D> s(src);
@@ -208,7 +201,7 @@ ImageBufAlgo::rotate90(ImageBuf& dst, const ImageBuf& src, ROI roi,
 
 template<class D, class S = D>
 static bool
-rotate180_(ImageBuf& dst, const ImageBuf& src, ROI dst_roi, int nthreads)
+rotate180_(ImageBuf& dst, const ImageBuf& src, ROI dst_roi, int /*nthreads*/)
 {
     ROI src_roi_full = src.roi_full();
     ROI dst_roi_full = dst.roi_full();
@@ -262,7 +255,7 @@ ImageBufAlgo::rotate180(ImageBuf& dst, const ImageBuf& src, ROI roi,
 
 template<class D, class S = D>
 static bool
-rotate270_(ImageBuf& dst, const ImageBuf& src, ROI dst_roi, int nthreads)
+rotate270_(ImageBuf& dst, const ImageBuf& src, ROI dst_roi, int /*nthreads*/)
 {
     ROI dst_roi_full = dst.roi_full();
     ImageBuf::ConstIterator<S, D> s(src);

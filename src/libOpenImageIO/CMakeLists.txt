@@ -11,9 +11,9 @@ file (GLOB libOpenImageIO_hdrs ../include/OpenImageIO/*.h)
 
 if (NOT USE_EXTERNAL_PUGIXML)
     list (APPEND libOpenImageIO_hdrs
-          ../include/OpenImageIO/pugiconfig.hpp
-          ../include/OpenImageIO/pugixml.hpp
-          ../include/OpenImageIO/pugixml.cpp
+          ../include/OpenImageIO/detail/pugixml/pugiconfig.hpp
+          ../include/OpenImageIO/detail/pugixml/pugixml.hpp
+          ../include/OpenImageIO/detail/pugixml/pugixml.cpp
     )
     if (CMAKE_COMPILER_IS_GNUCC AND NOT ${GCC_VERSION} VERSION_LESS 6.0)
         set_source_files_properties (formatspec.cpp xmp.cpp
@@ -122,7 +122,7 @@ source_group ("libtexture" REGULAR_EXPRESSION ".+/libtexture/.+")
 target_include_directories (OpenImageIO
                             PUBLIC
                                 ${CMAKE_INSTALL_FULL_INCLUDEDIR}
-                                ${ILMBASE_INCLUDES}
+                                ${IMATH_INCLUDES} ${OPENEXR_INCLUDES}
                                 ${OpenCV_INCLUDES}
                             PRIVATE
                                 ${ROBINMAP_INCLUDES}
@@ -135,29 +135,34 @@ endif ()
 
 target_link_libraries (OpenImageIO
         PUBLIC
+            # For OpenEXR/Imath 3.x:
+            $<$<TARGET_EXISTS:Imath::Imath>:Imath::Imath>
+            $<$<TARGET_EXISTS:Imath::Half>:Imath::Half>
+            # For OpenEXR >= 2.4/2.5 with reliable exported targets
+            $<$<TARGET_EXISTS:IlmBase::Imath>:IlmBase::Imath>
+            $<$<TARGET_EXISTS:IlmBase::Half>:IlmBase::Half>
+            # For OpenEXR <= 2.3:
             ${ILMBASE_LIBRARIES}
-            ${OPENEXR_LIBRARIES}
-            ${OpenCV_LIBRARIES}
             ${GCC_ATOMIC_LIBRARIES}
         PRIVATE
+            # For OpenEXR/Imath 3.x:
+            $<$<TARGET_EXISTS:OpenEXR::OpenEXR>:OpenEXR::OpenEXR>
+            # For OpenEXR >= 2.4/2.5 with reliable exported targets
+            $<$<TARGET_EXISTS:OpenEXR::IlmImf>:OpenEXR::IlmImf>
+            $<$<TARGET_EXISTS:IlmBase::IlmThread>:IlmBase::IlmThread>
+            $<$<TARGET_EXISTS:IlmBase::Iex>:IlmBase::Iex>
+            # For OpenEXR <= 2.3:
+            ${OPENEXR_LIBRARIES}
+            ${OpenCV_LIBRARIES}
             ${SANITIZE_LIBRARIES}
             ${format_plugin_libs} # Add all the target link libraries from the plugins
+            $<$<BOOL:${OpenColorIO_FOUND}>:OpenColorIO::OpenColorIO>
+            $<$<BOOL:${pugixml_FOUND}>:pugixml::pugixml>
             ${BZIP2_LIBRARIES}
             ${ZLIB_LIBRARIES}
             ${Boost_LIBRARIES}
             ${CMAKE_DL_LIBS}
         )
-
-if (OpenColorIO_FOUND)
-    target_link_libraries (OpenImageIO PRIVATE ${OPENCOLORIO_LIBRARIES})
-endif ()
-
-if (USE_EXTERNAL_PUGIXML)
-    # insert include path to pugixml first, to ensure that the external
-    # pugixml is found, and not the one in OIIO's include directory.
-    target_include_directories (OpenImageIO PRIVATE BEFORE ${PUGIXML_INCLUDES})
-    target_link_libraries (OpenImageIO PRIVATE ${PUGIXML_LIBRARIES})
-endif()
 
 if (FREETYPE_FOUND)
     target_link_libraries (OpenImageIO PRIVATE ${FREETYPE_LIBRARIES})
@@ -185,9 +190,6 @@ if (MSVC)
                   APPEND_STRING PROPERTY COMPILE_FLAGS " /bigobj ")
 endif ()
 
-if (VERBOSE)
-    message(STATUS "Setting SOVERSION to: ${SOVERSION}")
-endif ()
 set_target_properties(OpenImageIO
                       PROPERTIES
                          VERSION     ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}
@@ -234,7 +236,7 @@ if (OIIO_BUILD_TESTS)
     add_test (unit_imagecache ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/imagecache_test)
 
     add_executable (imagebufalgo_test imagebufalgo_test.cpp)
-    target_link_libraries (imagebufalgo_test PRIVATE OpenImageIO)
+    target_link_libraries (imagebufalgo_test PRIVATE OpenImageIO ${OpenCV_LIBRARIES})
     set_target_properties (imagebufalgo_test PROPERTIES FOLDER "Unit Tests")
     add_test (unit_imagebufalgo ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/imagebufalgo_test)
 

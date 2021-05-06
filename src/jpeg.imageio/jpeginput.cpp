@@ -6,7 +6,6 @@
 #include <cassert>
 #include <cstdio>
 
-#include <OpenImageIO/color.h>
 #include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imageio.h>
@@ -84,10 +83,11 @@ my_output_message(j_common_ptr cinfo)
     // Create the message
     char buffer[JMSG_LENGTH_MAX];
     (*cinfo->err->format_message)(cinfo, buffer);
-    myerr->jpginput->jpegerror(myerr, true);
+    myerr->jpginput->jpegerror(myerr, false);
 
-    /* Return control to the setjmp point */
-    longjmp(myerr->setjmp_buffer, 1);
+    // This function is called only for non-fatal problems, so we don't
+    // need to do the longjmp.
+    // longjmp(myerr->setjmp_buffer, 1);
 }
 
 
@@ -120,7 +120,7 @@ comp_info_to_attr(const jpeg_decompress_struct& cinfo)
 
 
 void
-JpgInput::jpegerror(my_error_ptr myerr, bool fatal)
+JpgInput::jpegerror(my_error_ptr /*myerr*/, bool fatal)
 {
     // Send the error message to the ImageInput
     char errbuf[JMSG_LENGTH_MAX];
@@ -430,7 +430,7 @@ cmyk_to_rgb(int n, const unsigned char* cmyk, size_t cmyk_stride,
 
 
 bool
-JpgInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+JpgInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                void* data)
 {
     if (!seek_subimage(subimage, miplevel))

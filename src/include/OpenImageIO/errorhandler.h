@@ -15,7 +15,7 @@ OIIO_NAMESPACE_BEGIN
 /// ErrorHandler is a simple class that accepts error messages
 /// (classified as errors, severe errors, warnings, info, messages, or
 /// debug output) and handles them somehow.  By default it just prints
-/// the messages to stdout and/or stderr (and supresses some based on a
+/// the messages to stdout and/or stderr (and suppresses some based on a
 /// "verbosity" level).
 ///
 /// The basic idea is that your library code has no idea whether some
@@ -133,7 +133,8 @@ public:
     /// This will not produce any output if not in DEBUG mode, or
     /// if verbosity is QUIET.
     template<typename... Args>
-    void debug(const char* format, const Args&... args)
+    void debug(const char* format OIIO_MAYBE_UNUSED,
+               const Args&... args OIIO_MAYBE_UNUSED)
     {
 #ifndef NDEBUG
         debug(Strutil::format(format, args...));
@@ -143,7 +144,7 @@ public:
     //
     // Formatted output with printf notation. Use these if you specifically
     // want printf-notation, even after format() changes to python notation
-    // for OIIO 2.1.
+    // in some future OIIO release.
     //
     template<typename... Args>
     void infof(const char* format, const Args&... args)
@@ -179,10 +180,57 @@ public:
     }
 
     template<typename... Args>
-    void debugf(const char* format, const Args&... args)
+    void debugf(const char* format OIIO_MAYBE_UNUSED,
+                const Args&... args OIIO_MAYBE_UNUSED)
     {
 #ifndef NDEBUG
         debug(Strutil::sprintf(format, args...));
+#endif
+    }
+
+    //
+    // Formatted output with std::format notation. Use these if you
+    // specifically want std::format-notation, even before format() changes
+    // to the new notation in some future OIIO release.
+    //
+    template<typename... Args>
+    void infofmt(const char* format, const Args&... args)
+    {
+        if (verbosity() >= VERBOSE)
+            info(Strutil::fmt::format(format, args...));
+    }
+
+    template<typename... Args>
+    void warningfmt(const char* format, const Args&... args)
+    {
+        if (verbosity() >= NORMAL)
+            warning(Strutil::fmt::format(format, args...));
+    }
+
+    template<typename... Args>
+    void errorfmt(const char* format, const Args&... args)
+    {
+        error(Strutil::fmt::format(format, args...));
+    }
+
+    template<typename... Args>
+    void severefmt(const char* format, const Args&... args)
+    {
+        severe(Strutil::fmt::format(format, args...));
+    }
+
+    template<typename... Args>
+    void messagefmt(const char* format, const Args&... args)
+    {
+        if (verbosity() > QUIET)
+            message(Strutil::fmt::format(format, args...));
+    }
+
+    template<typename... Args>
+    void debugfmt(const char* format, const Args&... args)
+    {
+#ifndef NDEBUG
+        debug(Strutil::fmt::format(format, args...));
 #endif
     }
 

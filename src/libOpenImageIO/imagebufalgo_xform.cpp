@@ -6,10 +6,6 @@
 /// ImageBufAlgo functions for filtered transformations
 
 
-#include <OpenEXR/ImathBox.h>
-#include <OpenEXR/ImathMatrix.h>
-#include <OpenEXR/half.h>
-
 #include <cmath>
 #include <memory>
 
@@ -20,6 +16,12 @@
 #include <OpenImageIO/imagebufalgo.h>
 #include <OpenImageIO/imagebufalgo_util.h>
 #include <OpenImageIO/thread.h>
+
+#if OIIO_USING_IMATH >= 3
+#    include <Imath/ImathBox.h>
+#else
+#    include <OpenEXR/ImathBox.h>
+#endif
 
 OIIO_NAMESPACE_BEGIN
 
@@ -221,22 +223,22 @@ resize_(ImageBuf& dst, const ImageBuf& src, Filter2D* filter, ROI roi,
 
         // radi,radj is the filter radius, as an integer, in source pixels.  We
         // will filter the source over [x-radi, x+radi] X [y-radj,y+radj].
-        int radi            = (int)ceilf(filterrad / xratio);
-        int radj            = (int)ceilf(filterrad / yratio);
-        int xtaps           = 2 * radi + 1;
-        int ytaps           = 2 * radj + 1;
-        bool separable      = filter->separable();
-        float* yfiltval     = OIIO_ALLOCA(float, ytaps);
-        float* xfiltval_all = NULL;
+        int radi        = (int)ceilf(filterrad / xratio);
+        int radj        = (int)ceilf(filterrad / yratio);
+        int xtaps       = 2 * radi + 1;
+        int ytaps       = 2 * radj + 1;
+        bool separable  = filter->separable();
+        float* yfiltval = OIIO_ALLOCA(float, ytaps);
+        std::unique_ptr<float[]> xfiltval_all;
         if (separable) {
             // For separable filters, horizontal tap weights will be the same
             // for every column. So we precompute all the tap weights for every
             // x position we'll need. We do the same thing in y, but row by row
             // inside the loop (since we never revisit a y row). This
             // substantially speeds up resize.
-            xfiltval_all = OIIO_ALLOCA(float, xtaps* roi.width());
+            xfiltval_all.reset(new float[xtaps * roi.width()]);
             for (int x = roi.xbegin; x < roi.xend; ++x) {
-                float* xfiltval = xfiltval_all + (x - roi.xbegin) * xtaps;
+                float* xfiltval = xfiltval_all.get() + (x - roi.xbegin) * xtaps;
                 float s         = (x - dstfx + 0.5f) * dstpixelwidth;
                 float src_xf    = srcfx + s * srcfw;
                 int src_x;
@@ -278,7 +280,7 @@ resize_(ImageBuf& dst, const ImageBuf& src, Filter2D* filter, ROI roi,
             = ((is_same<DSTTYPE, float>::value || is_same<DSTTYPE, half>::value)
                && (is_same<SRCTYPE, float>::value
                    || is_same<SRCTYPE, half>::value)
-               // && dst.localpixels() // has to be, because it's writeable
+               // && dst.localpixels() // has to be, because it's writable
                && src.localpixels()
                // && R.contains_roi(roi)  // has to be, because IBAPrep
                && src.contains_roi(roi) && roi.chbegin == 0
@@ -328,7 +330,7 @@ resize_(ImageBuf& dst, const ImageBuf& src, Filter2D* filter, ROI roi,
                     int src_x    = ifloor(src_xf);
                     for (int c = 0; c < nchannels; ++c)
                         pel[c] = 0.0f;
-                    const float* xfiltval = xfiltval_all
+                    const float* xfiltval = xfiltval_all.get()
                                             + (x - roi.xbegin) * xtaps;
                     float totalweight_x = 0.0f;
                     for (int i = 0; i < xtaps; ++i)

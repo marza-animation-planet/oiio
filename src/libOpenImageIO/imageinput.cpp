@@ -10,6 +10,7 @@
 
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/deepdata.h>
+#include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/parallel.h>
@@ -73,15 +74,16 @@ ImageInput::valid_file(const std::string& filename) const
 
 
 std::unique_ptr<ImageInput>
-ImageInput::open(const std::string& filename, const ImageSpec* config)
+ImageInput::open(const std::string& filename, const ImageSpec* config,
+                 Filesystem::IOProxy* ioproxy)
 {
     if (!config) {
         // Without config, this is really just a call to create-with-open.
-        return ImageInput::create(filename, true, nullptr, std::string());
+        return ImageInput::create(filename, true, nullptr, ioproxy);
     }
 
     // With config, create without open, then try to open with config.
-    auto in = ImageInput::create(filename, false, config, std::string());
+    auto in = ImageInput::create(filename, false, config, ioproxy);
     if (!in)
         return in;  // create() failed, return the empty ptr
     ImageSpec newspec;
@@ -168,8 +170,11 @@ ImageInput::read_scanline(int y, int z, TypeDesc format, void* data,
 
     // Complex case -- either changing data type or stride
     int scanline_values = m_spec.width * m_spec.nchannels;
-    unsigned char* buf  = OIIO_ALLOCA(unsigned char,
-                                     m_spec.scanline_bytes(true));
+
+    unsigned char* buf;
+    OIIO_ALLOCATE_STACK_OR_HEAP(buf, unsigned char,
+                                m_spec.scanline_bytes(true));
+
     bool ok = read_native_scanline(current_subimage(), current_miplevel(), y, z,
                                    buf);
     if (!ok)
@@ -234,9 +239,21 @@ ImageInput::read_scanlines(int subimage, int miplevel, int ybegin, int yend,
                            int z, int chbegin, int chend, TypeDesc format,
                            void* data, stride_t xstride, stride_t ystride)
 {
-    ImageSpec spec = spec_dimensions(subimage, miplevel);  // thread-safe
-    if (spec.undefined())
-        return false;
+    ImageSpec spec;
+    int rps = 0;
+    {
+        // We need to lock briefly to retrieve rps from the spec
+        lock_guard lock(m_mutex);
+        if (!seek_subimage(subimage, miplevel))
+            return false;
+        // Copying the dimensions of the designated subimage/miplevel to a
+        // local `spec` means that we can release the lock!  (Calls to
+        // read_native_* will internally lock again if necessary.)
+        spec.copy_dimensions(m_spec);
+        // For scanline files, we also need one piece of metadata
+        if (!spec.tile_width)
+            rps = m_spec.get_int_attribute("tiff:RowsPerStrip", 64);
+    }
 
     chend                     = clamp(chend, chbegin + 1, spec.nchannels);
     int nchans                = chend - chbegin;
@@ -272,8 +289,8 @@ ImageInput::read_scanlines(int subimage, int miplevel, int ybegin, int yend,
 
     // Split into reasonable chunks -- try to use around 64 MB, but
     // round up to a multiple of the TIFF rows per strip (or 64).
-    int rps   = spec.get_int_attribute("tiff:RowsPerStrip", 64);
     int chunk = std::max(1, (1 << 26) / int(spec.scanline_bytes(true)));
+    chunk     = std::max(chunk, int(oiio_read_chunk));
     chunk     = round_to_multiple(chunk, rps);
     std::unique_ptr<char[]> buf(new char[chunk * native_scanline_bytes]);
 
@@ -679,8 +696,8 @@ ImageInput::read_tiles(int subimage, int miplevel, int xbegin, int xend,
 
 
 bool
-ImageInput::read_native_tile(int subimage, int miplevel, int x, int y, int z,
-                             void* data)
+ImageInput::read_native_tile(int /*subimage*/, int /*miplevel*/, int /*x*/,
+                             int /*y*/, int /*z*/, void* /*data*/)
 {
     // The base class read_native_tile fails. A format reader that supports
     // tiles MUST overload this virtual method that reads a single tile
@@ -844,6 +861,7 @@ ImageInput::read_image(int subimage, int miplevel, int chbegin, int chend,
     ImageSpec spec;
     int rps = 0;
     {
+        // We need to lock briefly to retrieve rps from the spec
         lock_guard lock(m_mutex);
         if (!seek_subimage(subimage, miplevel))
             return false;
@@ -924,9 +942,10 @@ ImageInput::read_image(int subimage, int miplevel, int chbegin, int chend,
 
 
 bool
-ImageInput::read_native_deep_scanlines(int subimage, int miplevel, int ybegin,
-                                       int yend, int z, int chbegin, int chend,
-                                       DeepData& deepdata)
+ImageInput::read_native_deep_scanlines(int /*subimage*/, int /*miplevel*/,
+                                       int /*ybegin*/, int /*yend*/, int /*z*/,
+                                       int /*chbegin*/, int /*chend*/,
+                                       DeepData& /*deepdata*/)
 {
     return false;  // default: doesn't support deep images
 }
@@ -934,10 +953,11 @@ ImageInput::read_native_deep_scanlines(int subimage, int miplevel, int ybegin,
 
 
 bool
-ImageInput::read_native_deep_tiles(int subimage, int miplevel, int xbegin,
-                                   int xend, int ybegin, int yend, int zbegin,
-                                   int zend, int chbegin, int chend,
-                                   DeepData& deepdata)
+ImageInput::read_native_deep_tiles(int /*subimage*/, int /*miplevel*/,
+                                   int /*xbegin*/, int /*xend*/, int /*ybegin*/,
+                                   int /*yend*/, int /*zbegin*/, int /*zend*/,
+                                   int /*chbegin*/, int /*chend*/,
+                                   DeepData& /*deepdata*/)
 {
     return false;  // default: doesn't support deep images
 }
@@ -978,7 +998,7 @@ ImageInput::read_native_deep_image(int subimage, int miplevel,
 
 
 int
-ImageInput::send_to_input(const char* format, ...)
+ImageInput::send_to_input(const char* /*format*/, ...)
 {
     // FIXME -- I can't remember how this is supposed to work
     return 0;
@@ -987,7 +1007,7 @@ ImageInput::send_to_input(const char* format, ...)
 
 
 int
-ImageInput::send_to_client(const char* format, ...)
+ImageInput::send_to_client(const char* /*format*/, ...)
 {
     // FIXME -- I can't remember how this is supposed to work
     return 0;

@@ -186,7 +186,7 @@ ICOInput::seek_subimage(int subimage, int miplevel)
     if (!fread(temp, 1, sizeof(temp)))
         return false;
     if (temp[1] == 'P' && temp[2] == 'N' && temp[3] == 'G') {
-        // standard PNG initalization
+        // standard PNG initialization
         if (png_sig_cmp((png_bytep)temp, 0, 7)) {
             errorf("Subimage failed PNG signature check");
             return false;
@@ -274,8 +274,7 @@ ICOInput::readimg()
 {
     if (m_png) {
         // subimage is a PNG
-        std::string s = PNG_pvt::read_into_buffer(m_png, m_info, m_spec, m_bpp,
-                                                  m_color_type, m_buf);
+        std::string s = PNG_pvt::read_into_buffer(m_png, m_info, m_spec, m_buf);
 
         //std::cerr << "[ico] PNG buffer size = " << m_buf.size () << "\n";
 
@@ -419,7 +418,7 @@ ICOInput::close()
 
 
 bool
-ICOInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+ICOInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                void* data)
 {
     lock_guard lock(m_mutex);

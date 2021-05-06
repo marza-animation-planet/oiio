@@ -16,6 +16,7 @@ message (STATUS "${ColorBoldWhite}")
 message (STATUS "* Checking for dependencies...")
 message (STATUS "*   - Missing a dependency 'Package'?")
 message (STATUS "*     Try cmake -DPackage_ROOT=path or set environment var Package_ROOT=path")
+message (STATUS "*     For many dependencies, we supply src/build-scripts/build_Package.bash")
 message (STATUS "*   - To exclude an optional dependency (even if found),")
 message (STATUS "*     -DUSE_Package=OFF or set environment var USE_Package=OFF ")
 message (STATUS "${ColorReset}")
@@ -24,112 +25,6 @@ set (OIIO_LOCAL_DEPS_PATH "${CMAKE_SOURCE_DIR}/ext/dist" CACHE STRING
      "Local area for dependencies added to CMAKE_PREFIX_PATH")
 list (APPEND CMAKE_PREFIX_PATH ${CMAKE_SOURCE_DIR}/ext/dist)
 
-set (REQUIED_DEPS "" CACHE STRING
-     "Additional dependencies to consider required (semicolon-separated list, or ALL)")
-set (OPTIONAL_DEPS "" CACHE STRING
-     "Additional dependencies to consider optional (semicolon-separated list, or ALL)")
-
-
-# checked_find_package(pkgname ..) is a wrapper for find_package, with the
-# following extra features:
-#   * If either `USE_pkgname` or the all-uppercase `USE_PKGNAME` (or
-#     `ENABLE_pkgname` or `ENABLE_PKGNAME`) exists as either a CMake or
-#     environment variable, is nonempty by contains a non-true/nonnzero
-#     value, do not search for or use the package. The optional ENABLE <var>
-#     arguments allow you to override the name of the enabling variable. In
-#     other words, support for the dependency is presumed to be ON, unless
-#     turned off explicitly from one of these sources.
-#   * Print a message if the package is enabled but not found. This is based
-#     on ${pkgname}_FOUND or $PKGNNAME_FOUND.
-#   * Optional DEFINITIONS <string> are passed to add_definitions if the
-#     package is found.
-#   * Optional PRINT <list> is a list of variables that will be printed
-#     if the package is found, if VERBOSE is on.
-#   * Optional DEPS <list> is a list of hard dependencies; for each one, if
-#     dep_FOUND is not true, disable this package with an error message.
-#   * Optional ISDEPOF <downstream> names another package for which the
-#     present package is only needed because it's a dependency, and
-#     therefore if <downstream> is disabled, we don't bother with this
-#     package either.
-#
-# N.B. This needs to be a macro, not a function, because the find modules
-# will set(blah val PARENT_SCOPE) and we need that to be the global scope,
-# not merely the scope for this function.
-macro (checked_find_package pkgname)
-    cmake_parse_arguments(_pkg "" "ENABLE;ISDEPOF" "DEFINITIONS;PRINT;DEPS" ${ARGN})
-        # Arguments: <prefix> noValueKeywords singleValueKeywords multiValueKeywords argsToParse
-    string (TOUPPER ${pkgname} pkgname_upper)
-    if (NOT VERBOSE)
-        set (${pkgname}_FIND_QUIETLY true)
-        set (${pkgname_upper}_FIND_QUIETLY true)
-    endif ()
-    if ("${pkgname}" IN_LIST REQUIRED_DEPS OR "ALL" IN_LIST REQUIRED_DEPS)
-        set (_pkg_REQUIRED 1)
-    endif ()
-    if ("${pkgname}" IN_LIST OPTIONAL_DEPS OR "ALL" IN_LIST OPTIONAL_DEPS)
-        set (_pkg_REQUIRED 0)
-    endif ()
-    set (_quietskip false)
-    check_is_enabled (${pkgname} _enable)
-    set (_disablereason "")
-    foreach (_dep ${_pkg_DEPS})
-        if (_enable AND NOT ${_dep}_FOUND)
-            set (_enable false)
-            set (ENABLE_${pkgname} OFF PARENT_SCOPE)
-            set (_disablereason "(because ${_dep} was not found)")
-        endif ()
-    endforeach ()
-    if (_pkg_ISDEPOF)
-        check_is_enabled (${_pkg_ISDEPOF} _dep_enabled)
-        if (NOT _dep_enabled)
-            set (_enable false)
-            set (_quietskip true)
-        endif ()
-    endif ()
-    if (_enable)
-        find_package (${pkgname} ${_pkg_UNPARSED_ARGUMENTS})
-        if (${pkgname}_FOUND OR ${pkgname_upper}_FOUND)
-            foreach (_vervar ${pkgname_upper}_VERSION ${pkgname}_VERSION_STRING
-                             ${pkgname_upper}_VERSION_STRING)
-                if (NOT ${pkgname}_VERSION AND ${_vervar})
-                    set (${pkgname}_VERSION ${${_vervar}})
-                endif ()
-            endforeach ()
-            message (STATUS "${ColorGreen}Found ${pkgname} ${${pkgname}_VERSION} ${ColorReset}")
-            if (VERBOSE)
-                set (_vars_to_print ${pkgname}_INCLUDES ${pkgname_upper}_INCLUDES
-                                    ${pkgname}_INCLUDE_DIR ${pkgname_upper}_INCLUDE_DIR
-                                    ${pkgname}_INCLUDE_DIRS ${pkgname_upper}_INCLUDE_DIRS
-                                    ${pkgname}_LIBRARIES ${pkgname_upper}_LIBRARIES
-                                    ${_pkg_PRINT})
-                list (REMOVE_DUPLICATES _vars_to_print)
-                foreach (_v IN LISTS _vars_to_print)
-                    if (NOT "${${_v}}" STREQUAL "")
-                        message (STATUS "    ${_v} = ${${_v}}")
-                    endif ()
-                endforeach ()
-            endif ()
-            add_definitions (${_pkg_DEFINITIONS})
-        else ()
-            message (STATUS "${ColorRed}${pkgname} library not found ${ColorReset}")
-            if (${pkgname}_ROOT)
-                message (STATUS "${ColorRed}    ${pkgname}_ROOT was: ${${pkgname}_ROOT} ${ColorReset}")
-            elseif ($ENV{${pkgname}_ROOT})
-                message (STATUS "${ColorRed}    ENV ${pkgname}_ROOT was: ${${pkgname}_ROOT} ${ColorReset}")
-            else ()
-                message (STATUS "${ColorRed}    Try setting ${pkgname}_ROOT ? ${ColorReset}")
-            endif ()
-        endif()
-    else ()
-        if (NOT _quietskip)
-            message (STATUS "${ColorRed}Not using ${pkgname} -- disabled ${_disablereason} ${ColorReset}")
-        endif ()
-    endif ()
-endmacro()
-
-
-
-
 include (ExternalProject)
 
 option (BUILD_MISSING_DEPS "Try to download and build any missing dependencies" OFF)
@@ -137,11 +32,12 @@ option (BUILD_MISSING_DEPS "Try to download and build any missing dependencies" 
 
 ###########################################################################
 # Boost setup
+if (MSVC)
+    # Disable automatic linking using pragma comment(lib,...) of boost libraries upon including of a header
+    add_definitions (-DBOOST_ALL_NO_LIB=1)
+endif ()
 if (LINKSTATIC)
     set (Boost_USE_STATIC_LIBS ON)
-    if (MSVC)
-        add_definitions (-DBOOST_ALL_NO_LIB=1)
-    endif ()
 else ()
     if (MSVC)
         add_definitions (-DBOOST_ALL_DYN_LINK=1)
@@ -161,10 +57,12 @@ else ()
     # to set the expected variables printed below. So until that's fixed
     # force FindBoost.cmake to use the original brute force path.
     set (Boost_NO_BOOST_CMAKE ON)
-    checked_find_package (Boost 1.53 REQUIRED
-                       COMPONENTS ${Boost_COMPONENTS}
-                       PRINT Boost_INCLUDE_DIRS Boost_LIBRARIES
-                      )
+    checked_find_package (Boost REQUIRED
+                          VERSION_MIN 1.53
+                          COMPONENTS ${Boost_COMPONENTS}
+                          RECOMMEND_MIN 1.66
+                          RECOMMEND_MIN_REASON "Boost 1.66 is the oldest version our CI tests against"
+                          PRINT Boost_INCLUDE_DIRS Boost_LIBRARIES )
 endif ()
 
 # On Linux, Boost 1.55 and higher seems to need to link against -lrt
@@ -185,13 +83,23 @@ link_directories ("${Boost_LIBRARY_DIRS}")
 # that we will not complete the build if they are not found.
 
 checked_find_package (ZLIB REQUIRED)  # Needed by several packages
-checked_find_package (TIFF 3.0 REQUIRED)
+checked_find_package (TIFF REQUIRED
+                      VERSION_MIN 3.9
+                      RECOMMEND_MIN 4.0
+                      RECOMMEND_MIN_REASON "to support >4GB files")
 
 # IlmBase & OpenEXR
-checked_find_package (OpenEXR 2.0 REQUIRED)
-# We use Imath so commonly, may as well include it everywhere.
-include_directories ("${OPENEXR_INCLUDES}" "${ILMBASE_INCLUDES}"
-                     "${ILMBASE_INCLUDES}/OpenEXR")
+checked_find_package (OpenEXR REQUIRED
+                      VERSION_MIN 2.0
+                      RECOMMEND_MIN 2.2
+                      RECOMMEND_MIN_REASON "for DWA compression"
+                      PRINT IMATH_INCLUDES OPENEXR_INCLUDES)
+# Force Imath includes to be before everything else to ensure that we have
+# the right Imath/OpenEXR version, not some older version in the system
+# library. This shoudn't be necessary, except for the common case of people
+# building against Imath/OpenEXR 3.x when there is still a system-level
+# install version of 2.x.
+include_directories(BEFORE ${IMATH_INCLUDES} ${OPENEXR_INCLUDES})
 if (CMAKE_COMPILER_IS_CLANG AND OPENEXR_VERSION VERSION_LESS 2.3)
     # clang C++ >= 11 doesn't like 'register' keyword in old exr headers
     add_compile_options (-Wno-deprecated-register)
@@ -200,11 +108,18 @@ if (MSVC AND NOT LINKSTATIC)
     add_definitions (-DOPENEXR_DLL) # Is this needed for new versions?
 endif ()
 
+if (OPENEXR_VERSION VERSION_GREATER_EQUAL 2.5.99)
+    set (OIIO_USING_IMATH 3)
+else ()
+    set (OIIO_USING_IMATH 2)
+endif ()
+
 
 # JPEG -- prefer Turbo-JPEG to regular libjpeg
 checked_find_package (JPEGTurbo
                       DEFINITIONS -DUSE_JPEG_TURBO=1
-                      PRINT       JPEG_INCLUDES JPEG_LIBRARIES)
+                      PRINT       JPEG_INCLUDES JPEG_INCLUDE_DIRS
+                                  JPEG_LIBRARIES)
 if (NOT JPEG_FOUND) # Try to find the non-turbo version
     checked_find_package (JPEG REQUIRED)
 endif ()
@@ -214,10 +129,15 @@ endif ()
 # allow this to be overridden to use the distro-provided package if desired.
 option (USE_EXTERNAL_PUGIXML "Use an externally built shared library version of the pugixml library" OFF)
 if (USE_EXTERNAL_PUGIXML)
-    checked_find_package (PugiXML REQUIRED
-                       DEFINITIONS -DUSE_EXTERNAL_PUGIXML=1)
+    checked_find_package (pugixml REQUIRED
+                          VERSION_MIN 1.8
+                          DEFINITIONS -DUSE_EXTERNAL_PUGIXML=1)
+else ()
+    message (STATUS "Using internal PugiXML")
 endif()
 
+# From pythonutils.cmake
+find_python()
 
 
 ###########################################################################
@@ -247,20 +167,50 @@ checked_find_package (TBB 2017
                    DEFINITIONS  -DUSE_TBB=1
                    ISDEPOF      OpenVDB)
 
-checked_find_package (DCMTK 3.6.1)  # For DICOM images
-checked_find_package (FFmpeg 2.6)
+checked_find_package (DCMTK VERSION_MIN 3.6.1)  # For DICOM images
+checked_find_package (FFmpeg VERSION_MIN 2.6)
 checked_find_package (Field3D
                    DEPS         HDF5
                    DEFINITIONS  -DUSE_FIELD3D=1)
-checked_find_package (GIF 4)
-checked_find_package (Libheif 1.3)  # For HEIF/HEIC format
-checked_find_package (LibRaw)
-checked_find_package (OpenJpeg)
-checked_find_package (OpenVDB 5.0
-                   DEPS         TBB
-                   DEFINITIONS  -DUSE_OPENVDB=1)
+checked_find_package (GIF
+                      VERSION_MIN 4
+                      RECOMMEND_MIN 5.0
+                      RECOMMEND_MIN_REASON "for stability and thread safety")
+
+# For HEIF/HEIC/AVIF formats
+checked_find_package (Libheif VERSION_MIN 1.3
+                      RECOMMEND_MIN 1.7
+                      RECOMMEND_MIN_REASON "for AVIF support")
+if (APPLE AND LIBHEIF_VERSION VERSION_GREATER_EQUAL 1.10 AND LIBHEIF_VERSION VERSION_LESS 1.11)
+    message (WARNING "Libheif 1.10 on Apple is known to be broken, disabling libheif support")
+    set (Libheif_FOUND 0)
+endif ()
+
+checked_find_package (LibRaw
+                      RECOMMEND_MIN 0.18
+                      RECOMMEND_MIN_REASON "for ACES support and better camera metadata"
+                      PRINT LibRaw_r_LIBRARIES )
+checked_find_package (OpenJpeg VERSION_MIN 2.0)
+
+checked_find_package (OpenVDB
+                      VERSION_MIN 5.0
+                      DEPS         TBB
+                      DEFINITIONS  -DUSE_OPENVDB=1)
+if (OpenVDB_FOUND AND OpenVDB_VERSION VERSION_GREATER_EQUAL 8.0
+        AND CMAKE_CXX_STANDARD VERSION_LESS 14)
+    set (OpenVDB_FOUND OFF)
+    add_definitions (-UUSE_OPENVDB)
+    message (WARNING
+             "${ColorYellow}OpenVDB 8.0+ requires C++14 or higher (was ${CMAKE_CXX_STANDARD}). "
+             "To build against this OpenVDB ${OpenVDB_VERSION}, you need to set "
+             "build option CMAKE_CXX_STANDARD=14 (or higher). The minimum requirements "
+             "for that are gcc >= 5.1, clang >= 3.5, Apple clang >= 7, icc >= 7, MSVS >= 2017. "
+             "If you must use C++11, you need to build against OpenVDB 7 or earlier. ${ColorReset}")
+    message (STATUS "${ColorRed}Not using OpenVDB -- OpenVDB ${OpenVDB_VERSION} requires C++14 or later. ${ColorReset}")
+endif ()
+
 checked_find_package (PTex)
-checked_find_package (Webp)
+checked_find_package (WebP)
 
 option (USE_R3DSDK "Enable R3DSDK (RED camera) support" OFF)
 checked_find_package (R3DSDK)  # RED camera
@@ -340,7 +290,7 @@ endif ()
 
 option (BUILD_FMT_FORCE "Force local download/build of fmt even if installed" OFF)
 option (BUILD_MISSING_FMT "Local download/build of fmt if not installed" ON)
-set (BUILD_FMT_VERSION "6.1.2" CACHE STRING "Preferred fmtlib/fmt version, when downloading/building our own")
+set (BUILD_FMT_VERSION "7.1.3" CACHE STRING "Preferred fmtlib/fmt version, when downloading/building our own")
 
 macro (find_or_download_fmt)
     # If we weren't told to force our own download/build of fmt, look

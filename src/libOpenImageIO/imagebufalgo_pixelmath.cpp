@@ -6,13 +6,10 @@
 /// Implementation of ImageBufAlgo algorithms that do math on
 /// single pixels at a time.
 
-#include <OpenEXR/half.h>
-
 #include <cmath>
 #include <iostream>
 #include <limits>
 
-#include <OpenImageIO/color.h>
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/deepdata.h>
 #include <OpenImageIO/imagebuf.h>
@@ -24,6 +21,200 @@
 
 
 OIIO_NAMESPACE_BEGIN
+
+
+template<class Rtype, class Atype, class Btype>
+static bool
+min_impl(ImageBuf& R, const ImageBuf& A, const ImageBuf& B, ROI roi,
+         int nthreads)
+{
+    ImageBufAlgo::parallel_image(roi, nthreads, [&](ROI roi) {
+        ImageBuf::Iterator<Rtype> r(R, roi);
+        ImageBuf::ConstIterator<Atype> a(A, roi);
+        ImageBuf::ConstIterator<Btype> b(B, roi);
+        for (; !r.done(); ++r, ++a, ++b)
+            for (int c = roi.chbegin; c < roi.chend; ++c)
+                r[c] = std::min(a[c], b[c]);
+    });
+    return true;
+}
+
+
+
+template<class Rtype, class Atype>
+static bool
+min_impl(ImageBuf& R, const ImageBuf& A, cspan<float> b, ROI roi, int nthreads)
+{
+    ImageBufAlgo::parallel_image(roi, nthreads, [&](ROI roi) {
+        ImageBuf::Iterator<Rtype> r(R, roi);
+        ImageBuf::ConstIterator<Atype> a(A, roi);
+        for (; !r.done(); ++r, ++a)
+            for (int c = roi.chbegin; c < roi.chend; ++c)
+                r[c] = std::min(a[c], b[c]);
+    });
+    return true;
+}
+
+
+
+bool
+ImageBufAlgo::min(ImageBuf& dst, Image_or_Const A_, Image_or_Const B_, ROI roi,
+                  int nthreads)
+{
+    pvt::LoggedTimer logtime("IBA::min");
+    if (A_.is_img() && B_.is_img()) {
+        const ImageBuf &A(A_.img()), &B(B_.img());
+        if (!IBAprep(roi, &dst, &A, &B))
+            return false;
+        ROI origroi = roi;
+        roi.chend = std::min(roi.chend, std::min(A.nchannels(), B.nchannels()));
+        bool ok;
+        OIIO_DISPATCH_COMMON_TYPES3(ok, "min", min_impl, dst.spec().format,
+                                    A.spec().format, B.spec().format, dst, A, B,
+                                    roi, nthreads);
+        if (roi.chend < origroi.chend && A.nchannels() != B.nchannels()) {
+            // Edge case: A and B differed in nchannels, we allocated dst to be
+            // the bigger of them, but adjusted roi to be the lesser. Now handle
+            // the channels that got left out because they were not common to
+            // all the inputs.
+            OIIO_ASSERT(roi.chend <= dst.nchannels());
+            roi.chbegin = roi.chend;
+            roi.chend   = origroi.chend;
+            if (A.nchannels() > B.nchannels()) {  // A exists
+                copy(dst, A, dst.spec().format, roi, nthreads);
+            } else {  // B exists
+                copy(dst, B, dst.spec().format, roi, nthreads);
+            }
+        }
+        return ok;
+    }
+    if (A_.is_val() && B_.is_img())  // canonicalize to A_img, B_val
+        A_.swap(B_);
+    if (A_.is_img() && B_.is_val()) {
+        const ImageBuf& A(A_.img());
+        cspan<float> b = B_.val();
+        if (!IBAprep(roi, &dst, &A, IBAprep_CLAMP_MUTUAL_NCHANNELS))
+            return false;
+        IBA_FIX_PERCHAN_LEN_DEF(b, A.nchannels());
+        bool ok;
+        OIIO_DISPATCH_COMMON_TYPES2(ok, "min", min_impl, dst.spec().format,
+                                    A.spec().format, dst, A, b, roi, nthreads);
+        return ok;
+    }
+    // Remaining cases: error
+    dst.errorf("ImageBufAlgo::min(): at least one argument must be an image");
+    return false;
+}
+
+
+
+ImageBuf
+ImageBufAlgo::min(Image_or_Const A, Image_or_Const B, ROI roi, int nthreads)
+{
+    ImageBuf result;
+    bool ok = min(result, A, B, roi, nthreads);
+    if (!ok && !result.has_error())
+        result.errorf("ImageBufAlgo::min() error");
+    return result;
+}
+
+
+
+template<class Rtype, class Atype, class Btype>
+static bool
+max_impl(ImageBuf& R, const ImageBuf& A, const ImageBuf& B, ROI roi,
+         int nthreads)
+{
+    ImageBufAlgo::parallel_image(roi, nthreads, [&](ROI roi) {
+        ImageBuf::Iterator<Rtype> r(R, roi);
+        ImageBuf::ConstIterator<Atype> a(A, roi);
+        ImageBuf::ConstIterator<Btype> b(B, roi);
+        for (; !r.done(); ++r, ++a, ++b)
+            for (int c = roi.chbegin; c < roi.chend; ++c)
+                r[c] = std::max(a[c], b[c]);
+    });
+    return true;
+}
+
+
+
+template<class Rtype, class Atype>
+static bool
+max_impl(ImageBuf& R, const ImageBuf& A, cspan<float> b, ROI roi, int nthreads)
+{
+    ImageBufAlgo::parallel_image(roi, nthreads, [&](ROI roi) {
+        ImageBuf::Iterator<Rtype> r(R, roi);
+        ImageBuf::ConstIterator<Atype> a(A, roi);
+        for (; !r.done(); ++r, ++a)
+            for (int c = roi.chbegin; c < roi.chend; ++c)
+                r[c] = std::max(a[c], b[c]);
+    });
+    return true;
+}
+
+
+
+bool
+ImageBufAlgo::max(ImageBuf& dst, Image_or_Const A_, Image_or_Const B_, ROI roi,
+                  int nthreads)
+{
+    pvt::LoggedTimer logtime("IBA::max");
+    if (A_.is_img() && B_.is_img()) {
+        const ImageBuf &A(A_.img()), &B(B_.img());
+        if (!IBAprep(roi, &dst, &A, &B))
+            return false;
+        ROI origroi = roi;
+        roi.chend = std::max(roi.chend, std::max(A.nchannels(), B.nchannels()));
+        bool ok;
+        OIIO_DISPATCH_COMMON_TYPES3(ok, "max", max_impl, dst.spec().format,
+                                    A.spec().format, B.spec().format, dst, A, B,
+                                    roi, nthreads);
+        if (roi.chend < origroi.chend && A.nchannels() != B.nchannels()) {
+            // Edge case: A and B differed in nchannels, we allocated dst to be
+            // the bigger of them, but adjusted roi to be the lesser. Now handle
+            // the channels that got left out because they were not common to
+            // all the inputs.
+            OIIO_ASSERT(roi.chend <= dst.nchannels());
+            roi.chbegin = roi.chend;
+            roi.chend   = origroi.chend;
+            if (A.nchannels() > B.nchannels()) {  // A exists
+                copy(dst, A, dst.spec().format, roi, nthreads);
+            } else {  // B exists
+                copy(dst, B, dst.spec().format, roi, nthreads);
+            }
+        }
+        return ok;
+    }
+    if (A_.is_val() && B_.is_img())  // canonicalize to A_img, B_val
+        A_.swap(B_);
+    if (A_.is_img() && B_.is_val()) {
+        const ImageBuf& A(A_.img());
+        cspan<float> b = B_.val();
+        if (!IBAprep(roi, &dst, &A, IBAprep_CLAMP_MUTUAL_NCHANNELS))
+            return false;
+        IBA_FIX_PERCHAN_LEN_DEF(b, A.nchannels());
+        bool ok;
+        OIIO_DISPATCH_COMMON_TYPES2(ok, "max", max_impl, dst.spec().format,
+                                    A.spec().format, dst, A, b, roi, nthreads);
+        return ok;
+    }
+    // Remaining cases: error
+    dst.errorf("ImageBufAlgo::max(): at least one argument must be an image");
+    return false;
+}
+
+
+
+ImageBuf
+ImageBufAlgo::max(Image_or_Const A, Image_or_Const B, ROI roi, int nthreads)
+{
+    ImageBuf result;
+    bool ok = max(result, A, B, roi, nthreads);
+    if (!ok && !result.has_error())
+        result.errorf("ImageBufAlgo::max() error");
+    return result;
+}
+
 
 
 template<class D, class S>
@@ -617,7 +808,8 @@ ImageBufAlgo::unpremult(const ImageBuf& src, ROI roi, int nthreads)
 
 template<class Rtype, class Atype>
 static bool
-premult_(ImageBuf& R, const ImageBuf& A, ROI roi, int nthreads)
+premult_(ImageBuf& R, const ImageBuf& A, bool preserve_alpha0, ROI roi,
+         int nthreads)
 {
     ImageBufAlgo::parallel_image(roi, nthreads, [&](ROI roi) {
         int alpha_channel = A.spec().alpha_channel;
@@ -625,7 +817,7 @@ premult_(ImageBuf& R, const ImageBuf& A, ROI roi, int nthreads)
         if (&R == &A) {
             for (ImageBuf::Iterator<Rtype> r(R, roi); !r.done(); ++r) {
                 float alpha = r[alpha_channel];
-                if (alpha == 1.0f)
+                if (alpha == 1.0f || (preserve_alpha0 && alpha == 0.0f))
                     continue;
                 for (int c = roi.chbegin; c < roi.chend; ++c)
                     if (c != alpha_channel && c != z_channel)
@@ -634,7 +826,14 @@ premult_(ImageBuf& R, const ImageBuf& A, ROI roi, int nthreads)
         } else {
             ImageBuf::ConstIterator<Atype> a(A, roi);
             for (ImageBuf::Iterator<Rtype> r(R, roi); !r.done(); ++r, ++a) {
-                float alpha = a[alpha_channel];
+                float alpha   = a[alpha_channel];
+                bool justcopy = alpha == 1.0f
+                                || (preserve_alpha0 && alpha == 0.0f);
+                if (justcopy) {
+                    for (int c = roi.chbegin; c < roi.chend; ++c)
+                        r[c] = a[c];
+                    continue;
+                }
                 for (int c = roi.chbegin; c < roi.chend; ++c)
                     if (c != alpha_channel && c != z_channel)
                         r[c] = a[c] * alpha;
@@ -662,7 +861,8 @@ ImageBufAlgo::premult(ImageBuf& dst, const ImageBuf& src, ROI roi, int nthreads)
     }
     bool ok;
     OIIO_DISPATCH_COMMON_TYPES2(ok, "premult", premult_, dst.spec().format,
-                                src.spec().format, dst, src, roi, nthreads);
+                                src.spec().format, dst, src, false, roi,
+                                nthreads);
     // Clear the output of any prior marking of associated alpha
     dst.specmod().erase_attribute("oiio:UnassociatedAlpha");
     return ok;
@@ -677,6 +877,42 @@ ImageBufAlgo::premult(const ImageBuf& src, ROI roi, int nthreads)
     bool ok = premult(result, src, roi, nthreads);
     if (!ok && !result.has_error())
         result.errorf("ImageBufAlgo::premult() error");
+    return result;
+}
+
+
+
+bool
+ImageBufAlgo::repremult(ImageBuf& dst, const ImageBuf& src, ROI roi,
+                        int nthreads)
+{
+    pvt::LoggedTimer logtime("IBA::repremult");
+    if (!IBAprep(roi, &dst, &src, IBAprep_CLAMP_MUTUAL_NCHANNELS))
+        return false;
+    if (src.spec().alpha_channel < 0) {
+        if (&dst != &src)
+            return paste(dst, src.spec().x, src.spec().y, src.spec().z,
+                         roi.chbegin, src, roi, nthreads);
+        return true;
+    }
+    bool ok;
+    OIIO_DISPATCH_COMMON_TYPES2(ok, "repremult", premult_, dst.spec().format,
+                                src.spec().format, dst, src, true, roi,
+                                nthreads);
+    // Clear the output of any prior marking of associated alpha
+    dst.specmod().erase_attribute("oiio:UnassociatedAlpha");
+    return ok;
+}
+
+
+
+ImageBuf
+ImageBufAlgo::repremult(const ImageBuf& src, ROI roi, int nthreads)
+{
+    ImageBuf result;
+    bool ok = repremult(result, src, roi, nthreads);
+    if (!ok && !result.has_error())
+        result.errorf("ImageBufAlgo::repremult() error");
     return result;
 }
 
@@ -1023,17 +1259,11 @@ ImageBufAlgo::color_map(const ImageBuf& src, int srcchannel,
 
 namespace {
 
-template<typename T>
-inline bool
-isfinite_(T v)
-{
-    return std::isfinite(v);
-}
+using std::isfinite;
 
 // Make sure isfinite is defined for 'half'
-template<>
 inline bool
-isfinite_<half>(half h)
+isfinite(half h)
 {
     return h.isFinite();
 }
@@ -1055,7 +1285,7 @@ fixNonFinite_(ImageBuf& dst, ImageBufAlgo::NonFiniteFixMode mode,
                  ++pixel) {
                 for (int c = roi.chbegin; c < roi.chend; ++c) {
                     T value = pixel[c];
-                    if (!isfinite_(value)) {
+                    if (!isfinite(value)) {
                         ++count;
                         break;  // only count one per pixel
                     }
@@ -1068,7 +1298,7 @@ fixNonFinite_(ImageBuf& dst, ImageBufAlgo::NonFiniteFixMode mode,
                 bool fixed = false;
                 for (int c = roi.chbegin; c < roi.chend; ++c) {
                     T value = pixel[c];
-                    if (!isfinite_(value)) {
+                    if (!isfinite(value)) {
                         pixel[c] = T(0.0);
                         fixed    = true;
                     }
@@ -1084,7 +1314,7 @@ fixNonFinite_(ImageBuf& dst, ImageBufAlgo::NonFiniteFixMode mode,
                 bool fixed = false;
                 for (int c = roi.chbegin; c < roi.chend; ++c) {
                     T value = pixel[c];
-                    if (!isfinite_(value)) {
+                    if (!isfinite(value)) {
                         int numvals = 0;
                         T sum(0.0);
                         ROI roi2(pixel.x() - 1, pixel.x() + 2, pixel.y() - 1,
@@ -1093,7 +1323,7 @@ fixNonFinite_(ImageBuf& dst, ImageBufAlgo::NonFiniteFixMode mode,
                         for (ImageBuf::Iterator<T, T> i(dst, roi2); !i.done();
                              ++i) {
                             T v = i[c];
-                            if (isfinite_(v)) {
+                            if (isfinite(v)) {
                                 sum += v;
                                 ++numvals;
                             }
@@ -1135,7 +1365,7 @@ fixNonFinite_deep_(ImageBuf& dst, ImageBufAlgo::NonFiniteFixMode mode,
                 for (int samp = 0; samp < samples && !bad; ++samp)
                     for (int c = roi.chbegin; c < roi.chend; ++c) {
                         float value = pixel.deep_value(c, samp);
-                        if (!isfinite_(value)) {
+                        if (!isfinite(value)) {
                             ++count;
                             bad = true;
                             break;
@@ -1154,7 +1384,7 @@ fixNonFinite_deep_(ImageBuf& dst, ImageBufAlgo::NonFiniteFixMode mode,
                 for (int samp = 0; samp < samples; ++samp)
                     for (int c = roi.chbegin; c < roi.chend; ++c) {
                         float value = pixel.deep_value(c, samp);
-                        if (!isfinite_(value)) {
+                        if (!isfinite(value)) {
                             pixel.set_deep_value(c, samp, 0.0f);
                             fixed = true;
                         }

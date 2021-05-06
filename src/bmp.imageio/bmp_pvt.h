@@ -7,7 +7,6 @@
 #include <cstdio>
 
 #include <OpenImageIO/filesystem.h>
-#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imageio.h>
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
@@ -63,19 +62,21 @@ public:
     // writes informations about bitmap
     bool write_header(FILE* fd);
 
-    int32_t size;         // size of the header
-    int32_t width;        // bitmap width in pixels
-    int32_t height;       // bitmap height in pixels
-    int16_t cplanes;      // number of color planes - always 1
-    int16_t bpp;          // number of bits per pixel, image color depth
-    int32_t compression;  // compression used in file
-    int32_t isize;        // size of the raw image data
-    int32_t hres;         // horizontal resolution in pixels per meter
-    int32_t vres;         // vertical resolutions in pixels per meter
-    int32_t cpalete;      // number of entries in the color palete
-    int32_t important;    // number of importatn color used,
-                          // 0 - all colors are important,
-                          // in most cases ignored
+    int32_t size;     // size of the header
+    int32_t width;    // bitmap width in pixels
+    int32_t height;   // bitmap height in pixels
+    int16_t cplanes;  // number of color planes - always 1
+    int16_t bpp;      // number of bits per pixel, image color depth
+
+    // Added after Version 1 of the format
+    int32_t compression = 0;  // compression used in file
+    int32_t isize       = 0;  // size of the raw image data
+    int32_t hres        = 0;  // horizontal resolution in pixels per meter
+    int32_t vres        = 0;  // vertical resolutions in pixels per meter
+    int32_t cpalete     = 0;  // number of entries in the color palette
+    int32_t important   = 0;  // number of important color used,
+                              // 0 - all colors are important,
+                              // in most cases ignored
 
     // added in Version 4 of the format
     int32_t red_mask;
@@ -136,6 +137,7 @@ private:
     bmp_pvt::DibInformationHeader m_dib_header;
     std::string m_filename;
     std::vector<bmp_pvt::color_table> m_colortable;
+    std::vector<unsigned char> fscanline;  // temp space: read from file
     int64_t m_image_start;
     void init(void)
     {
@@ -175,6 +177,8 @@ private:
     int64_t m_image_start;
     unsigned int m_dither;
     std::vector<unsigned char> m_tilebuffer;
+    std::vector<unsigned char> m_scratch;
+    std::vector<unsigned char> m_buf;  // more tmp space for write_scanline
 
     void init(void)
     {

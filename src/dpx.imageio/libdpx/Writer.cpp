@@ -35,6 +35,10 @@
 #include <cstring>
 #include <ctime>
 
+#if defined(__GNUC__)
+#    pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 #include "DPX.h"
 #include "DPXStream.h"
 #include "EndianSwap.h"
@@ -204,7 +208,7 @@ bool dpx::Writer::WriteElement(const int element, void *data, const long count)
 	if (this->header.ImageDescriptor(element) == kUndefinedDescriptor)
 		return false;
 
-	// The DPX spec recommends that the image data starts on a 8K boundry.
+	// The DPX spec recommends that the image data starts on a 8K boundary.
 	if (! this->WritePadData(0x2000))
 		return false;
 
@@ -243,7 +247,7 @@ bool dpx::Writer::WriteElement(const int element, void *data, const DataSize siz
 	if (this->header.ImageDescriptor(element) == kUndefinedDescriptor)
 		return false;
 
-	// The DPX spec recommends that the image data starts on a 8K boundry.
+	// The DPX spec recommends that the image data starts on a 8K boundary.
 	if (! this->WritePadData(0x2000))
 		return false;
 

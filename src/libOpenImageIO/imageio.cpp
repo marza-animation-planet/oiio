@@ -5,11 +5,6 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include <OpenEXR/ImathFun.h>
-#include <OpenEXR/half.h>
-
-#include <boost/thread/tss.hpp>
-
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/fmath.h>
 #include <OpenImageIO/hash.h>
@@ -46,7 +41,7 @@ int tiff_multithread(1);
 ustring plugin_searchpath(OIIO_DEFAULT_PLUGIN_SEARCHPATH);
 std::string format_list;         // comma-separated list of all formats
 std::string input_format_list;   // comma-separated list of readable formats
-std::string output_format_list;  // comma-separated list of writeable formats
+std::string output_format_list;  // comma-separated list of writable formats
 std::string extension_list;      // list of all extensions for all formats
 std::string library_list;        // list of all libraries for all formats
 static const char* oiio_debug_env = getenv("OPENIMAGEIO_DEBUG");
@@ -217,27 +212,13 @@ openimageio_version()
 
 // To avoid thread oddities, we have the storage area buffering error
 // messages for seterror()/geterror() be thread-specific.
-static boost::thread_specific_ptr<std::string> thread_error_msg;
-
-// Return a reference to the string for this thread's error messages,
-// creating it if none exists for this thread thus far.
-static std::string&
-error_msg()
-{
-    std::string* e = thread_error_msg.get();
-    if (!e) {
-        e = new std::string;
-        thread_error_msg.reset(e);
-    }
-    return *e;
-}
-
+static thread_local std::string error_msg;
 
 
 void
 pvt::seterror(string_view message)
 {
-    error_msg() = message;
+    error_msg = message;
 }
 
 
@@ -245,8 +226,8 @@ pvt::seterror(string_view message)
 std::string
 geterror()
 {
-    std::string e = error_msg();
-    error_msg().clear();
+    std::string e = error_msg;
+    error_msg.clear();
     return e;
 }
 
@@ -287,7 +268,7 @@ attribute(string_view name, TypeDesc type, const void* val)
         return optparser(gos, *(const char**)val);
     }
     if (name == "threads" && type == TypeInt) {
-        int ot = Imath::clamp(*(const int*)val, 0, maxthreads);
+        int ot = OIIO::clamp(*(const int*)val, 0, maxthreads);
         if (ot == 0)
             ot = threads_default();
         oiio_threads = ot;
@@ -304,7 +285,7 @@ attribute(string_view name, TypeDesc type, const void* val)
         return true;
     }
     if (name == "exr_threads" && type == TypeInt) {
-        oiio_exr_threads = Imath::clamp(*(const int*)val, -1, maxthreads);
+        oiio_exr_threads = OIIO::clamp(*(const int*)val, -1, maxthreads);
         return true;
     }
     if (name == "tiff:half" && type == TypeInt) {
@@ -450,7 +431,7 @@ inline long long
 quantize(float value, long long quant_min, long long quant_max)
 {
     value = value * quant_max;
-    return Imath::clamp((long long)(value + 0.5f), quant_min, quant_max);
+    return OIIO::clamp((long long)(value + 0.5f), quant_min, quant_max);
 }
 
 namespace {
@@ -769,7 +750,7 @@ parallel_convert_image(int nchannels, int width, int height, int depth,
 
     int blocksize = std::max(1, height / nthreads);
     parallel_for_chunked(
-        0, height, blocksize, [=](int id, int64_t ybegin, int64_t yend) {
+        0, height, blocksize, [=](int /*id*/, int64_t ybegin, int64_t yend) {
             convert_image(nchannels, width, yend - ybegin, depth,
                           (const char*)src + src_ystride * ybegin, src_type,
                           src_xstride, src_ystride, src_zstride,
@@ -857,9 +838,9 @@ add_dither(int nchannels, int width, int height, int depth, float* data,
 
 template<typename T>
 static void
-premult_impl(int nchannels, int width, int height, int depth, int chbegin,
-             int chend, T* data, stride_t xstride, stride_t ystride,
-             stride_t zstride, int alpha_channel, int z_channel)
+premult_impl(int width, int height, int depth, int chbegin, int chend, T* data,
+             stride_t xstride, stride_t ystride, stride_t zstride,
+             int alpha_channel, int z_channel)
 {
     char* plane = (char*)data;
     for (int z = 0; z < depth; ++z, plane += zstride) {
@@ -892,59 +873,49 @@ premult(int nchannels, int width, int height, int depth, int chbegin, int chend,
                            nchannels, width, height);
     switch (datatype.basetype) {
     case TypeDesc::FLOAT:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
-                     (float*)data, xstride, ystride, zstride, alpha_channel,
-                     z_channel);
+        premult_impl(width, height, depth, chbegin, chend, (float*)data,
+                     xstride, ystride, zstride, alpha_channel, z_channel);
         break;
     case TypeDesc::UINT8:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
-                     (unsigned char*)data, xstride, ystride, zstride,
-                     alpha_channel, z_channel);
+        premult_impl(width, height, depth, chbegin, chend, (unsigned char*)data,
+                     xstride, ystride, zstride, alpha_channel, z_channel);
         break;
     case TypeDesc::UINT16:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
+        premult_impl(width, height, depth, chbegin, chend,
                      (unsigned short*)data, xstride, ystride, zstride,
                      alpha_channel, z_channel);
         break;
     case TypeDesc::HALF:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
-                     (half*)data, xstride, ystride, zstride, alpha_channel,
-                     z_channel);
+        premult_impl(width, height, depth, chbegin, chend, (half*)data, xstride,
+                     ystride, zstride, alpha_channel, z_channel);
         break;
     case TypeDesc::INT8:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
-                     (char*)data, xstride, ystride, zstride, alpha_channel,
-                     z_channel);
+        premult_impl(width, height, depth, chbegin, chend, (char*)data, xstride,
+                     ystride, zstride, alpha_channel, z_channel);
         break;
     case TypeDesc::INT16:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
-                     (short*)data, xstride, ystride, zstride, alpha_channel,
-                     z_channel);
+        premult_impl(width, height, depth, chbegin, chend, (short*)data,
+                     xstride, ystride, zstride, alpha_channel, z_channel);
         break;
     case TypeDesc::INT:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
-                     (int*)data, xstride, ystride, zstride, alpha_channel,
-                     z_channel);
+        premult_impl(width, height, depth, chbegin, chend, (int*)data, xstride,
+                     ystride, zstride, alpha_channel, z_channel);
         break;
     case TypeDesc::UINT:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
-                     (unsigned int*)data, xstride, ystride, zstride,
-                     alpha_channel, z_channel);
+        premult_impl(width, height, depth, chbegin, chend, (unsigned int*)data,
+                     xstride, ystride, zstride, alpha_channel, z_channel);
         break;
     case TypeDesc::INT64:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
-                     (int64_t*)data, xstride, ystride, zstride, alpha_channel,
-                     z_channel);
+        premult_impl(width, height, depth, chbegin, chend, (int64_t*)data,
+                     xstride, ystride, zstride, alpha_channel, z_channel);
         break;
     case TypeDesc::UINT64:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
-                     (uint64_t*)data, xstride, ystride, zstride, alpha_channel,
-                     z_channel);
+        premult_impl(width, height, depth, chbegin, chend, (uint64_t*)data,
+                     xstride, ystride, zstride, alpha_channel, z_channel);
         break;
     case TypeDesc::DOUBLE:
-        premult_impl(nchannels, width, height, depth, chbegin, chend,
-                     (double*)data, xstride, ystride, zstride, alpha_channel,
-                     z_channel);
+        premult_impl(width, height, depth, chbegin, chend, (double*)data,
+                     xstride, ystride, zstride, alpha_channel, z_channel);
         break;
     default: OIIO_ASSERT(0 && "OIIO::premult() of an unsupported type"); break;
     }

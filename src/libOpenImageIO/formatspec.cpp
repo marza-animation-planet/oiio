@@ -6,8 +6,6 @@
 #include <cstdlib>
 #include <sstream>
 
-#include <OpenEXR/half.h>
-
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imagebuf.h>
@@ -21,7 +19,7 @@
 #if USE_EXTERNAL_PUGIXML
 #    include "pugixml.hpp"
 #else
-#    include <OpenImageIO/pugixml.hpp>
+#    include <OpenImageIO/detail/pugixml/pugixml.hpp>
 #endif
 
 #ifdef USE_BOOST_REGEX
@@ -418,14 +416,14 @@ ImageSpec::find_attribute(string_view name, ParamValue& tmpparam,
     if (iter != extra_attribs.end())
         return &(*iter);
         // Check named items in the ImageSpec structs, not in extra_attrubs
-#define MATCH(n, t)                                                            \
-    (((!casesensitive && Strutil::iequals(name, n))                            \
-      || (casesensitive && name == n))                                         \
+#define MATCH(n, t)                                 \
+    (((!casesensitive && Strutil::iequals(name, n)) \
+      || (casesensitive && name == n))              \
      && (searchtype == TypeDesc::UNKNOWN || searchtype == t))
-#define GETINT(n)                                                              \
-    if (MATCH(#n, TypeInt)) {                                                  \
-        tmpparam.init(#n, TypeInt, 1, &this->n);                               \
-        return &tmpparam;                                                      \
+#define GETINT(n)                                \
+    if (MATCH(#n, TypeInt)) {                    \
+        tmpparam.init(#n, TypeInt, 1, &this->n); \
+        return &tmpparam;                        \
     }
     GETINT(nchannels);
     GETINT(width);
@@ -601,7 +599,7 @@ namespace {  // make an anon namespace
 // clang-format off
 
 static std::string
-explain_shutterapex(const ParamValue& p, const void* extradata)
+explain_shutterapex(const ParamValue& p, const void* /*extradata*/)
 {
     if (p.type() == TypeDesc::FLOAT) {
         double val = pow(2.0, -(double)*(float*)p.data());
@@ -614,7 +612,7 @@ explain_shutterapex(const ParamValue& p, const void* extradata)
 }
 
 static std::string
-explain_apertureapex(const ParamValue& p, const void* extradata)
+explain_apertureapex(const ParamValue& p, const void* /*extradata*/)
 {
     if (p.type() == TypeDesc::FLOAT)
         return Strutil::sprintf("f/%2.1f", powf(2.0f, *(float*)p.data() / 2.0f));
@@ -622,7 +620,7 @@ explain_apertureapex(const ParamValue& p, const void* extradata)
 }
 
 static std::string
-explain_ExifFlash(const ParamValue& p, const void* extradata)
+explain_ExifFlash(const ParamValue& p, const void* /*extradata*/)
 {
     int val = p.get_int();
     return Strutil::sprintf("%s%s%s%s%s%s%s%s",
@@ -1111,7 +1109,7 @@ void
 ImageSpec::from_xml(const char* xml)
 {
     xml_document doc;
-    doc.load(xml);
+    doc.load_string(xml);
     xml_node n = doc.child("ImageSpec");
 
     //int version = n.attribute ("version").as_int();
@@ -1173,7 +1171,7 @@ pvt::check_texture_metadata_sanity(ImageSpec& spec)
     string_view software      = spec.get_string_attribute("Software");
     string_view textureformat = spec.get_string_attribute("textureformat");
     if (textureformat == "" ||   // no `textureformat` tag -- not a texture
-        spec.tile_width == 0 ||  // scanline file -- definitly not a texture
+        spec.tile_width == 0 ||  // scanline file -- definitely not a texture
         (!Strutil::istarts_with(software, "OpenImageIO")
          && !Strutil::istarts_with(software, "maketx"))
         // assume not maketx output if it doesn't say so in the software field

@@ -8,16 +8,12 @@
 #include <sstream>
 #include <string>
 
-#include <OpenEXR/ImathMatrix.h>
-
 #include <OpenImageIO/dassert.h>
-#include <OpenImageIO/filter.h>
 #include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imagecache.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/strutil.h>
 #include <OpenImageIO/texture.h>
-#include <OpenImageIO/thread.h>
 #include <OpenImageIO/typedesc.h>
 #include <OpenImageIO/ustring.h>
 #include <OpenImageIO/varyingref.h>
@@ -69,7 +65,7 @@ TextureSystemImpl::texture3d(ustring filename, TextureOpt& options,
     TextureFile* texturefile   = find_texturefile(filename, thread_info);
     return texture3d((TextureHandle*)texturefile, (Perthread*)thread_info,
                      options, P, dPdx, dPdy, dPdz, nchannels, result, dresultds,
-                     dresultdt);
+                     dresultdt, dresultdr);
 }
 
 
@@ -109,7 +105,7 @@ TextureSystemImpl::texture3d(TextureHandle* texture_handle_,
 #if 0
     // FIXME: currently, no support of actual MIPmapping.  No rush,
     // since the only volume format we currently support, Field3D,
-    // doens't support MIPmapping.
+    // doesn't support MIPmapping.
     static const texture3d_lookup_prototype lookup_functions[] = {
         // Must be in the same order as Mipmode enum
         &TextureSystemImpl::texture3d_lookup,
@@ -141,8 +137,8 @@ TextureSystemImpl::texture3d(TextureHandle* texture_handle_,
         int s = m_imagecache->subimage_from_name(texturefile,
                                                  options.subimagename);
         if (s < 0) {
-            errorf("Unknown subimage \"%s\" in texture \"%s\"",
-                   options.subimagename, texturefile->filename());
+            error("Unknown subimage \"{}\" in texture \"{}\"",
+                  options.subimagename, texturefile->filename());
             return missing_texture(options, nchannels, result, dresultds,
                                    dresultdt, dresultdr);
         }
@@ -150,8 +146,8 @@ TextureSystemImpl::texture3d(TextureHandle* texture_handle_,
         options.subimagename.clear();
     }
     if (options.subimage < 0 || options.subimage >= texturefile->subimages()) {
-        errorf("Unknown subimage \"%s\" in texture \"%s\"",
-               options.subimagename, texturefile->filename());
+        error("Unknown subimage \"{}\" in texture \"{}\"", options.subimagename,
+              texturefile->filename());
         return missing_texture(options, nchannels, result, dresultds, dresultdt,
                                dresultdr);
     }
@@ -272,8 +268,9 @@ bool
 TextureSystemImpl::texture3d_lookup_nomip(
     TextureFile& texturefile, PerThreadInfo* thread_info, TextureOpt& options,
     int nchannels_result, int actualchannels, const Imath::V3f& P,
-    const Imath::V3f& dPdx, const Imath::V3f& dPdy, const Imath::V3f& dPdz,
-    float* result, float* dresultds, float* dresultdt, float* dresultdr)
+    const Imath::V3f& /*dPdx*/, const Imath::V3f& /*dPdy*/,
+    const Imath::V3f& /*dPdz*/, float* result, float* dresultds,
+    float* dresultdt, float* dresultdr)
 {
     // Initialize results to 0.  We'll add from here on as we sample.
     for (int c = 0; c < nchannels_result; ++c)
@@ -335,7 +332,7 @@ TextureSystemImpl::accum3d_sample_closest(
     float s = P[0] * spec.full_width + spec.full_x;
     float t = P[1] * spec.full_height + spec.full_y;
     float r = P[2] * spec.full_depth + spec.full_z;
-    int stex, ttex, rtex;       // Texel coordintes
+    int stex, ttex, rtex;       // Texel coordinates
     (void)floorfrac(s, &stex);  // don't need fractional result
     (void)floorfrac(t, &ttex);
     (void)floorfrac(r, &rtex);
@@ -371,7 +368,7 @@ TextureSystemImpl::accum3d_sample_closest(
               ttex - tile_t, rtex - tile_r, tile_chbegin, tile_chend);
     bool ok = find_tile(id, thread_info, true);
     if (!ok)
-        errorf("%s", m_imagecache->geterror());
+        error("{}", m_imagecache->geterror());
     TileRef& tile(thread_info->tile);
     if (!tile || !ok)
         return false;
@@ -405,6 +402,14 @@ TextureSystemImpl::accum3d_sample_closest(
         float f = weight * options.fill;
         for (int c = actualchannels; c < nchannels_result; ++c)
             accum[c] += f;
+        if (OIIO_UNLIKELY(daccumds)) {
+            OIIO_DASSERT(daccumdt && daccumdr);
+            for (int c = actualchannels; c < nchannels_result; ++c) {
+                daccumds[c] = 0.0f;
+                daccumdt[c] = 0.0f;
+                daccumdr[c] = 0.0f;
+            }
+        }
     }
     return true;
 }
@@ -511,7 +516,7 @@ TextureSystemImpl::accum3d_sample_bilinear(
         id.xyz(stex[0] - tile_s, ttex[0] - tile_t, rtex[0] - tile_r);
         bool ok = find_tile(id, thread_info, true);
         if (!ok)
-            errorf("%s", m_imagecache->geterror());
+            error("{}", m_imagecache->geterror());
         TileRef& tile(thread_info->tile);
         if (!tile->valid())
             return false;
@@ -548,7 +553,7 @@ TextureSystemImpl::accum3d_sample_bilinear(
                            rtex[k] - tile_r);
                     bool ok = find_tile(id, thread_info, firstsample);
                     if (!ok)
-                        errorf("%s", m_imagecache->geterror());
+                        error("{}", m_imagecache->geterror());
                     firstsample = false;
                     TileRef& tile(thread_info->tile);
                     if (!tile->valid())
@@ -835,7 +840,7 @@ TextureSystemImpl::texture3d(TextureHandle* texture_handle,
     bool ok          = true;
     Tex::RunMask bit = 1;
     for (int i = 0; i < Tex::BatchWidth; ++i, bit <<= 1) {
-        float r[4], drds[4], drdt[4];  // temp result
+        float r[4], drds[4], drdt[4], drdr[4];  // temp result
         if (mask & bit) {
             opt.sblur  = options.sblur[i];
             opt.tblur  = options.tblur[i];
@@ -853,11 +858,12 @@ TextureSystemImpl::texture3d(TextureHandle* texture_handle,
                              dPdz[i + 2 * Tex::BatchWidth]);
             if (dresultds) {
                 ok &= texture3d(texture_handle, thread_info, opt, P_, dPdx_,
-                                dPdy_, dPdz_, nchannels, r, drds, drdt);
+                                dPdy_, dPdz_, nchannels, r, drds, drdt, drdr);
                 for (int c = 0; c < nchannels; ++c) {
                     result[c * Tex::BatchWidth + i]    = r[c];
                     dresultds[c * Tex::BatchWidth + i] = drds[c];
                     dresultdt[c * Tex::BatchWidth + i] = drdt[c];
+                    dresultdr[c * Tex::BatchWidth + i] = drdr[c];
                 }
             } else {
                 ok &= texture3d(texture_handle, thread_info, opt, P_, dPdx_,

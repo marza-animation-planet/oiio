@@ -49,28 +49,29 @@ make_test_image(string_view formatname)
 
 
 
-#define CHECKED(obj, call)                                                     \
-    if (!obj->call) {                                                          \
-        if (do_asserts)                                                        \
-            OIIO_CHECK_ASSERT(false && #call);                                 \
-        if (errmsg)                                                            \
-            *errmsg = obj->geterror();                                         \
-        else                                                                   \
-            std::cout << "      " << obj->geterror() << "\n";                  \
-        return false;                                                          \
+#define CHECKED(obj, call)                                    \
+    if (!obj->call) {                                         \
+        if (do_asserts)                                       \
+            OIIO_CHECK_ASSERT(false && #call);                \
+        if (errmsg)                                           \
+            *errmsg = obj->geterror();                        \
+        else                                                  \
+            std::cout << "      " << obj->geterror() << "\n"; \
+        return false;                                         \
     }
 
 
 static bool
 checked_write(ImageOutput* out, string_view filename, const ImageSpec& spec,
               TypeDesc type, const void* data, bool do_asserts = true,
-              std::string* errmsg = nullptr)
+              std::string* errmsg          = nullptr,
+              Filesystem::IOProxy* ioproxy = nullptr)
 {
     if (errmsg)
         *errmsg = "";
     std::unique_ptr<ImageOutput> out_local;
     if (!out) {
-        out_local = ImageOutput::create(filename);
+        out_local = ImageOutput::create(filename, ioproxy);
         out       = out_local.get();
     }
     OIIO_CHECK_ASSERT(out && "Failed to create output");
@@ -114,31 +115,41 @@ checked_read(ImageInput* in, string_view filename,
 // IOProxy, make sure it matches byte for byte the file named by disk_filename.
 static bool
 test_write_proxy(string_view formatname, string_view extension,
-                 const std::string& disk_filename, const ImageBuf& buf)
+                 const std::string& disk_filename, ImageBuf& buf)
 {
+    std::cout << "    Writing Proxy " << formatname << " ... ";
+    std::cout.flush();
     bool ok = true;
     Sysutil::Term term(stdout);
-    Filesystem::IOVecOutput outproxy;
-    ImageSpec proxyspec(buf.spec());
-    void* ptr = &outproxy;
-    proxyspec.attribute("oiio:ioproxy", TypeDesc::PTR, &ptr);
-    std::string memname = Strutil::sprintf("mem.%s", extension);
-    ok = checked_write(nullptr, memname, proxyspec, buf.spec().format,
-                       buf.localpixels());
 
-    // The in-memory vector we wrote should match, byte-for-byte,
+    // Use ImageOutput interface with a proxy
+    Filesystem::IOVecOutput outproxy;
+    std::string memname = Strutil::sprintf("mem.%s", extension);
+    ok = checked_write(nullptr, memname, buf.spec(), buf.spec().format,
+                       buf.localpixels(), true, nullptr, &outproxy);
+
+    // Use ImageBuf write interface with a proxy
+    Filesystem::IOVecOutput outproxybuf;
+    buf.set_write_ioproxy(&outproxybuf);
+    buf.write(memname);
+
+    // The in-memory vectors we wrote should match, byte-for-byte,
     // the version we wrote to disk earlier.
     uint64_t bytes_written = Filesystem::file_size(disk_filename);
     std::vector<unsigned char> readbuf(bytes_written);
     size_t bread = Filesystem::read_bytes(disk_filename, readbuf.data(),
                                           bytes_written);
-    ok           = (bread == bytes_written && outproxy.buffer() == readbuf);
-    OIIO_CHECK_ASSERT(ok && "Write proxy didn't match write file");
+
+    ok = (bread == bytes_written && outproxy.buffer() == readbuf
+          && outproxybuf.buffer() == readbuf);
+    OIIO_CHECK_ASSERT(bread == bytes_written
+                      && "Bytes read didn't match bytes written");
+    OIIO_CHECK_ASSERT(outproxy.buffer() == readbuf
+                      && "Write proxy via ImageOutput didn't match write file");
+    OIIO_CHECK_ASSERT(outproxybuf.buffer() == readbuf
+                      && "Write proxy via ImageBuf didn't match write file");
     if (ok)
         std::cout << term.ansi("green", "OK\n");
-    else {
-        Strutil::printf("Read size=%d write size=%d\n", bread, bytes_written);
-    }
     return ok;
 }
 
@@ -153,39 +164,62 @@ test_read_proxy(string_view formatname, string_view extension,
 {
     bool ok = true;
     Sysutil::Term term(stdout);
+    std::cout << "    Reading Proxy " << formatname << " ... ";
+    std::cout.flush();
+
+    // Read the disk file into readbuf as a blob -- just a byte-for-byte
+    // copy of the file, but in memory.
     uint64_t bytes_written = Filesystem::file_size(disk_filename);
     std::vector<unsigned char> readbuf(bytes_written);
     Filesystem::read_bytes(disk_filename, readbuf.data(), bytes_written);
-    std::cout << "    Reading Proxy " << formatname << " ... ";
-    std::cout.flush();
+
+    // Read the in-memory file using an ioproxy, with ImageInput
     Filesystem::IOMemReader inproxy(readbuf);
-    void* ptr = &inproxy;
-    ImageSpec config;
-    config.attribute("oiio:ioproxy", TypeDesc::PTR, &ptr);
     std::string memname = Strutil::sprintf("mem.%s", extension);
-    auto in             = ImageInput::open(memname, &config);
+    auto in             = ImageInput::open(memname, nullptr, &inproxy);
     OIIO_CHECK_ASSERT(in && "Failed to open input with proxy");
     if (in) {
-        readbuf.clear();
-        std::vector<unsigned char> readbuf2;
-        ok = checked_read(in.get(), memname, readbuf2, true);
-        ok &= memcmp(readbuf2.data(), buf.localpixels(), readbuf2.size()) == 0;
-        OIIO_CHECK_ASSERT(ok && "Read proxy didn't match original");
-        if (ok)
-            std::cout << term.ansi("green", "OK\n");
+        std::vector<unsigned char> readpixels;
+        ok &= checked_read(in.get(), memname, readpixels, true);
+        ok &= memcmp(readpixels.data(), buf.localpixels(), readpixels.size())
+              == 0;
+        OIIO_CHECK_ASSERT(
+            ok && "Read proxy with ImageInput didn't match original");
     } else {
+        ok = false;
         std::cout << "Error was: " << OIIO::geterror() << "\n";
     }
+
+    // Read the in-memory file using an ioproxy again, but with ImageInput
+    Filesystem::IOMemReader inproxybuf(readbuf);
+    ImageBuf inbuf(memname, 0, 0, nullptr, nullptr, &inproxybuf);
+    bool ok2 = inbuf.read(0, 0, /*force*/ true, TypeFloat);
+    if (!ok2) {
+        std::cout << "Read failed: " << inbuf.geterror() << "\n";
+        OIIO_CHECK_ASSERT(ok2);
+        return false;
+    }
+    OIIO_ASSERT(inbuf.localpixels());
+    OIIO_ASSERT(buf.localpixels());
+    OIIO_CHECK_EQUAL(buf.spec().format, inbuf.spec().format);
+    OIIO_CHECK_EQUAL(buf.spec().image_bytes(), inbuf.spec().image_bytes());
+    ok2 &= memcmp(inbuf.localpixels(), buf.localpixels(),
+                  buf.spec().image_bytes())
+           == 0;
+    OIIO_CHECK_ASSERT(ok2 && "Read proxy with ImageBuf didn't match original");
+    ok &= ok2;
+
+    if (ok)
+        std::cout << term.ansi("green", "OK\n");
     return ok;
 }
 
 
 
 // Test writer's ability to detect and recover from errors when asked to
-// write an unwriteable file (such as in a nonexistent directory).
+// write an unwritable file (such as in a nonexistent directory).
 static bool
-test_write_unwriteable(string_view formatname, string_view extension,
-                       const ImageBuf& buf)
+test_write_unwritable(string_view extension, const ImageBuf& buf)
 {
     bool ok = true;
     Sysutil::Term term(stdout);
@@ -222,7 +256,8 @@ test_all_formats()
         auto fmtexts           = Strutil::splitsv(e, ":");
         string_view formatname = fmtexts[0];
         // Skip "formats" that aren't amenable to this kind of testing
-        if (formatname == "null" || formatname == "socket")
+        if (formatname == "null" || formatname == "socket"
+            || formatname == "term")
             continue;
         // Field3d very finicky. Skip for now. FIXME?
         if (formatname == "field3d")
@@ -285,11 +320,11 @@ test_all_formats()
             test_read_proxy(formatname, extensions[0], filename, buf);
 
         //
-        // Test what happens when we write to an unwriteable or nonexistent
+        // Test what happens when we write to an unwritable or nonexistent
         // directory. It should not crash! But appropriately return some
         // error.
         //
-        test_write_unwriteable(formatname, extensions[0], buf);
+        test_write_unwritable(extensions[0], buf);
 
         Filesystem::remove(filename);
     }
@@ -386,7 +421,7 @@ test_read_tricky_sizes()
 
 
 int
-main(int argc, char** argv)
+main(int /*argc*/, char* /*argv*/[])
 {
     test_all_formats();
     test_read_tricky_sizes();

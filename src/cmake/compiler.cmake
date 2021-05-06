@@ -80,14 +80,22 @@ endif ()
 ###########################################################################
 # Turn on more detailed warnings and optionally consider warnings as errors
 #
-option (STOP_ON_WARNING "Stop building if there are any compiler warnings" OFF)
+if (${PROJECT_NAME}_SUPPORTED_RELEASE)
+    option (STOP_ON_WARNING "Stop building if there are any compiler warnings" OFF)
+else ()
+    option (STOP_ON_WARNING "Stop building if there are any compiler warnings" ON)
+endif()
+option (EXTRA_WARNINGS "Enable lots of extra pedantic warnings" OFF)
 if (NOT MSVC)
     add_compile_options ("-Wall")
+    if (EXTRA_WARNINGS)
+        add_compile_options ("-Wextra")
+    endif ()
     if (STOP_ON_WARNING OR DEFINED ENV{CI})
         add_compile_options ("-Werror")
-        # N.B. Force CI builds (Travis defines $CI) to use -Werror, even if
-        # STOP_ON_WARNING has been switched off by default, which we may do
-        # in release branches.
+        # N.B. Force CI builds to use -Werror, even if STOP_ON_WARNING has
+        # been switched off by default, which we may do in release
+        # branches.
     endif ()
 endif ()
 
@@ -112,7 +120,7 @@ if (${CXX_VISIBILITY_PRESET} STREQUAL "hidden" AND
     (CMAKE_SYSTEM_NAME MATCHES "Linux|kFreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "GNU"))
     # Linux/FreeBSD/Hurd: also hide all the symbols of dependent libraries
     # to prevent clashes if an app using this project is linked against
-    # other verions of our dependencies.
+    # other versions of our dependencies.
     set (VISIBILITY_MAP_COMMAND "-Wl,--version-script=${VISIBILITY_MAP_FILE}")
 endif ()
 
@@ -139,7 +147,7 @@ if (CMAKE_COMPILER_IS_CLANG OR CMAKE_COMPILER_IS_APPLECLANG)
         add_compile_options ("-Wno-unused-local-typedefs")
     endif ()
     if (CLANG_VERSION_STRING VERSION_GREATER_EQUAL 3.9)
-        # Don't warn about using unknown preprocessor symbols in #if'set
+        # Don't warn about using unknown preprocessor symbols in `#if`
         add_compile_options ("-Wno-expansion-to-defined")
     endif ()
 endif ()
@@ -185,9 +193,9 @@ endif ()
 # Use ccache if found
 #
 # This can really speed up compilation by caching object files that have
-# been compiled previously with idential arguments and inputs. Putting this
+# been compiled previously with identical arguments and inputs. Putting this
 # logic here makes it work even if the user is unaware of ccache. If it's
-# not found on the system, it will simply be silnetly not used.
+# not found on the system, it will simply be silently not used.
 option (USE_CCACHE "Use ccache if found" ON)
 find_program (CCACHE_FOUND ccache)
 if (CCACHE_FOUND AND USE_CCACHE)
@@ -232,8 +240,8 @@ endif ()
 ###########################################################################
 # SIMD and machine architecture options.
 #
-# The USE_SIMD optinon may be set to a comma-separated list of machine /
-# instruction set optinos, such as "avx3,f16c". The list will be parsed and
+# The USE_SIMD option may be set to a comma-separated list of machine /
+# instruction set options, such as "avx3,f16c". The list will be parsed and
 # the proper compiler directives added to generate code for those ISA
 # capabilities.
 #
@@ -428,42 +436,45 @@ endif ()
 # correct any deviations. If clang-format is found on the system, a
 # "clang-format" build target will trigger a reformatting.
 #
-set (CLANG_FORMAT_EXE_HINT "" CACHE PATH "clang-format executable's directory (will search if not specified")
-set (CLANG_FORMAT_INCLUDES "src/*.h" "src/*.cpp"
-    CACHE STRING "Glob patterns to include for clang-format")
-set (CLANG_FORMAT_EXCLUDES "*pugixml*" "*SHA1*" "*/farmhash.cpp" "*/tinyformat.h"
-                           "src/dpx.imageio/libdpx/*"
-                           "src/cineon.imageio/libcineon/*"
-                           "src/dds.imageio/squish/*"
-                           "src/gif.imageio/gif.h"
-                           "src/hdr.imageio/rgbe.cpp"
-                           "src/libutil/stb_sprintf.h"
-     CACHE STRING "Glob patterns to exclude for clang-format")
-find_program (CLANG_FORMAT_EXE
-              NAMES clang-format bin/clang-format
-              HINTS ${CLANG_FORMAT_EXE_HINT} ENV CLANG_FORMAT_EXE_HINT
-                    ENV LLVM_DIRECTORY
-              NO_DEFAULT_PATH
-              DOC "Path to clang-format executable")
-find_program (CLANG_FORMAT_EXE NAMES clang-format bin/clang-format)
-if (CLANG_FORMAT_EXE)
-    message (STATUS "clang-format found: ${CLANG_FORMAT_EXE}")
-    # Start with the list of files to include when formatting...
-    file (GLOB_RECURSE FILES_TO_FORMAT ${CLANG_FORMAT_INCLUDES})
-    # ... then process any list of excludes we are given
-    foreach (_pat ${CLANG_FORMAT_EXCLUDES})
-        file (GLOB_RECURSE _excl ${_pat})
-        list (REMOVE_ITEM FILES_TO_FORMAT ${_excl})
-    endforeach ()
-    #message (STATUS "clang-format file list: ${FILES_TO_FORMAT}")
-    file (COPY ${CMAKE_CURRENT_SOURCE_DIR}/.clang-format
-          DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-    add_custom_target (clang-format
-        COMMAND "${CLANG_FORMAT_EXE}" -i -style=file ${FILES_TO_FORMAT} )
-else ()
-    message (STATUS "clang-format not found.")
+# Note: skip all of this checking, setup, and cmake-format target if this
+# is being built as a subproject.
+if (NOT ${PROJECT_NAME}_IS_SUBPROJECT)
+    set (CLANG_FORMAT_EXE_HINT "" CACHE PATH "clang-format executable's directory (will search if not specified")
+    set (CLANG_FORMAT_INCLUDES "src/*.h" "src/*.cpp"
+        CACHE STRING "Glob patterns to include for clang-format")
+    set (CLANG_FORMAT_EXCLUDES "*pugixml*" "*SHA1*" "*/farmhash.cpp"
+                               "src/dpx.imageio/libdpx/*"
+                               "src/cineon.imageio/libcineon/*"
+                               "src/dds.imageio/squish/*"
+                               "src/gif.imageio/gif.h"
+                               "src/hdr.imageio/rgbe.cpp"
+                               "src/libutil/stb_sprintf.h"
+         CACHE STRING "Glob patterns to exclude for clang-format")
+    find_program (CLANG_FORMAT_EXE
+                  NAMES clang-format bin/clang-format
+                  HINTS ${CLANG_FORMAT_EXE_HINT} ENV CLANG_FORMAT_EXE_HINT
+                        ENV LLVM_DIRECTORY
+                  NO_DEFAULT_PATH
+                  DOC "Path to clang-format executable")
+    find_program (CLANG_FORMAT_EXE NAMES clang-format bin/clang-format)
+    if (CLANG_FORMAT_EXE)
+        message (STATUS "clang-format found: ${CLANG_FORMAT_EXE}")
+        # Start with the list of files to include when formatting...
+        file (GLOB_RECURSE FILES_TO_FORMAT ${CLANG_FORMAT_INCLUDES})
+        # ... then process any list of excludes we are given
+        foreach (_pat ${CLANG_FORMAT_EXCLUDES})
+            file (GLOB_RECURSE _excl ${_pat})
+            list (REMOVE_ITEM FILES_TO_FORMAT ${_excl})
+        endforeach ()
+        #message (STATUS "clang-format file list: ${FILES_TO_FORMAT}")
+        file (COPY ${CMAKE_CURRENT_SOURCE_DIR}/.clang-format
+              DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+        add_custom_target (clang-format
+            COMMAND "${CLANG_FORMAT_EXE}" -i -style=file ${FILES_TO_FORMAT} )
+    else ()
+        message (STATUS "clang-format not found.")
+    endif ()
 endif ()
-
 
 ###########################################################################
 # Another way to sneak in custom compiler and DSO linking flags.
@@ -474,6 +485,25 @@ if (EXTRA_CPP_ARGS)
     add_compile_options ("${EXTRA_CPP_ARGS}")
 endif()
 set (EXTRA_DSO_LINK_ARGS "" CACHE STRING "Extra command line definitions when building DSOs")
+
+
+###########################################################################
+# Set the versioning for shared libraries.
+#
+if (${PROJECT_NAME}_SUPPORTED_RELEASE)
+    # Supported releases guarantee ABI back-compatibility within the release
+    # family, so SO versioning is major.minor.
+    set (SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+         CACHE STRING "Set the SO version for dynamic libraries")
+else ()
+    # Development master makes no ABI stability guarantee, so we make the
+    # SO naming capture down to the major.minor.patch level.
+    set (SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}
+         CACHE STRING "Set the SO version for dynamic libraries")
+endif ()
+if (VERBOSE)
+    message(STATUS "Setting SOVERSION to: ${SOVERSION}")
+endif ()
 
 
 ###########################################################################
@@ -505,7 +535,7 @@ endif ()
 ###########################################################################
 # Any extra logic to be run only for CI builds goes here.
 #
-if (DEFINED ENV{TRAVIS} OR DEFINED ENV{APPVEYOR} OR DEFINED ENV{CI} OR DEFINED ENV{GITHUB_ACTIONS})
+if (DEFINED ENV{CI} OR DEFINED ENV{GITHUB_ACTIONS})
     add_definitions ("-D${PROJ_NAME}_CI=1" "-DBUILD_CI=1")
     if (APPLE)
         # Keep Mono framework from being incorrectly searched for include

@@ -24,7 +24,7 @@ bmp_input_imageio_create()
     return new BmpInput;
 }
 
-OIIO_EXPORT const char* bmp_input_extensions[] = { "bmp", nullptr };
+OIIO_EXPORT const char* bmp_input_extensions[] = { "bmp", "dib", nullptr };
 
 OIIO_PLUGIN_EXPORTS_END
 
@@ -77,11 +77,13 @@ BmpInput::open(const std::string& name, ImageSpec& spec)
     const int height    = (m_dib_header.height >= 0) ? m_dib_header.height
                                                   : -m_dib_header.height;
     m_spec = ImageSpec(m_dib_header.width, height, nchannels, TypeDesc::UINT8);
-    m_spec.attribute("XResolution", (int)m_dib_header.hres);
-    m_spec.attribute("YResolution", (int)m_dib_header.vres);
-    m_spec.attribute("ResolutionUnit", "m");
+    if (m_dib_header.hres > 0 && m_dib_header.vres > 0) {
+        m_spec.attribute("XResolution", (int)m_dib_header.hres);
+        m_spec.attribute("YResolution", (int)m_dib_header.vres);
+        m_spec.attribute("ResolutionUnit", "m");
+    }
 
-    // comupting size of one scanline - this is the size of one scanline that
+    // computing size of one scanline - this is the size of one scanline that
     // is stored in the file, not in the memory
     int swidth = 0;
     switch (m_dib_header.bpp) {
@@ -111,6 +113,14 @@ BmpInput::open(const std::string& name, ImageSpec& spec)
             return false;
         break;
     }
+    if (m_dib_header.bpp <= 16)
+        m_spec.attribute("bmp:bitsperpixel", m_dib_header.bpp);
+    switch (m_dib_header.size) {
+    case OS2_V1: m_spec.attribute("bmp:version", 1); break;
+    case WINDOWS_V3: m_spec.attribute("bmp:version", 3); break;
+    case WINDOWS_V4: m_spec.attribute("bmp:version", 4); break;
+    case WINDOWS_V5: m_spec.attribute("bmp:version", 5); break;
+    }
 
     // file pointer is set to the beginning of image data
     // we save this position - it will be helpfull in read_native_scanline
@@ -123,7 +133,7 @@ BmpInput::open(const std::string& name, ImageSpec& spec)
 
 
 bool
-BmpInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+BmpInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                void* data)
 {
     lock_guard lock(m_mutex);
@@ -134,14 +144,13 @@ BmpInput::read_native_scanline(int subimage, int miplevel, int y, int z,
         return false;
 
     // if the height is positive scanlines are stored bottom-up
-    if (m_dib_header.width >= 0)
+    if (m_dib_header.height >= 0)
         y = m_spec.height - y - 1;
     const int64_t scanline_off = y * m_padded_scanline_size;
 
-    std::unique_ptr<unsigned char[]> fscanline(
-        new unsigned char[m_padded_scanline_size]);
+    fscanline.resize(m_padded_scanline_size);
     Filesystem::fseek(m_fd, m_image_start + scanline_off, SEEK_SET);
-    size_t n = fread(fscanline.get(), 1, m_padded_scanline_size, m_fd);
+    size_t n = fread(fscanline.data(), 1, m_padded_scanline_size, m_fd);
     if (n != (size_t)m_padded_scanline_size) {
         if (feof(m_fd))
             errorf("Hit end of file unexpectedly");
@@ -157,13 +166,12 @@ BmpInput::read_native_scanline(int subimage, int miplevel, int y, int z,
         for (unsigned int i = 0; i < m_spec.scanline_bytes();
              i += m_spec.nchannels)
             std::swap(fscanline[i], fscanline[i + 2]);
-        memcpy(data, fscanline.get(), m_spec.scanline_bytes());
+        memcpy(data, fscanline.data(), m_spec.scanline_bytes());
         return true;
     }
 
     size_t scanline_bytes = m_spec.scanline_bytes();
-    std::unique_ptr<unsigned char[]> mscanline(
-        new unsigned char[scanline_bytes]);
+    uint8_t* mscanline    = (uint8_t*)data;
     if (m_dib_header.bpp == 16) {
         const uint16_t RED   = 0x7C00;
         const uint16_t GREEN = 0x03E0;
@@ -183,11 +191,13 @@ BmpInput::read_native_scanline(int subimage, int miplevel, int y, int z,
         }
     }
     if (m_dib_header.bpp == 4) {
-        for (unsigned int i = 0, j = 0; j + 6 < scanline_bytes; ++i, j += 6) {
+        for (unsigned int i = 0, j = 0; j < scanline_bytes; ++i, j += 6) {
             uint8_t mask     = 0xF0;
             mscanline[j]     = m_colortable[(fscanline[i] & mask) >> 4].r;
             mscanline[j + 1] = m_colortable[(fscanline[i] & mask) >> 4].g;
             mscanline[j + 2] = m_colortable[(fscanline[i] & mask) >> 4].b;
+            if (j + 3 >= scanline_bytes)
+                break;
             mask             = 0x0F;
             mscanline[j + 3] = m_colortable[fscanline[i] & mask].r;
             mscanline[j + 4] = m_colortable[fscanline[i] & mask].g;
@@ -208,7 +218,6 @@ BmpInput::read_native_scanline(int subimage, int miplevel, int y, int z,
             }
         }
     }
-    memcpy(data, &mscanline[0], scanline_bytes);
     return true;
 }
 
@@ -233,10 +242,15 @@ BmpInput::read_color_table(void)
     // if this field is 0 - color table has max colors:
     // pow(2, m_dib_header.cpalete) otherwise color table have
     // m_dib_header.cpalete entries
+    if (m_dib_header.cpalete < 0
+        || m_dib_header.cpalete > (1 << m_dib_header.bpp)) {
+        errorf("Possible corrupted header, invalid palette size");
+        return false;
+    }
     const int32_t colors = (m_dib_header.cpalete) ? m_dib_header.cpalete
                                                   : 1 << m_dib_header.bpp;
     size_t entry_size = 4;
-    // if the file is OS V2 bitmap color table entr has only 3 bytes, not four
+    // if the file is OS V2 bitmap color table entry has only 3 bytes, not four
     if (m_dib_header.size == OS2_V1)
         entry_size = 3;
     m_colortable.resize(colors);
@@ -244,8 +258,9 @@ BmpInput::read_color_table(void)
         size_t n = fread(&m_colortable[i], 1, entry_size, m_fd);
         if (n != entry_size) {
             if (feof(m_fd))
-                errorf(
-                    "Hit end of file unexpectedly while reading color table");
+                errorfmt(
+                    "Hit end of file unexpectedly while reading color table on color {}/{} (read {}, expected {})",
+                    i, colors, n, entry_size);
             else
                 errorf("read error while reading color table");
             return false;  // Read failed

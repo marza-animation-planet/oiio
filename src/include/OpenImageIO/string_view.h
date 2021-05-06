@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <limits>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -77,7 +78,7 @@ public:
     static const size_type npos = ~size_type(0);
 
     /// Default ctr
-    string_view() noexcept { init(nullptr, 0); }
+    constexpr string_view() noexcept : m_chars(nullptr), m_len(0) { }
     /// Copy ctr
     string_view(const string_view& copy) noexcept { init(copy.m_chars, copy.m_len); }
     /// Construct from char* and length.
@@ -99,7 +100,7 @@ public:
     /// be just data(), with no significant added expense (because most uses
     /// of string_view are simple wrappers of C strings, C++ std::string, or
     /// ustring -- all of which are 0-terminated). But in the more rare case
-    /// that the string_view represetns a non-0-terminated substring, it
+    /// that the string_view represents a non-0-terminated substring, it
     /// will force an allocation and copy underneath.
     ///
     /// Caveats:
@@ -136,13 +137,15 @@ public:
     const_reverse_iterator crend() const noexcept { return const_reverse_iterator (begin()); }
 
     // capacity
-    size_type size() const noexcept { return m_len; }
-    size_type length() const noexcept { return m_len; }
-    size_type max_size() const noexcept { return m_len; }
+    constexpr size_type size() const noexcept { return m_len; }
+    constexpr size_type length() const noexcept { return m_len; }
+    constexpr size_type max_size() const noexcept {
+        return std::numeric_limits<size_type>::max();
+    }
     /// Is the string_view empty, containing no characters?
-    bool empty() const noexcept { return m_len == 0; }
+    constexpr bool empty() const noexcept { return m_len == 0; }
 
-    /// Element access of an individual chracter (beware: no bounds
+    /// Element access of an individual character (beware: no bounds
     /// checking!).
     const charT& operator[](size_type pos) const { return m_chars[pos]; }
     /// Element access with bounds checking and exception if out of bounds.
@@ -382,3 +385,25 @@ typedef string_view string_ref;
 
 
 OIIO_NAMESPACE_END
+
+
+
+// Declare std::size and std::ssize for our string_view.
+namespace std {
+
+#if OIIO_CPLUSPLUS_VERSION < 17
+constexpr size_t size(const OIIO::string_view& c) { return c.size(); }
+#endif
+
+#if OIIO_CPLUSPLUS_VERSION < 20
+constexpr ptrdiff_t ssize(const OIIO::string_view& c) {
+    return static_cast<ptrdiff_t>(c.size());
+}
+#endif
+
+// Allow client software to easily know if the std::size/ssize was added for
+// our string_view.
+#define OIIO_STRING_VIEW_HAS_STD_SIZE 1
+
+
+} // namespace std

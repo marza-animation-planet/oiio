@@ -14,6 +14,7 @@
 
 #include <OpenImageIO/argparse.h>
 #include <OpenImageIO/benchmark.h>
+#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imagebuf.h>
 #include <OpenImageIO/imagebufalgo.h>
 #include <OpenImageIO/imagebufalgo_util.h>
@@ -43,8 +44,7 @@ static ImageBuf imgA, imgB, imgR;
 
 
 
-static void
-test_arrays(ROI roi)
+static void test_arrays(ROI)
 {
     const float* a = (const float*)imgA.localpixels();
     OIIO_DASSERT(a);
@@ -79,8 +79,7 @@ test_arrays_like_image(ROI roi)
 
 
 
-static void
-test_arrays_simd4(ROI roi)
+static void test_arrays_simd4(ROI)
 {
     const float* a = (const float*)imgA.localpixels();
     OIIO_DASSERT(a);
@@ -225,33 +224,26 @@ test_compute()
 static void
 getargs(int argc, char* argv[])
 {
-    bool help = false;
     ArgParse ap;
     // clang-format off
-    ap.options(
-        "compute_test\n" OIIO_INTRO_STRING "\n"
-        "Usage:  compute_test [options]",
-        // "%*", parse_files, "",
-        "--help", &help, "Print help message",
-        "-v", &verbose, "Verbose mode",
-        "--threads %d", &numthreads,
-            ustring::sprintf("Number of threads (default: %d)", numthreads).c_str(),
-        "--iterations %d", &iterations,
-            ustring::sprintf("Number of iterations (default: %d)", iterations).c_str(),
-        "--trials %d", &ntrials, "Number of trials",
-        "--allgpus", &allgpus, "Run OpenCL tests on all devices, not just default",
-        "--wedge", &wedge, "Do a wedge test",
-        nullptr);
+    ap.intro("compute_test\n" OIIO_INTRO_STRING)
+      .usage("compute_test [options]");
+
+    ap.arg("-v", &verbose)
+      .help("Verbose mode");
+    ap.arg("--threads %d", &numthreads)
+      .help(Strutil::sprintf("Number of threads (default: %d)", numthreads));
+    ap.arg("--iters %d", &iterations)
+      .help(Strutil::sprintf("Number of iterations (default: %d)", iterations));
+    ap.arg("--trials %d", &ntrials)
+      .help("Number of trials");
+    ap.arg("--allgpus", &allgpus)
+      .help("Run OpenCL tests on all devices, not just default");
+    ap.arg("--wedge", &wedge)
+      .help("Do a wedge test");
     // clang-format on
-    if (ap.parse(argc, (const char**)argv) < 0) {
-        std::cerr << ap.geterror() << std::endl;
-        ap.usage();
-        exit(EXIT_FAILURE);
-    }
-    if (help) {
-        ap.usage();
-        exit(EXIT_FAILURE);
-    }
+
+    ap.parse(argc, (const char**)argv);
 }
 
 

@@ -11,14 +11,9 @@
 #include <iostream>
 #include <iterator>
 
-#include <OpenEXR/ImathMatrix.h>
-#include <OpenEXR/ImathVec.h>
-#include <OpenEXR/half.h>
-
 #include <OpenImageIO/argparse.h>
 #include <OpenImageIO/benchmark.h>
 #include <OpenImageIO/filesystem.h>
-#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imagebuf.h>
 #include <OpenImageIO/imagebufalgo.h>
 #include <OpenImageIO/imagebufalgo_util.h>
@@ -105,93 +100,120 @@ typedef void (*Mapping3DWide)(const Tex::IntWide&, const Tex::IntWide&,
 
 
 
-static int
-parse_files(int argc, const char* argv[])
-{
-    for (int i = 0; i < argc; i++)
-        filenames.emplace_back(argv[i]);
-    return 0;
-}
-
-
-
 static void
 getargs(int argc, const char* argv[])
 {
-    bool help = false;
-    ArgParse ap;
     // clang-format off
-    ap.options ("Usage:  testtex [options] inputfile",
-                  "%*", parse_files, "",
-                  "--help", &help, "Print help message",
-                  "-v", &verbose, "Verbose status messages",
-                  "-o %s:FILENAME", &output_filename, "Output test image",
-                  "-d %s:TYPE", &dataformatname, "Set the output data format to one of:"
-                        "uint8, sint8, uint10, uint12, uint16, sint16, half, float, double",
-                  "--res %d:WIDTH %d:HEIGHT", &output_xres, &output_yres,
-                      "Resolution of output test image",
-                  "--nchannels %d:N", &nchannels_override,
-                      "Force number of channels to look up",
-                  "--iters %d:N", &iters,
-                      "Iterations for time trials",
-                  "--threads %d:N", &nthreads, "Number of threads (default 0 = #cores)",
-                  "-t %d", &nthreads, "",  // synonym
-                  "--texoptions %s:OPTLIST", &texoptions, "Set extra TextureSystem options (name=val,name=val)",
-                  "--blur %f:BLURSIZE", &sblur, "Add blur to texture lookup",
-                  "--stblur %f:SBLUR %f:TBLUR", &sblur, &tblur, "Add blur (s, t) to texture lookup",
-                  "--width %f:WIDTH", &width, "Multiply filter width of texture lookup",
-                  "--fill %f:FILLVAL", &fill, "Set fill value for missing channels",
-                  "--wrap %s:MODE", &wrapmodes, "Set wrap mode (default, black, clamp, periodic, mirror, overscan)",
-                  "--anisoaspect %f:ASPECT", &anisoaspect, "Set anisotropic ellipse aspect ratio for threadtimes tests (default: 2.0)",
-                  "--anisomax %d:MAX", &anisomax,
-                      Strutil::sprintf("Set max anisotropy (default: %d)", anisomax).c_str(),
-                  "--mipmode %d:MODE", &mipmode, "Set mip mode (default: 0 = aniso)",
-                  "--interpmode %d:MODE", &interpmode, "Set interp mode (default: 3 = smart bicubic)",
-                  "--missing %f:R %f:G %f:B", &missing[0], &missing[1], &missing[2],
-                        "Specify missing texture color",
-                  "--autotile %d:TILESIZE", &autotile, "Set auto-tile size for the image cache",
-                  "--automip", &automip, "Set auto-MIPmap for the image cache",
-                  "--batch", &batch,
-                        Strutil::sprintf("Use batched shading, batch size = %d", Tex::BatchWidth).c_str(),
-                  "--handle", &use_handle, "Use texture handle rather than name lookup",
-                  "--searchpath %s:PATHLIST", &searchpath, "Search path for files (colon-separated directory list)",
-                  "--filtertest", &filtertest, "Test the filter sizes",
-                  "--nowarp", &nowarp, "Do not warp the image->texture mapping",
-                  "--tube", &tube, "Make a tube projection",
-                  "--ctr", &test_construction, "Test TextureOpt construction time",
-                  "--gettexels", &test_gettexels, "Test TextureSystem::get_texels",
-                  "--getimagespec", &test_getimagespec, "Test TextureSystem::get_imagespec",
-                  "--offset %f:SOFF %f:TOFF %f:ROFF", &texoffset[0], &texoffset[1], &texoffset[2], "Offset texture coordinates",
-                  "--scalest %f:SSCALE %f:TSCALE", &sscale, &tscale, "Scale texture lookups (s, t)",
-                  "--cachesize %f:MB", &cachesize, "Set cache size, in MB",
-                  "--nodedup %!", &dedup, "Turn off de-duplication",
-                  "--scale %f:SCALEFACTOR", &scalefactor, "Scale intensities",
-                  "--maxfiles %d:MAXFILES", &maxfiles, "Set maximum open files",
-                  "--nountiled", &nountiled, "Reject untiled images",
-                  "--nounmipped", &nounmipped, "Reject unmipped images",
-                  "--graytorgb", &gray_to_rgb, "Convert gratscale textures to RGB",
-                  "--flipt", &flip_t, "Flip direction of t coordinate",
-                  "--derivs", &test_derivs, "Test returning derivatives of texture lookups",
-                  "--resetstats", &resetstats, "Print and reset statistics on each iteration",
-                  "--testhash", &testhash, "Test the tile hashing function",
-                  "--threadtimes %d:MODE", &threadtimes, "Do thread timings (arg = workload profile)",
-                  "--trials %d:N", &ntrials, "Number of trials for timings",
-                  "--wedge", &wedge, "Wedge test",
-                  "--noinvalidate %!", &invalidate_before_iter, "Don't invalidate the cache before each --threadtimes trial",
-                  "--closebeforeiter", &close_before_iter, "Close all handles before each --iter",
-                  "--testicwrite %d:MODE", &testicwrite, "Test ImageCache write ability (1=seeded, 2=generated)",
-                  "--teststatquery", &test_statquery, "Test queries of statistics",
-                  nullptr);
+    ArgParse ap;
+    ap.usage ("testtex [options] inputfile");
+    ap.arg("filename")
+      .hidden()
+      .action([&](cspan<const char*> argv){ filenames.emplace_back(argv[0]); });
+    ap.arg("-v", &verbose)
+      .help("Verbose status messages");
+
+    ap.arg("-o %s:FILENAME", &output_filename)
+      .help("Output test image");
+    ap.arg("-d %s:TYPE", &dataformatname)
+      .help("Set the output data format to one of: "
+            "uint8, sint8, uint10, uint12, uint16, sint16, half, float, double");
+    ap.arg("--res %d:WIDTH %d:HEIGHT", &output_xres, &output_yres)
+      .help("Resolution of output test image");
+    ap.arg("--nchannels %d:N", &nchannels_override)
+      .help("Force number of channels to look up");
+    ap.arg("--iters %d:N", &iters)
+      .help("Iterations for time trials");
+    ap.arg("--threads %d:N", &nthreads)
+      .help("Number of threads (default 0 = #cores)");
+    ap.arg("-t %d", &nthreads)
+       .hidden();  // synonym
+    ap.arg("--texoptions %s:OPTLIST", &texoptions)
+      .help("Set extra TextureSystem options (name=val,name=val)");
+    ap.arg("--blur %f:BLURSIZE", &sblur)
+      .help("Add blur to texture lookup");
+    ap.arg("--stblur %f:SBLUR %f:TBLUR", &sblur, &tblur)
+      .help("Add blur (s, t) to texture lookup");
+    ap.arg("--width %f:WIDTH", &width)
+      .help("Multiply filter width of texture lookup");
+    ap.arg("--fill %f:FILLVAL", &fill)
+      .help("Set fill value for missing channels");
+    ap.arg("--wrap %s:MODE", &wrapmodes)
+      .help("Set wrap mode (default, black, clamp, periodic, mirror, overscan)");
+    ap.arg("--anisoaspect %f:ASPECT", &anisoaspect)
+      .help("Set anisotropic ellipse aspect ratio for threadtimes tests (default: 2.0)");
+    ap.arg("--anisomax %d:MAX", &anisomax)
+      .help(Strutil::sprintf("Set max anisotropy (default: %d)", anisomax));
+    ap.arg("--mipmode %d:MODE", &mipmode)
+      .help("Set mip mode (default: 0 = aniso)");
+    ap.arg("--interpmode %d:MODE", &interpmode)
+      .help("Set interp mode (default: 3 = smart bicubic)");
+    ap.arg("--missing %f:R %f:G %f:B", &missing[0], &missing[1], &missing[2])
+      .help("Specify missing texture color");
+    ap.arg("--autotile %d:TILESIZE", &autotile)
+      .help("Set auto-tile size for the image cache");
+    ap.arg("--automip", &automip)
+      .help("Set auto-MIPmap for the image cache");
+    ap.arg("--batch", &batch)
+      .help(Strutil::sprintf("Use batched shading, batch size = %d", Tex::BatchWidth));
+    ap.arg("--handle", &use_handle)
+      .help("Use texture handle rather than name lookup");
+    ap.arg("--searchpath %s:PATHLIST", &searchpath)
+      .help("Search path for files (colon-separated directory list)");
+    ap.arg("--filtertest", &filtertest)
+      .help("Test the filter sizes");
+    ap.arg("--nowarp", &nowarp)
+      .help("Do not warp the image->texture mapping");
+    ap.arg("--tube", &tube)
+      .help("Make a tube projection");
+    ap.arg("--ctr", &test_construction)
+      .help("Test TextureOpt construction time");
+    ap.arg("--gettexels", &test_gettexels)
+      .help("Test TextureSystem::get_texels");
+    ap.arg("--getimagespec", &test_getimagespec)
+      .help("Test TextureSystem::get_imagespec");
+    ap.arg("--offset %f:SOFF %f:TOFF %f:ROFF", &texoffset[0], &texoffset[1], &texoffset[2])
+      .help("Offset texture coordinates");
+    ap.arg("--scalest %f:SSCALE %f:TSCALE", &sscale, &tscale)
+      .help("Scale texture lookups (s, t)");
+    ap.arg("--cachesize %f:MB", &cachesize)
+      .help("Set cache size, in MB");
+    ap.arg("--nodedup %!", &dedup)
+      .help("Turn off de-duplication");
+    ap.arg("--scale %f:SCALEFACTOR", &scalefactor)
+      .help("Scale intensities");
+    ap.arg("--maxfiles %d:MAXFILES", &maxfiles)
+      .help("Set maximum open files");
+    ap.arg("--nountiled", &nountiled)
+      .help("Reject untiled images");
+    ap.arg("--nounmipped", &nounmipped)
+      .help("Reject unmipped images");
+    ap.arg("--graytorgb", &gray_to_rgb)
+      .help("Convert gratscale textures to RGB");
+    ap.arg("--flipt", &flip_t)
+      .help("Flip direction of t coordinate");
+    ap.arg("--derivs", &test_derivs)
+      .help("Test returning derivatives of texture lookups");
+    ap.arg("--resetstats", &resetstats)
+      .help("Print and reset statistics on each iteration");
+    ap.arg("--testhash", &testhash)
+      .help("Test the tile hashing function");
+    ap.arg("--threadtimes %d:MODE", &threadtimes)
+      .help("Do thread timings (arg = workload profile)");
+    ap.arg("--trials %d:N", &ntrials)
+      .help("Number of trials for timings");
+    ap.arg("--wedge", &wedge)
+      .help("Wedge test");
+    ap.arg("--noinvalidate %!", &invalidate_before_iter)
+      .help("Don't invalidate the cache before each --threadtimes trial");
+    ap.arg("--closebeforeiter", &close_before_iter)
+      .help("Close all handles before each --iter");
+    ap.arg("--testicwrite %d:MODE", &testicwrite)
+      .help("Test ImageCache write ability (1=seeded, 2=generated)");
+    ap.arg("--teststatquery", &test_statquery)
+      .help("Test queries of statistics");
+
     // clang-format on
-    if (ap.parse(argc, argv) < 0) {
-        std::cerr << ap.geterror() << std::endl;
-        ap.usage();
-        exit(EXIT_FAILURE);
-    }
-    if (help) {
-        ap.usage();
-        exit(EXIT_FAILURE);
-    }
+    ap.parse(argc, argv);
 
     if (filenames.size() < 1 && !test_construction && !test_getimagespec
         && !testhash) {
@@ -204,7 +226,7 @@ getargs(int argc, const char* argv[])
 
 
 static void
-initialize_opt(TextureOpt& opt, int nchannels)
+initialize_opt(TextureOpt& opt)
 {
     opt.sblur  = sblur;
     opt.tblur  = tblur >= 0.0f ? tblur : sblur;
@@ -212,8 +234,7 @@ initialize_opt(TextureOpt& opt, int nchannels)
     opt.swidth = width;
     opt.twidth = width;
     opt.rwidth = width;
-    //    opt.nchannels = nchannels;
-    opt.fill = (fill >= 0.0f) ? fill : 1.0f;
+    opt.fill   = (fill >= 0.0f) ? fill : 1.0f;
     if (missing[0] >= 0)
         opt.missingcolor = (float*)&missing;
     TextureOpt::parse_wrapmodes(wrapmodes.c_str(), opt.swrap, opt.twrap);
@@ -226,7 +247,7 @@ initialize_opt(TextureOpt& opt, int nchannels)
 
 
 static void
-initialize_opt(TextureOptBatch& opt, int nchannels)
+initialize_opt(TextureOptBatch& opt)
 {
     using namespace Tex;
     FloatWide sb(sblur);
@@ -541,7 +562,7 @@ plain_tex_region(ImageBuf& image, ustring filename, Mapping2D mapping,
     int nchannels = nchannels_override ? nchannels_override : image.nchannels();
 
     TextureOpt opt;
-    initialize_opt(opt, nchannels);
+    initialize_opt(opt);
 
     float* result    = OIIO_ALLOCA(float, std::max(3, nchannels));
     float* dresultds = test_derivs ? OIIO_ALLOCA(float, nchannels) : NULL;
@@ -656,7 +677,7 @@ plain_tex_region_batch(ImageBuf& image, ustring filename, Mapping2DWide mapping,
                  || image_dt->spec().format == TypeDesc::FLOAT);
 
     TextureOptBatch opt;
-    initialize_opt(opt, nchannels);
+    initialize_opt(opt);
 
     int nc               = std::max(3, nchannels);
     FloatWide* result    = OIIO_ALLOCA(FloatWide, nc);
@@ -780,7 +801,7 @@ tex3d_region(ImageBuf& image, ustring filename, Mapping3D mapping, ROI roi)
     int nchannels = nchannels_override ? nchannels_override : image.nchannels();
 
     TextureOpt opt;
-    initialize_opt(opt, nchannels);
+    initialize_opt(opt);
     opt.fill = (fill >= 0.0f) ? fill : 0.0f;
     //    opt.swrap = opt.twrap = opt.rwrap = TextureOpt::WrapPeriodic;
 
@@ -823,7 +844,7 @@ tex3d_region_batch(ImageBuf& image, ustring filename, Mapping3DWide mapping,
     int nchannels = nchannels_override ? nchannels_override : image.nchannels();
 
     TextureOptBatch opt;
-    initialize_opt(opt, nchannels);
+    initialize_opt(opt);
     opt.fill = (fill >= 0.0f) ? fill : 0.0f;
     //    opt.swrap = opt.twrap = opt.rwrap = TextureOpt::WrapPeriodic;
 
@@ -931,17 +952,11 @@ test_texture3d_batch(ustring filename, Mapping3DWide mapping)
 
 
 
-static void
-test_shadow(ustring filename)
-{
-}
+static void test_shadow(ustring /*filename*/) {}
 
 
 
-static void
-test_environment(ustring filename)
-{
-}
+static void test_environment(ustring /*filename*/) {}
 
 
 
@@ -967,7 +982,7 @@ test_getimagespec_gettexels(ustring filename)
     ImageSpec postagespec(w, h, nchannels, TypeDesc::FLOAT);
     ImageBuf buf(postagespec);
     TextureOpt opt;
-    initialize_opt(opt, nchannels);
+    initialize_opt(opt);
     std::vector<float> tmp(w * h * nchannels);
     int x = spec.x + spec.width / 2 - w / 2;
     int y = spec.y + spec.height / 2 - h / 2;
@@ -1130,7 +1145,7 @@ do_tex_thread_workout(int iterations, int mythread)
     int nchannels = nchannels_override ? nchannels_override : 3;
     float* result = OIIO_ALLOCA(float, nchannels);
     TextureOpt opt;
-    initialize_opt(opt, nchannels);
+    initialize_opt(opt);
     float* dresultds = test_derivs ? OIIO_ALLOCA(float, nchannels) : NULL;
     float* dresultdt = test_derivs ? OIIO_ALLOCA(float, nchannels) : NULL;
     TextureSystem::Perthread* perthread_info = texsys->get_perthread_info();
@@ -1278,11 +1293,11 @@ public:
     }
     virtual ~GridImageInput() { close(); }
     virtual const char* format_name(void) const final { return "grid"; }
-    virtual bool valid_file(const std::string& filename) const final
+    virtual bool valid_file(const std::string& /*filename*/) const final
     {
         return true;
     }
-    virtual bool open(const std::string& name, ImageSpec& newspec) final
+    virtual bool open(const std::string& /*name*/, ImageSpec& newspec) final
     {
         bool ok = seek_subimage(0, 0);
         newspec = spec();
@@ -1309,8 +1324,9 @@ public:
         m_miplevel         = miplevel;
         return true;
     }
-    virtual bool read_native_scanline(int subimage, int miplevel, int y, int z,
-                                      void* data) final
+    virtual bool read_native_scanline(int /*subimage*/, int /*miplevel*/,
+                                      int /*y*/, int /*z*/,
+                                      void* /*data*/) final
     {
         return false;
     }
@@ -1620,6 +1636,11 @@ main(int argc, const char* argv[])
               << Strutil::memformat(Sysutil::memory_used(true)) << "\n";
     std::cout << texsys->getstats(verbose ? 2 : 0) << "\n";
     TextureSystem::destroy(texsys);
+
+    // Force all files to close, ugh, it's the only way I can find to solve
+    // an occasional problem with static destructor order fiasco with
+    // field3d when building with EMBEDPLUGINS=0 on MacOS.
+    ImageCache::create()->close_all();
 
     if (verbose)
         std::cout << "\nustrings: " << ustring::getstats(false) << "\n\n";

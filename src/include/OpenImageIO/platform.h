@@ -4,15 +4,22 @@
 
 
 /////////////////////////////////////////////////////////////////////////
-/// @file  platform.h
-///
-/// @brief Platform-related macros.
+// \file
+// platform.h is where we put all the platform-specific macros.
+// Things like:
+//
+//   * Detecting which compiler is being used.
+//   * Detecting which C++ standard is being used and what features are
+//     available.
+//   * Various helpers that need to be defined differently per compiler,
+//     language version, OS, etc.
 /////////////////////////////////////////////////////////////////////////
 
 // clang-format off
 
 #pragma once
 
+#include <cassert>
 #include <cstdlib>
 #include <type_traits>
 #include <utility>  // std::forward
@@ -55,10 +62,13 @@
 // See https://en.cppreference.com/w/cpp/compiler_support
 //
 // OIIO_CPLUSPLUS_VERSION : which C++ standard is compiling (11, 14, ...)
-// OIIO_CONSTEXPR14 : constexpr for C++ >= 14, otherwise nothing (this is
-//                      useful for things that can only be constexpr for 14)
-// OIIO_CONSTEXPR17 : constexpr for C++ >= 17, otherwise nothing (this is
-//                      useful for things that can only be constexpr for 17)
+// OIIO_CONSTEXPR14 :
+// OIIO_CONSTEXPR17 :
+// OIIO_CONSTEXPR20 : constexpr for C++ >= the designated version, otherwise
+//                    nothing (this is useful for things that can only be
+//                    constexpr for particular versions or greater).
+// OIIO_INLINE_CONSTEXPR : inline constexpr variables, added in C++17. For
+//                         older C++, just constexpr.
 //
 // Note: oiioversion.h defines OIIO_BUILD_CPP11, OIIO_BUILD_CPP14,
 // OIIO_BUILD_CPP17, or OIIO_BUILD_CPP20 to be 1 if OIIO itself was *built*
@@ -74,21 +84,25 @@
 #    define OIIO_CONSTEXPR14 constexpr
 #    define OIIO_CONSTEXPR17 constexpr
 #    define OIIO_CONSTEXPR20 constexpr
+#    define OIIO_INLINE_CONSTEXPR inline constexpr
 #elif (__cplusplus >= 201703L)
 #    define OIIO_CPLUSPLUS_VERSION 17
 #    define OIIO_CONSTEXPR14 constexpr
 #    define OIIO_CONSTEXPR17 constexpr
 #    define OIIO_CONSTEXPR20 /* not constexpr before C++20 */
+#    define OIIO_INLINE_CONSTEXPR inline constexpr
 #elif (__cplusplus >= 201402L) || (defined(_MSC_VER) && _MSC_VER >= 1914)
 #    define OIIO_CPLUSPLUS_VERSION 14
 #    define OIIO_CONSTEXPR14 constexpr
 #    define OIIO_CONSTEXPR17 /* not constexpr before C++17 */
 #    define OIIO_CONSTEXPR20 /* not constexpr before C++20 */
+#    define OIIO_INLINE_CONSTEXPR constexpr
 #elif (__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1900)
 #    define OIIO_CPLUSPLUS_VERSION 11
 #    define OIIO_CONSTEXPR14 /* not constexpr before C++14 */
 #    define OIIO_CONSTEXPR17 /* not constexpr before C++17 */
 #    define OIIO_CONSTEXPR20 /* not constexpr before C++20 */
+#    define OIIO_INLINE_CONSTEXPR constexpr
 #else
 #    error "This version of OIIO is meant to work only with C++11 and above"
 #endif
@@ -206,7 +220,7 @@
 
 // Generic pragma definition
 #if defined(_MSC_VER)
-    // Of couse MS does it in a quirky way
+    // Of course MS does it in a quirky way
     #define OIIO_PRAGMA(UnQuotedPragma) __pragma(UnQuotedPragma)
 #else
     // All other compilers seem to support C99 _Pragma
@@ -221,8 +235,10 @@
 #    define OIIO_GCC_PRAGMA(UnQuotedPragma) OIIO_PRAGMA(UnQuotedPragma)
 #    if defined(__clang__)
 #        define OIIO_CLANG_PRAGMA(UnQuotedPragma) OIIO_PRAGMA(UnQuotedPragma)
+#        define OIIO_GCC_ONLY_PRAGMA(UnQuotedPragma)
 #    else
 #        define OIIO_CLANG_PRAGMA(UnQuotedPragma)
+#        define OIIO_GCC_ONLY_PRAGMA(UnQuotedPragma) OIIO_PRAGMA(UnQuotedPragma)
 #    endif
 #    define OIIO_MSVS_PRAGMA(UnQuotedPragma)
 #elif defined(_MSC_VER)
@@ -231,6 +247,7 @@
 #    define OIIO_PRAGMA_VISIBILITY_PUSH /* N/A on MSVS */
 #    define OIIO_PRAGMA_VISIBILITY_POP  /* N/A on MSVS */
 #    define OIIO_GCC_PRAGMA(UnQuotedPragma)
+#    define OIIO_GCC_ONLY_PRAGMA(UnQuotedPragma)
 #    define OIIO_CLANG_PRAGMA(UnQuotedPragma)
 #    define OIIO_MSVS_PRAGMA(UnQuotedPragma) OIIO_PRAGMA(UnQuotedPragma)
 #else
@@ -239,21 +256,51 @@
 #    define OIIO_PRAGMA_VISIBILITY_PUSH
 #    define OIIO_PRAGMA_VISIBILITY_POP
 #    define OIIO_GCC_PRAGMA(UnQuotedPragma)
+#    define OIIO_GCC_ONLY_PRAGMA(UnQuotedPragma)
 #    define OIIO_CLANG_PRAGMA(UnQuotedPragma)
 #    define OIIO_MSVS_PRAGMA(UnQuotedPragma)
 #endif
 
 
 
-/// allocates smallish stack memory, equivalent of C99 type var_name[size]
+/// OIIO_ALLOCA is used to allocate smallish amount of memory on the stack,
+/// equivalent of C99 type var_name[size].
+///
+/// NOTE: in a debug build, this will assert for allocations >= 1MB, which
+/// is much too big. Hopefully this will keep us from abusing alloca and
+/// having stack overflows. The rule of thumb is that it's ok to use alloca
+/// for small things of bounded size (like, one float per channel), but
+/// not for anything that could be arbitrarily big (like a full scanline or
+/// image, because sooner or later somebody will give you an image big
+/// enough to cause trouble). Consider using the OIIO_ALLOCATE_STACK_OR_HEAP
+/// idiom rather than a direct OIIO_ALLOCA if you aren't sure the item will
+/// be small.
 #if defined(__GNUC__)
-#    define OIIO_ALLOCA(type, size) ((size) != 0 ? ((type*)__builtin_alloca((size) * sizeof(type))) : nullptr)
+#    define OIIO_ALLOCA(type, size) (assert(size < (1<<20)), (size) != 0 ? ((type*)__builtin_alloca((size) * sizeof(type))) : nullptr)
 #else
-#    define OIIO_ALLOCA(type, size) ((size) != 0 ? ((type*)alloca((size) * sizeof(type))) : nullptr)
+#    define OIIO_ALLOCA(type, size) (assert(size < (1<<20)), (size) != 0 ? ((type*)alloca((size) * sizeof(type))) : nullptr)
 #endif
 
 /// Deprecated (for namespace pollution reasons)
 #define ALLOCA(type, size) OIIO_ALLOCA(type, size)
+
+
+/// Try to allocate T* var to point to T[size] elements of temporary storage
+/// that will automatically free when the local scope is exited. Allocate
+/// the space on the stack with alloca if it's small, but if it's big (> 64
+/// KB), allocate on the heap with a new[], stored as a std::unique_ptr. In
+/// both cases, the memory will be freed automatically upon exit of scope.
+/// That threshold is big enough for one scanline of a 4096 x 4 channel x
+/// float image, or one 64x64 tile of a 4xfloat image.
+#define OIIO_ALLOCATE_STACK_OR_HEAP(var, T, size)   \
+    size_t var##___size = size_t(size);             \
+    std::unique_ptr<T[]> var##___heap;              \
+    if (var##___size * sizeof(T) <= (1 << 16)) {    \
+        var = OIIO_ALLOCA(T, var##___size);         \
+    } else {                                        \
+        var##___heap.reset(new T[var##___size]);    \
+        var = var##___heap.get();                   \
+    }
 
 
 // Define a macro that can be used for memory alignment.
@@ -376,8 +423,8 @@
 
 
 // OIIO_FALLTHROUGH at the end of a `case` label's statements documents that
-// he switch statement case is intentionally falling through to the code for
-// the next case.
+// the switch statement case is intentionally falling through to the code
+// for the next case.
 #if OIIO_CPLUSPLUS_VERSION >= 17 || __has_cpp_attribute(fallthrough)
 #    define OIIO_FALLTHROUGH [[fallthrough]]
 #else

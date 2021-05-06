@@ -13,6 +13,7 @@ lg@openimageio.org
 * Alexander Murashko
 * Alexandre Gauthier
 * Alexis Oblet
+* Alister Chowdhury
 * Alexy Pawlow
 * Aman Shah
 * Ananth Garre
@@ -20,14 +21,18 @@ lg@openimageio.org
 * Basileios Anastasatos
 * Bastien Montagne
 * Ben De Luca
+* Biswapriyo Nath
 * Blair Tennessy
+* Blazej Floch
 * Brecht Van Lommel
 * Brent Davis
 * Brian Hall
+* Brice Gros
 * Carl Rand
 * Cassian Andrei
 * Chad Dombrova
 * Changlin Hsieh
+* Chris Crosetto
 * Chris Foster
 * Chris Kulla
 * Christoph Willing
@@ -42,9 +47,11 @@ lg@openimageio.org
 * Deepak Gopinath
 * Delai Felinto
 * Dennis Schridde
+* Dieter De Baets
 * Dinko Galetik
 * Dominik Bartkiewicz
 * Duncan Chan
+* Dustin Rodrigues
 * Edgar Velazquez-Armendariz
 * Eloi Du Bois
 * Elvic Liang
@@ -52,6 +59,7 @@ lg@openimageio.org
 * Fabien Servant
 * Frédéric Devernay
 * Fredrik Averpil
+* Gaurav Bansal
 * Ghislain Antony Vaillant
 * Gonzalo Garramuño
 * Grégoire De Lillo
@@ -62,10 +70,13 @@ lg@openimageio.org
 * Henri Fousse
 * Harry Mallon
 * Hugh Macdonald
+* Imarz
 * Irena Damsky
 * Ismael Cortes
+* Jan Hettenkofer
 * Jep Hill
 * Jeph Alapat
+* Jens Lindgren
 * Jeremy Rose
 * Jeremy Selan
 * Jim Hourihan
@@ -111,16 +122,19 @@ lg@openimageio.org
 * Nick Black
 * Nicolas Burtnyk
 * Nixon Kwok
+* Northon Patrick
 * Nuno Cardoso
 * Ott Tinn
 * Pascal Lecocq
 * Patrick Hodoul
+* Patrick Piché
 * Paul Molodowitch
 * Pavel Karneliuk
 * Pete Larabell
 * Philip Nemec
 * Pino Toscano
 * Puneet Jain
+* Radu Arjocu
 * Ramon Montoya
 * Ray Molenkamp
 * Richard Shaw
@@ -139,6 +153,7 @@ lg@openimageio.org
 * Shane Ambler
 * Simon Boorer
 * Solomon Boulos
+* SRHMorris
 * Stefan Bruens
 * Stefan Stavrev
 * Thiago Ize

@@ -19,7 +19,7 @@
 #    pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
-#if OIIO_CPLUSPLUS_VERSION >= 17                                               \
+#if OIIO_CPLUSPLUS_VERSION >= 17 \
     && (OIIO_CLANG_VERSION || OIIO_APPLE_CLANG_VERSION)
 // libraw uses auto_ptr, which is not in C++17 at all for clang, though
 // it does seem to be for gcc. So for clang, alias it to unique_ptr.
@@ -110,7 +110,7 @@ private:
             m_spec.attribute(prefixedname(prefix, name), data);
     }
     void add(string_view prefix, std::string name, string_view data,
-             bool force = true, int ignval = 0)
+             bool force = true, int /*ignval*/ = 0)
     {
         if (force || (data.size() && data[0]))
             m_spec.attribute(prefixedname(prefix, name), data);
@@ -329,7 +329,7 @@ RawInput::open(const std::string& name, ImageSpec& newspec,
     m_config   = config;
 
     // For a fresh open, we are concerned with just reading all the
-    // meatadata quickly, because maybe that's all that will be needed. So
+    // metadata quickly, because maybe that's all that will be needed. So
     // call open_raw passing unpack=false. This will not read the pixels! We
     // will need to close and re-open with unpack=true if and when we need
     // the actual pixel values.
@@ -364,8 +364,17 @@ RawInput::open_raw(bool unpack, const std::string& name,
                                         &exifspec);
 #endif
 
-    int ret;
-    if ((ret = m_processor->open_file(name.c_str())) != LIBRAW_SUCCESS) {
+    // Force flip value if needed. If user_flip is -1, libraw ignores it
+    m_processor->imgdata.params.user_flip
+        = config.get_int_attribute("raw:user_flip", -1);
+
+#ifdef _WIN32
+    // Convert to wide chars, just on Windows.
+    int ret = m_processor->open_file(Strutil::utf8_to_utf16(name).c_str());
+#else
+    int ret = m_processor->open_file(name.c_str());
+#endif
+    if (ret != LIBRAW_SUCCESS) {
         errorf("Could not open file \"%s\", %s", m_filename,
                libraw_strerror(ret));
         return false;
@@ -379,6 +388,7 @@ RawInput::open_raw(bool unpack, const std::string& name,
             return false;
         }
     }
+
     m_processor->adjust_sizes_info_only();
 
     // Process image at half size if "raw:half_size" is not 0
@@ -449,7 +459,7 @@ RawInput::open_raw(bool unpack, const std::string& name,
         = config.get_int_attribute("raw:use_camera_matrix", 1);
 
     // Check to see if the user has explicitly requested output colorspace
-    // primaries via a configuration hinnt "raw:ColorSpace". The default if
+    // primaries via a configuration hint "raw:ColorSpace". The default if
     // there is no such hint is convert to sRGB, so that if somebody just
     // naively reads a raw image and slaps it into a framebuffer for
     // display, it will work just like a jpeg. More sophisticated users
@@ -785,8 +795,9 @@ RawInput::get_makernotes_canon()
     MAKERF(FlashExposureLock);
     MAKERF(ExposureMode);
     MAKERF(AESetting);
-    MAKERF(HighlightTonePriority);
     MAKERF(ImageStabilization);
+#    if LIBRAW_VERSION < LIBRAW_MAKE_VERSION(0, 21, 0)
+    MAKERF(HighlightTonePriority);
     MAKERF(FocusMode);
     MAKER(AFPoint, 0);
     MAKERF(FocusContinuous);
@@ -807,6 +818,7 @@ RawInput::get_makernotes_canon()
         //  short        AFPointsSelected[4];
         //  ushort       PrimaryAFPoint;
     }
+#    endif
     MAKERF(FlashMode);
     MAKERF(FlashActivity);
     MAKER(FlashBits, 0);
@@ -846,6 +858,7 @@ RawInput::get_makernotes_nikon()
     MAKERF(ImageStabilization);
     MAKER(VibrationReduction, 0);
     MAKERF(VRMode);
+#    if LIBRAW_VERSION < LIBRAW_MAKE_VERSION(0, 21, 0)
     MAKER(FocusMode, 0);
     MAKERF(AFPoint);
     MAKER(AFPointsInFocus, 0);
@@ -865,6 +878,7 @@ RawInput::get_makernotes_nikon()
         MAKER(AFAreaHeight, 0);
         MAKER(ContrastDetectAFInFocus, 0);
     }
+#    endif
     MAKER(FlashSetting, 0);
     MAKER(FlashType, 0);
     MAKERF(FlashExposureCompensation);
@@ -1011,9 +1025,11 @@ RawInput::get_makernotes_fuji()
     MAKERF(ExrMode);
     MAKERF(Macro);
     MAKERF(Rating);
+#    if LIBRAW_VERSION < LIBRAW_MAKE_VERSION(0, 21, 0)
     MAKERF(FrameRate);
     MAKERF(FrameWidth);
     MAKERF(FrameHeight);
+#    endif
 #endif
 }
 
@@ -1236,7 +1252,7 @@ RawInput::process()
 
 
 bool
-RawInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+RawInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                void* data)
 {
     lock_guard lock(m_mutex);

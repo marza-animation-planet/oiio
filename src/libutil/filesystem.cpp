@@ -3,8 +3,10 @@
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <fcntl.h>
 #include <iostream>
 #include <string>
 
@@ -97,7 +99,11 @@ Filesystem::filename(const std::string& filepath) noexcept
 {
     // To simplify dealing with platform-specific separators and whatnot,
     // just use the Boost routines:
-    return pathstr(u8path(filepath).filename());
+    try {
+        return pathstr(u8path(filepath).filename());
+    } catch (...) {
+        return filepath;
+    }
 }
 
 
@@ -105,7 +111,11 @@ Filesystem::filename(const std::string& filepath) noexcept
 std::string
 Filesystem::extension(const std::string& filepath, bool include_dot) noexcept
 {
-    std::string s = pathstr(u8path(filepath).extension());
+    std::string s;
+    try {
+        s = pathstr(u8path(filepath).extension());
+    } catch (...) {
+    }
     if (!include_dot && !s.empty() && s[0] == '.')
         s.erase(0, 1);  // erase the first character
     return s;
@@ -116,7 +126,11 @@ Filesystem::extension(const std::string& filepath, bool include_dot) noexcept
 std::string
 Filesystem::parent_path(const std::string& filepath) noexcept
 {
-    return pathstr(u8path(filepath).parent_path());
+    try {
+        return pathstr(u8path(filepath).parent_path());
+    } catch (...) {
+        return filepath;
+    }
 }
 
 
@@ -125,7 +139,23 @@ std::string
 Filesystem::replace_extension(const std::string& filepath,
                               const std::string& new_extension) noexcept
 {
-    return pathstr(u8path(filepath).replace_extension(new_extension));
+    try {
+        return pathstr(u8path(filepath).replace_extension(new_extension));
+    } catch (...) {
+        return filepath;
+    }
+}
+
+
+
+std::string
+Filesystem::generic_filepath(string_view filepath) noexcept
+{
+    try {
+        return pathstr(u8path(filepath).generic_string());
+    } catch (...) {
+        return filepath;
+    }
 }
 
 
@@ -487,6 +517,23 @@ Filesystem::open(OIIO::ofstream& stream, string_view path,
 }
 
 
+
+int
+Filesystem::open(string_view path, int flags)
+{
+#ifdef _WIN32
+    // on Windows _open does not accept UTF-8 paths, so we convert to wide
+    // char and use _wopen.
+    std::wstring wpath = Strutil::utf8_to_utf16(path);
+    return ::_wopen(wpath.c_str(), flags);
+#else
+    // on Unix platforms passing in UTF-8 works
+    return ::open(path.c_str(), flags);
+#endif
+}
+
+
+
 /// Read the entire contents of the named file and place it in str,
 /// returning true on success, false on failure.
 bool
@@ -568,7 +615,8 @@ Filesystem::file_size(string_view path) noexcept
 
 
 void
-Filesystem::convert_native_arguments(int argc, const char* argv[])
+Filesystem::convert_native_arguments(int argc OIIO_MAYBE_UNUSED,
+                                     const char* argv[])
 {
 #ifdef _WIN32
     // Windows only, standard main() entry point does not accept unicode file
@@ -586,6 +634,12 @@ Filesystem::convert_native_arguments(int argc, const char* argv[])
         std::string utf8_arg = Strutil::utf16_to_utf8(native_argv[i]);
         argv[i]              = ustring(utf8_arg).c_str();
     }
+#else
+    // I hate that we have to do this, but gcc gets confused about the
+    //    const char* argv OIIO_MAYBE_UNUSED []
+    // This seems to be the way around the problem, make it look like it's
+    // used.
+    (void)argv;
 #endif
 }
 
@@ -651,8 +705,8 @@ Filesystem::parse_pattern(const char* pattern_, int framepadding_override,
     // string (e.g. "%04d").
 #define ONERANGE_SPEC "[0-9]+(-[0-9]+((x|y)-?[0-9]+)?)?"
 #define MANYRANGE_SPEC ONERANGE_SPEC "(," ONERANGE_SPEC ")*"
-#define SEQUENCE_SPEC                                                          \
-    "(" MANYRANGE_SPEC ")?"                                                    \
+#define SEQUENCE_SPEC       \
+    "(" MANYRANGE_SPEC ")?" \
     "((#|@)+|(%[0-9]*d))"
     static regex sequence_re(SEQUENCE_SPEC);
     // std::cout << "pattern >" << (SEQUENCE_SPEC) << "<\n";
@@ -834,11 +888,7 @@ Filesystem::scan_for_matching_filenames(const std::string& pattern_,
     std::string directory = Filesystem::parent_path(pattern);
     if (directory.size() == 0) {
         directory = ".";
-#ifdef _WIN32
-        pattern = ".\\\\" + pattern;
-#else
-        pattern = "./" + pattern;
-#endif
+        pattern   = "./" + pattern;
     }
 
     if (!exists(directory))
@@ -868,8 +918,10 @@ Filesystem::scan_for_matching_filenames(const std::string& pattern_,
         error_code ec;
         for (filesystem::directory_iterator it(u8path(directory), ec), end_it;
              !ec && it != end_it; ++it) {
-            if (filesystem::is_regular(it->path(), ec)) {
-                const std::string f = pathstr(it->path());
+            std::string itpath = Filesystem::generic_filepath(
+                it->path().string());
+            if (filesystem::is_regular(itpath, ec)) {
+                const std::string f = pathstr(itpath);
                 match_results<std::string::const_iterator> frame_match;
                 if (regex_match(f, frame_match, pattern_re)) {
                     std::string thenumber(frame_match[1].first,
@@ -898,6 +950,60 @@ Filesystem::scan_for_matching_filenames(const std::string& pattern_,
 
 
 
+size_t
+Filesystem::IOProxy::read(void* /*buf*/, size_t /*size*/)
+{
+    return 0;
+}
+
+
+size_t
+Filesystem::IOProxy::write(const void* /*buf*/, size_t /*size*/)
+{
+    return 0;
+}
+
+
+size_t
+Filesystem::IOProxy::pread(void* /*buf*/, size_t /*size*/, int64_t /*offset*/)
+{
+    return 0;
+}
+
+
+size_t
+Filesystem::IOProxy::pwrite(const void* /*buf*/, size_t /*size*/,
+                            int64_t /*offset*/)
+{
+    return 0;
+}
+
+
+
+// Shared mutex to guard IOProxy error get/set. Shared should be ok. If
+// enough file I/O errors are happening that multiple threads are
+// simultaneously locking on error retrieval, the user has bigger problems
+// than worrying about thread performance.
+static std::mutex ioproxy_error_mutex;
+
+
+std::string
+Filesystem::IOProxy::error() const
+{
+    std::lock_guard<std::mutex> lock(ioproxy_error_mutex);
+    return m_error;
+}
+
+
+void
+Filesystem::IOProxy::error(string_view e)
+{
+    std::lock_guard<std::mutex> lock(ioproxy_error_mutex);
+    m_error = e;
+}
+
+
+
 Filesystem::IOFile::IOFile(string_view filename, Mode mode)
     : IOProxy(filename, mode)
 {
@@ -905,8 +1011,12 @@ Filesystem::IOFile::IOFile(string_view filename, Mode mode)
     // which std fopen does not.
     m_file = Filesystem::fopen(m_filename.c_str(),
                                m_mode == Write ? "wb" : "rb");
-    if (!m_file)
-        m_mode = Closed;
+    if (!m_file) {
+        m_mode          = Closed;
+        int e           = errno;
+        const char* msg = e ? std::strerror(e) : nullptr;
+        error(msg ? msg : "unknown error");
+    }
     m_auto_close = true;
     if (m_mode == Read)
         m_size = Filesystem::file_size(filename);

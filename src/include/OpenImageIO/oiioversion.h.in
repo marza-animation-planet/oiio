@@ -12,7 +12,7 @@
 // MAJOR is a major architectural change or a step that does not preserve
 // backwards compatibility of source code (an app designed for an older
 // major version may not compile successfully against newer version of the
-// heades and libraries, and will need to have its source modified).
+// headers and libraries, and will need to have its source modified).
 // Examples of changes that necessitate major version changes are removal of
 // API calls or classes, or renaming of class members.
 //
@@ -61,6 +61,14 @@
 // Single version designation of this release
 #define OIIO_VERSION OIIO_MAKE_VERSION(OIIO_VERSION_MAJOR, \
                         OIIO_VERSION_MINOR, OIIO_VERSION_PATCH)
+
+// Test if OIIO is >= a particular version.
+#define OIIO_VERSION_GREATER_EQUAL(major,minor,patch) \
+                        OIIO_VERSION >= OIIO_MAKE_VERSION(major,minor,patch)
+
+// Test if OIIO is < a particular version.
+#define OIIO_VERSION_LESS(major,minor,patch) \
+                        OIIO_VERSION < OIIO_MAKE_VERSION(major,minor,patch)
 
 // We also define the old name for backwards compatibility purposes.
 #define OPENIMAGEIO_VERSION OIIO_VERSION
@@ -118,11 +126,13 @@ namespace @PROJ_NAME@ = @PROJ_NAMESPACE_V@;
 ///     subimage,miplevel params to many read_*() methods; changed thread
 ///     safety expectations; removed newspec param from seek_subimage;
 ///     added spec(subimage,miplevel) and spec_dimensions(subimage,miplevel).
-///     (OIIO 1.9)
+///     (OIIO 2.0)
 /// Version 22 changed the signatures of ImageInput/ImageOutput create()
-///     to return unique_ptr. (OIIO 1.9)
+///     to return unique_ptr. (OIIO 2.0)
+/// Version 23 added set_ioproxy() methods to ImageInput & ImageOutput
+///     (OIIO 2.2).
 
-#define OIIO_PLUGIN_VERSION 22
+#define OIIO_PLUGIN_VERSION 23
 
 #define OIIO_PLUGIN_NAMESPACE_BEGIN OIIO_NAMESPACE_BEGIN
 #define OIIO_PLUGIN_NAMESPACE_END OIIO_NAMESPACE_END

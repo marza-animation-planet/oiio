@@ -8,6 +8,8 @@
 
 #include "fits_pvt.h"
 
+#include <OpenImageIO/fmath.h>
+
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
@@ -91,7 +93,7 @@ FitsInput::open(const std::string& name, ImageSpec& spec)
 
 
 bool
-FitsInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+FitsInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                 void* data)
 {
     lock_guard lock(m_mutex);

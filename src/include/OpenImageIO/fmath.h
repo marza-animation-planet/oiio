@@ -8,7 +8,7 @@
      Copyright 2004 NVIDIA Corporation. All Rights Reserved.
 
   Some parts of this file were first open-sourced in Open Shading Language,
-  also 3-Clause BSD licesne, then later moved here. The original copyright
+  also 3-Clause BSD license, then later moved here. The original copyright
   notice was:
      Copyright (c) 2009-2014 Sony Pictures Imageworks Inc., et al.
 
@@ -37,6 +37,7 @@
 #include <typeinfo>
 #include <type_traits>
 
+#include <OpenImageIO/Imath.h>
 #include <OpenImageIO/span.h>
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/oiioversion.h>
@@ -733,7 +734,7 @@ inline OIIO_HOSTDEVICE float sign (float x)
 
 
 template <typename IN_TYPE, typename OUT_TYPE>
-OIIO_FORCEINLINE OIIO_HOSTDEVICE OUT_TYPE bit_cast (const IN_TYPE in) {
+OIIO_FORCEINLINE OIIO_HOSTDEVICE OUT_TYPE bit_cast (const IN_TYPE& in) {
     // NOTE: this is the only standards compliant way of doing this type of casting,
     // luckily the compilers we care about know how to optimize away this idiom.
     static_assert(sizeof(IN_TYPE) == sizeof(OUT_TYPE),
@@ -916,7 +917,7 @@ void convert_type (const S *src, D *dst, size_t n, D _min, D _max)
 template<>
 inline void convert_type<uint8_t,float> (const uint8_t *src,
                                          float *dst, size_t n,
-                                         float _min, float _max)
+                                         float /*_min*/, float /*_max*/)
 {
     float scale (1.0f/std::numeric_limits<uint8_t>::max());
     simd::vfloat4 scale_simd (scale);
@@ -934,7 +935,7 @@ inline void convert_type<uint8_t,float> (const uint8_t *src,
 template<>
 inline void convert_type<uint16_t,float> (const uint16_t *src,
                                           float *dst, size_t n,
-                                          float _min, float _max)
+                                          float /*_min*/, float /*_max*/)
 {
     float scale (1.0f/std::numeric_limits<uint16_t>::max());
     simd::vfloat4 scale_simd (scale);
@@ -952,7 +953,7 @@ inline void convert_type<uint16_t,float> (const uint16_t *src,
 template<>
 inline void convert_type<half,float> (const half *src,
                                       float *dst, size_t n,
-                                      float _min, float _max)
+                                      float /*_min*/, float /*_max*/)
 {
 #if OIIO_SIMD >= 8 && OIIO_F16C_ENABLED
     // If f16c ops are enabled, it's worth doing this by 8's
@@ -977,7 +978,7 @@ inline void convert_type<half,float> (const half *src,
 template<>
 inline void
 convert_type<float,uint16_t> (const float *src, uint16_t *dst, size_t n,
-                              uint16_t _min, uint16_t _max)
+                              uint16_t /*_min*/, uint16_t /*_max*/)
 {
     float min = std::numeric_limits<uint16_t>::min();
     float max = std::numeric_limits<uint16_t>::max();
@@ -998,7 +999,7 @@ convert_type<float,uint16_t> (const float *src, uint16_t *dst, size_t n,
 template<>
 inline void
 convert_type<float,uint8_t> (const float *src, uint8_t *dst, size_t n,
-                             uint8_t _min, uint8_t _max)
+                             uint8_t /*_min*/, uint8_t /*_max*/)
 {
     float min = std::numeric_limits<uint8_t>::min();
     float max = std::numeric_limits<uint8_t>::max();
@@ -1020,7 +1021,7 @@ convert_type<float,uint8_t> (const float *src, uint8_t *dst, size_t n,
 template<>
 inline void
 convert_type<float,half> (const float *src, half *dst, size_t n,
-                          half _min, half _max)
+                          half /*_min*/, half /*_max*/)
 {
 #if OIIO_SIMD >= 8 && OIIO_F16C_ENABLED
     // If f16c ops are enabled, it's worth doing this by 8's
@@ -1123,7 +1124,7 @@ bit_range_convert(unsigned int in, unsigned int FROM_BITS, unsigned int TO_BITS)
 
 
 /// Append the `n` LSB bits of `val` into a bit sting `T out[]`, where the
-/// `filled` MSB bits of `*out` are already filled in. Incremennt `out` and
+/// `filled` MSB bits of `*out` are already filled in. Increment `out` and
 /// adjust `filled` as required. Type `T` should be uint8_t, uint16_t, or
 /// uint32_t.
 template<typename T>
@@ -2249,7 +2250,7 @@ T invert (Func &func, T y, T xmin=0.0, T xmax=1.0,
         *brack = bracketed;
     if (! bracketed) {
         // If our bounds don't bracket the zero, just give up, and
-        // return the approprate "edge" of the interval
+        // return the appropriate "edge" of the interval
         return ((y < vmin) == increasing) ? xmin : xmax;
     }
     if (fabs(v0-v1) < eps)   // already close enough

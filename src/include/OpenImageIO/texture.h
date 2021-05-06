@@ -11,10 +11,9 @@
 #pragma once
 
 #include <OpenImageIO/imageio.h>
+#include <OpenImageIO/simd.h>
 #include <OpenImageIO/ustring.h>
 #include <OpenImageIO/varyingref.h>
-
-#include <OpenEXR/ImathVec.h> /* because we need V3f */
 
 
 // Define symbols that let client applications determine if newly added
@@ -363,7 +362,7 @@ public:
     TextureOptions();
 
     /// Convert a TextureOpt for one point into a TextureOptions with
-    /// uninform values.
+    /// uniform values.
     TextureOptions(const TextureOpt& opt);
 
     // Options that must be the same for all points we're texturing at once
@@ -1425,8 +1424,15 @@ public:
     ///         The projection matrix, which is a 4x4 matrix (an
     ///         `Imath::M44f`, described as `TypeMatrix44`) giving the
     ///         matrix that projected points from world space into a 2D
-    ///         screen coordinate system where *x* and *y* range from $-1$
-    ///         to $+1$.  Generally, only rendered images will have this.
+    ///         screen coordinate system where *x* and *y* range from -1 to
+    ///         +1.  Generally, only rendered images will have this.
+    ///
+    ///   - `worldtoNDC` (matrix) :
+    ///         The projection matrix, which is a 4x4 matrix (an
+    ///         `Imath::M44f`, described as `TypeMatrix44`) giving the
+    ///         matrix that projected points from world space into a 2D
+    ///         screen coordinate system where *x* and *y* range from 0 to
+    ///         +1.  Generally, only rendered images will have this.
     ///
     ///   - `averagecolor` (float[nchannels]) :
     ///         If available in the metadata (generally only for files that
@@ -1480,7 +1486,7 @@ public:
     ///
     ///   - `stat:mipsused` (int) :
     ///         Stores 1 if any MIP levels beyond the highest resolution
-    ///         were accesed, otherwise 0.
+    ///         were accessed, otherwise 0.
     ///
     ///   - `stat:is_duplicate` (int) :
     ///         Stores 1 if this file was a duplicate of another image,
@@ -1685,7 +1691,7 @@ public:
     virtual std::string getstats (int level=1, bool icstats=true) const = 0;
 
     /// Reset most statistics to be as they were with a fresh TextureSystem.
-    /// Caveat emptor: this does not flush the cache itelf, so the resulting
+    /// Caveat emptor: this does not flush the cache itself, so the resulting
     /// statistics from the next set of texture requests will not match the
     /// number of tile reads, etc., that would have resulted from a new
     /// TextureSystem.

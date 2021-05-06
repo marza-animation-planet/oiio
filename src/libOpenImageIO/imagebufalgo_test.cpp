@@ -36,32 +36,24 @@ static int threadcounts[] = { 1,  2,  4,  8,  12,  16,   20,
 static void
 getargs(int argc, char* argv[])
 {
-    bool help = false;
     ArgParse ap;
     // clang-format off
-    ap.options(
-        "imagebufalgo_test\n" OIIO_INTRO_STRING "\n"
-        "Usage:  imagebufalgo_test [options]",
-        // "%*", parse_files, "",
-        "--help", &help, "Print help message",
-        "-v", &verbose, "Verbose mode",
-        "--threads %d", &numthreads,
-            ustring::sprintf("Number of threads (default: %d)", numthreads).c_str(),
-        "--iters %d", &iterations,
-            ustring::sprintf("Number of iterations (default: %d)", iterations).c_str(),
-        "--trials %d", &ntrials, "Number of trials",
-        "--wedge", &wedge, "Do a wedge test",
-        nullptr);
+    ap.intro("imagebufalgo_test\n" OIIO_INTRO_STRING)
+      .usage("imagebufalgo_test [options]");
+
+    ap.arg("-v", &verbose)
+      .help("Verbose mode");
+    ap.arg("--threads %d", &numthreads)
+      .help(Strutil::sprintf("Number of threads (default: %d)", numthreads));
+    ap.arg("--iters %d", &iterations)
+      .help(Strutil::sprintf("Number of iterations (default: %d)", iterations));
+    ap.arg("--trials %d", &ntrials)
+      .help("Number of trials");
+    ap.arg("--wedge", &wedge)
+      .help("Do a wedge test");
     // clang-format on
-    if (ap.parse(argc, (const char**)argv) < 0) {
-        std::cerr << ap.geterror() << std::endl;
-        ap.usage();
-        exit(EXIT_FAILURE);
-    }
-    if (help) {
-        ap.usage();
-        exit(EXIT_FAILURE);
-    }
+
+    ap.parse(argc, (const char**)argv);
 }
 
 
@@ -70,26 +62,27 @@ void
 test_type_merge()
 {
     std::cout << "test type_merge\n";
-    using namespace OIIO::ImageBufAlgo;
-    OIIO_CHECK_EQUAL(type_merge(TypeDesc::UINT8, TypeDesc::UINT8),
+    OIIO_CHECK_EQUAL(TypeDesc::basetype_merge(TypeDesc::UINT8, TypeDesc::UINT8),
                      TypeDesc::UINT8);
-    OIIO_CHECK_EQUAL(type_merge(TypeDesc::UINT8, TypeDesc::FLOAT),
+    OIIO_CHECK_EQUAL(TypeDesc::basetype_merge(TypeDesc::UINT8, TypeDesc::FLOAT),
                      TypeDesc::FLOAT);
-    OIIO_CHECK_EQUAL(type_merge(TypeDesc::FLOAT, TypeDesc::UINT8),
+    OIIO_CHECK_EQUAL(TypeDesc::basetype_merge(TypeDesc::FLOAT, TypeDesc::UINT8),
                      TypeDesc::FLOAT);
-    OIIO_CHECK_EQUAL(type_merge(TypeDesc::UINT8, TypeDesc::UINT16),
+    OIIO_CHECK_EQUAL(TypeDesc::basetype_merge(TypeDesc::UINT8, TypeDesc::UINT16),
                      TypeDesc::UINT16);
-    OIIO_CHECK_EQUAL(type_merge(TypeDesc::UINT16, TypeDesc::FLOAT),
+    OIIO_CHECK_EQUAL(TypeDesc::basetype_merge(TypeDesc::UINT16, TypeDesc::FLOAT),
                      TypeDesc::FLOAT);
-    OIIO_CHECK_EQUAL(type_merge(TypeDesc::HALF, TypeDesc::FLOAT),
+    OIIO_CHECK_EQUAL(TypeDesc::basetype_merge(TypeDesc::HALF, TypeDesc::FLOAT),
                      TypeDesc::FLOAT);
-    OIIO_CHECK_EQUAL(type_merge(TypeDesc::HALF, TypeDesc::UINT8),
+    OIIO_CHECK_EQUAL(TypeDesc::basetype_merge(TypeDesc::HALF, TypeDesc::UINT8),
                      TypeDesc::HALF);
-    OIIO_CHECK_EQUAL(type_merge(TypeDesc::HALF, TypeDesc::UNKNOWN),
+    OIIO_CHECK_EQUAL(TypeDesc::basetype_merge(TypeDesc::HALF, TypeDesc::UNKNOWN),
                      TypeDesc::HALF);
-    OIIO_CHECK_EQUAL(type_merge(TypeDesc::FLOAT, TypeDesc::UNKNOWN),
+    OIIO_CHECK_EQUAL(TypeDesc::basetype_merge(TypeDesc::FLOAT,
+                                              TypeDesc::UNKNOWN),
                      TypeDesc::FLOAT);
-    OIIO_CHECK_EQUAL(type_merge(TypeDesc::UINT8, TypeDesc::UNKNOWN),
+    OIIO_CHECK_EQUAL(TypeDesc::basetype_merge(TypeDesc::UINT8,
+                                              TypeDesc::UNKNOWN),
                      TypeDesc::UINT8);
 }
 
@@ -804,17 +797,17 @@ test_IBAprep()
     ImageBuf rgb(ImageSpec(256, 256, 3));   // Basic RGB uint8 image
     ImageBuf rgba(ImageSpec(256, 256, 4));  // Basic RGBA uint8 image
 
-#define CHECK(...)                                                             \
-    {                                                                          \
-        ImageBuf dst;                                                          \
-        ROI roi;                                                               \
-        OIIO_CHECK_ASSERT(IBAprep(__VA_ARGS__));                               \
+#define CHECK(...)                               \
+    {                                            \
+        ImageBuf dst;                            \
+        ROI roi;                                 \
+        OIIO_CHECK_ASSERT(IBAprep(__VA_ARGS__)); \
     }
-#define CHECK0(...)                                                            \
-    {                                                                          \
-        ImageBuf dst;                                                          \
-        ROI roi;                                                               \
-        OIIO_CHECK_ASSERT(!IBAprep(__VA_ARGS__));                              \
+#define CHECK0(...)                               \
+    {                                             \
+        ImageBuf dst;                             \
+        ROI roi;                                  \
+        OIIO_CHECK_ASSERT(!IBAprep(__VA_ARGS__)); \
     }
 
     // Test REQUIRE_ALPHA

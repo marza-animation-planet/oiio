@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
+#include <fcntl.h>
 #include <memory>
 #include <vector>
 
 #include <gif_lib.h>
 
+#include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/thread.h>
 
@@ -125,7 +127,7 @@ OIIO_PLUGIN_EXPORTS_END
 void
 GIFInput::init(void)
 {
-    m_gif_file = NULL;
+    m_gif_file = nullptr;
 }
 
 
@@ -161,7 +163,7 @@ GIFInput::decode_line_number(int line_number, int height)
 
 
 bool
-GIFInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+GIFInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                void* data)
 {
     lock_guard lock(m_mutex);
@@ -210,6 +212,7 @@ GIFInput::read_gif_extension(int ext_code, GifByteType* ext, ImageSpec& newspec)
         // http://giflib.sourceforge.net/whatsinagif/bits_and_bytes.html#application_extension_block
         if (ext[0] == 3) {
             newspec.attribute("gif:LoopCount", (ext[3] << 8) | ext[2]);
+            newspec.attribute("oiio:LoopCount", (ext[3] << 8) | ext[2]);
         }
     }
 }
@@ -357,7 +360,20 @@ GIFInput::seek_subimage(int subimage, int miplevel)
     }
 
     if (!m_gif_file) {
-#if GIFLIB_MAJOR >= 5
+#if GIFLIB_MAJOR >= 5 && defined(_WIN32)
+        // On Windows, UTF-8 filenames won't work properly with Giflib. Jump
+        // through some hoops: get an integer file descriptor for Giflib.
+        int fd = Filesystem::open(m_filename, _O_RDONLY | _O_BINARY);
+        if (fd == -1) {
+            errorf("Error trying to open the file.");
+            return false;
+        }
+        int giflib_error;
+        if (!(m_gif_file = DGifOpenFileHandle(fd, &giflib_error))) {
+            errorf("%s", GifErrorString(giflib_error));
+            return false;
+        }
+#elif GIFLIB_MAJOR >= 5
         int giflib_error;
         if (!(m_gif_file = DGifOpenFileName(m_filename.c_str(),
                                             &giflib_error))) {

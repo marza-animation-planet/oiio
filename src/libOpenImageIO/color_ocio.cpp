@@ -9,8 +9,6 @@
 
 #include <boost/container/flat_map.hpp>
 
-#include <OpenEXR/half.h>
-
 #include <OpenImageIO/color.h>
 #include <OpenImageIO/imagebufalgo.h>
 #include <OpenImageIO/imagebufalgo_util.h>
@@ -19,16 +17,26 @@
 
 #include "imageio_pvt.h"
 
-#define MAKE_OCIO_VERSION_HEX(maj, min, patch)                                 \
+#define MAKE_OCIO_VERSION_HEX(maj, min, patch) \
     (((maj) << 24) | ((min) << 16) | (patch))
 
 #ifdef USE_OCIO
 #    include <OpenColorIO/OpenColorIO.h>
 #    if OCIO_VERSION_HEX >= MAKE_OCIO_VERSION_HEX(2, 0, 0)
 #        define OCIO_v2 1
-#        include <OpenColorIO/apphelpers/ColorSpaceHelpers.h>
-#        include <OpenColorIO/apphelpers/DisplayViewHelpers.h>
-#        include <OpenColorIO/apphelpers/ViewingPipeline.h>
+// NOTE: these 3 header files were part of the pre-release OCIO 2.0 but
+// eventually were removed. After OCIO v2 is released and we are fairly
+// confident nobody will encounter them, we can remove these includes
+// entirely.
+#        if __has_include(<OpenColorIO/apphelpers/ColorSpaceHelpers.h>)
+#            include <OpenColorIO/apphelpers/ColorSpaceHelpers.h>
+#        endif
+#        if __has_include(<OpenColorIO/apphelpers/DisplayViewHelpers.h>)
+#            include <OpenColorIO/apphelpers/DisplayViewHelpers.h>
+#        endif
+#        if __has_include(<OpenColorIO/apphelpers/ViewingPipeline.h>)
+#            include <OpenColorIO/apphelpers/ViewingPipeline.h>
+#        endif
 #    endif
 namespace OCIO = OCIO_NAMESPACE;
 #endif
@@ -136,6 +144,18 @@ ColorConfig::supportsOpenColorIO()
     return true;
 #else
     return false;
+#endif
+}
+
+
+
+int
+ColorConfig::OpenColorIO_version_hex()
+{
+#ifdef USE_OCIO
+    return OCIO_VERSION_HEX;
+#else
+    return 0;
 #endif
 }
 
@@ -707,7 +727,7 @@ public:
     {
         if (channels > 3)
             channels = 3;
-        if (channels == 3) {
+        if (channels == 3 && chanstride == sizeof(float)) {
             for (int y = 0; y < height; ++y) {
                 char* d = (char*)data + y * ystride;
                 for (int x = 0; x < width; ++x, d += xstride) {
@@ -720,9 +740,11 @@ public:
         } else {
             for (int y = 0; y < height; ++y) {
                 char* d = (char*)data + y * ystride;
-                for (int x = 0; x < width; ++x, d += xstride)
-                    for (int c = 0; c < channels; ++c)
-                        ((float*)d)[c] = sRGB_to_linear(((float*)d)[c]);
+                for (int x = 0; x < width; ++x, d += xstride) {
+                    char* dc = d;
+                    for (int c = 0; c < channels; ++c, dc += chanstride)
+                        ((float*)dc)[c] = sRGB_to_linear(((float*)dc)[c]);
+                }
             }
         }
     }
@@ -742,7 +764,7 @@ public:
     {
         if (channels > 3)
             channels = 3;
-        if (channels == 3) {
+        if (channels == 3 && chanstride == sizeof(float)) {
             for (int y = 0; y < height; ++y) {
                 char* d = (char*)data + y * ystride;
                 for (int x = 0; x < width; ++x, d += xstride) {
@@ -755,9 +777,11 @@ public:
         } else {
             for (int y = 0; y < height; ++y) {
                 char* d = (char*)data + y * ystride;
-                for (int x = 0; x < width; ++x, d += xstride)
-                    for (int c = 0; c < channels; ++c)
-                        ((float*)d)[c] = linear_to_sRGB(((float*)d)[c]);
+                for (int x = 0; x < width; ++x, d += xstride) {
+                    char* dc = d;
+                    for (int c = 0; c < channels; ++c, dc += chanstride)
+                        ((float*)dc)[c] = linear_to_sRGB(((float*)dc)[c]);
+                }
             }
         }
     }
@@ -780,9 +804,11 @@ public:
             channels = 3;
         for (int y = 0; y < height; ++y) {
             char* d = (char*)data + y * ystride;
-            for (int x = 0; x < width; ++x, d += xstride)
-                for (int c = 0; c < channels; ++c)
+            for (int x = 0; x < width; ++x, d += xstride) {
+                char* dc = d;
+                for (int c = 0; c < channels; ++c, dc += chanstride)
                     ((float*)d)[c] = Rec709_to_linear(((float*)d)[c]);
+            }
         }
     }
 };
@@ -803,9 +829,11 @@ public:
             channels = 3;
         for (int y = 0; y < height; ++y) {
             char* d = (char*)data + y * ystride;
-            for (int x = 0; x < width; ++x, d += xstride)
-                for (int c = 0; c < channels; ++c)
+            for (int x = 0; x < width; ++x, d += xstride) {
+                char* dc = d;
+                for (int c = 0; c < channels; ++c, dc += chanstride)
                     ((float*)d)[c] = linear_to_Rec709(((float*)d)[c]);
+            }
         }
     }
 };
@@ -826,7 +854,7 @@ public:
     {
         if (channels > 3)
             channels = 3;
-        if (channels == 3) {
+        if (channels == 3 && chanstride == sizeof(float)) {
             simd::vfloat4 g = m_gamma;
             for (int y = 0; y < height; ++y) {
                 char* d = (char*)data + y * ystride;
@@ -840,9 +868,11 @@ public:
         } else {
             for (int y = 0; y < height; ++y) {
                 char* d = (char*)data + y * ystride;
-                for (int x = 0; x < width; ++x, d += xstride)
-                    for (int c = 0; c < channels; ++c)
+                for (int x = 0; x < width; ++x, d += xstride) {
+                    char* dc = d;
+                    for (int c = 0; c < channels; ++c, dc += chanstride)
                         ((float*)d)[c] = powf(((float*)d)[c], m_gamma);
+                }
             }
         }
     }
@@ -860,16 +890,16 @@ public:
     {
     }
     ~ColorProcessor_Ident() {}
-    virtual void apply(float* data, int width, int height, int channels,
-                       stride_t chanstride, stride_t xstride,
-                       stride_t ystride) const
+    virtual void apply(float* /*data*/, int /*width*/, int /*height*/,
+                       int /*channels*/, stride_t /*chanstride*/,
+                       stride_t /*xstride*/, stride_t /*ystride*/) const
     {
     }
 };
 
 
 
-// ColorProcessor that implements a matrix multiply color transfomation.
+// ColorProcessor that implements a matrix multiply color transformation.
 class ColorProcessor_Matrix : public ColorProcessor {
 public:
     ColorProcessor_Matrix(const Imath::M44f& Matrix, bool inverse)
@@ -886,7 +916,7 @@ public:
                        stride_t ystride) const
     {
         using namespace simd;
-        if (channels == 3) {
+        if (channels == 3 && chanstride == sizeof(float)) {
             for (int y = 0; y < height; ++y) {
                 char* d = (char*)data + y * ystride;
                 for (int x = 0; x < width; ++x, d += xstride) {
@@ -896,7 +926,7 @@ public:
                     xcolor.store((float*)d, 3);
                 }
             }
-        } else if (channels >= 4) {
+        } else if (channels >= 4 && chanstride == sizeof(float)) {
             for (int y = 0; y < height; ++y) {
                 char* d = (char*)data + y * ystride;
                 for (int x = 0; x < width; ++x, d += xstride) {
@@ -904,6 +934,20 @@ public:
                     color.load((float*)d);
                     vfloat4 xcolor = color * m_M;
                     xcolor.store((float*)d);
+                }
+            }
+        } else {
+            channels = std::min(channels, 4);
+            for (int y = 0; y < height; ++y) {
+                char* d = (char*)data + y * ystride;
+                for (int x = 0; x < width; ++x, d += xstride) {
+                    vfloat4 color;
+                    char* dc = d;
+                    for (int c = 0; c < channels; ++c, dc += chanstride)
+                        color[c] = *(float*)dc;
+                    vfloat4 xcolor = color * m_M;
+                    for (int c = 0; c < channels; ++c, dc += chanstride)
+                        *(float*)dc = xcolor[c];
                 }
             }
         }
@@ -1054,7 +1098,7 @@ ColorConfig::createColorProcessor(ustring inputColorSpace,
 
 #ifdef USE_OCIO
     if (!handle && p) {
-        // If we found a procesor from OCIO, even if it was a NoOp, and we
+        // If we found a processor from OCIO, even if it was a NoOp, and we
         // still don't have a better idea, return it.
         handle = ColorProcessorHandle(new ColorProcessor_OCIO(p));
     }
@@ -1433,8 +1477,10 @@ colorconvert_impl(ImageBuf& R, const ImageBuf& A,
         [&, unpremult, channelsToCopy, processor](ROI roi) {
             int width = roi.width();
             // Temporary space to hold one RGBA scanline
-            vfloat4* scanline  = OIIO_ALLOCA(vfloat4, width);
-            float* alpha       = OIIO_ALLOCA(float, width);
+            vfloat4* scanline;
+            OIIO_ALLOCATE_STACK_OR_HEAP(scanline, vfloat4, width);
+            float* alpha;
+            OIIO_ALLOCATE_STACK_OR_HEAP(alpha, float, width);
             const float fltmin = std::numeric_limits<float>::min();
             ImageBuf::ConstIterator<Atype> a(A, roi);
             ImageBuf::Iterator<Rtype> r(R, roi);
@@ -1451,13 +1497,14 @@ colorconvert_impl(ImageBuf& R, const ImageBuf& A,
                         scanline[i] = v;
                     }
 
-                    // Optionally unpremult
+                    // Optionally unpremult. Be careful of alpha==0 pixels,
+                    // preserve their color rather than div-by-zero.
                     if (unpremult) {
                         for (int i = 0; i < width; ++i) {
                             float a  = extract<3>(scanline[i]);
-                            a        = a >= fltmin ? a : 1.0f;
                             alpha[i] = a;
-                            scanline[i] /= a;
+                            a        = a >= fltmin ? a : 1.0f;
+                            scanline[i] /= vfloat4(a,a,a,1.0f);
                         }
                     }
 
@@ -1466,10 +1513,14 @@ colorconvert_impl(ImageBuf& R, const ImageBuf& A,
                                      sizeof(float), 4 * sizeof(float),
                                      width * 4 * sizeof(float));
 
-                    // Optionally re-premult
+                    // Optionally re-premult. Be careful of alpha==0 pixels,
+                    // preserve their value rather than crushing to black.
                     if (unpremult) {
-                        for (int i = 0; i < width; ++i)
-                            scanline[i] *= alpha[i];
+                        for (int i = 0; i < width; ++i) {
+                            float a  = alpha[i];
+                            a        = a >= fltmin ? a : 1.0f;
+                            scanline[i] *= vfloat4(a,a,a,1.0f);
+                        }
                     }
 
                     // Store the scanline
@@ -1502,8 +1553,10 @@ colorconvert_impl_float_rgba(ImageBuf& R, const ImageBuf& A,
     parallel_image(roi, parallel_image_options(nthreads), [&](ROI roi) {
         int width = roi.width();
         // Temporary space to hold one RGBA scanline
-        vfloat4* scanline  = OIIO_ALLOCA(vfloat4, width);
-        float* alpha       = OIIO_ALLOCA(float, width);
+        vfloat4* scanline;
+        OIIO_ALLOCATE_STACK_OR_HEAP(scanline, vfloat4, width);
+        float* alpha;
+        OIIO_ALLOCATE_STACK_OR_HEAP(alpha, float, width);
         const float fltmin = std::numeric_limits<float>::min();
         for (int k = roi.zbegin; k < roi.zend; ++k) {
             for (int j = roi.ybegin; j < roi.yend; ++j) {
@@ -1515,12 +1568,12 @@ colorconvert_impl_float_rgba(ImageBuf& R, const ImageBuf& A,
                     for (int i = 0; i < width; ++i) {
                         vfloat4 p(scanline[i]);
                         float a  = extract<3>(p);
-                        a        = a >= fltmin ? a : 1.0f;
                         alpha[i] = a;
+                        a        = a >= fltmin ? a : 1.0f;
                         if (a == 1.0f)
                             scanline[i] = p;
                         else
-                            scanline[i] = p / a;
+                            scanline[i] = p / vfloat4(a, a, a, 1.0f);
                     }
                 }
 
@@ -1531,8 +1584,13 @@ colorconvert_impl_float_rgba(ImageBuf& R, const ImageBuf& A,
 
                 // Optionally premult
                 if (unpremult) {
-                    for (int i = 0; i < width; ++i)
-                        scanline[i] *= alpha[i];
+                    for (int i = 0; i < width; ++i) {
+                        vfloat4 p(scanline[i]);
+                        float a = alpha[i];
+                        a       = a >= fltmin ? a : 1.0f;
+                        p *= vfloat4(a, a, a, 1.0f);
+                        scanline[i] = p;
+                    }
                 }
                 memcpy(R.pixeladdr(roi.xbegin, j, k), scanline,
                        width * 4 * sizeof(float));
@@ -1611,8 +1669,8 @@ ImageBufAlgo::colorconvert(const ImageBuf& src, const ColorProcessor* processor,
 
 bool
 ImageBufAlgo::ociolook(ImageBuf& dst, const ImageBuf& src, string_view looks,
-                       string_view from, string_view to, bool inverse,
-                       bool unpremult, string_view key, string_view value,
+                       string_view from, string_view to, bool unpremult,
+                       bool inverse, string_view key, string_view value,
                        ColorConfig* colorconfig, ROI roi, int nthreads)
 {
     pvt::LoggedTimer logtime("IBA::ociolook");
@@ -1655,12 +1713,12 @@ ImageBufAlgo::ociolook(ImageBuf& dst, const ImageBuf& src, string_view looks,
 
 ImageBuf
 ImageBufAlgo::ociolook(const ImageBuf& src, string_view looks, string_view from,
-                       string_view to, bool inverse, bool unpremult,
+                       string_view to, bool unpremult, bool inverse,
                        string_view key, string_view value,
                        ColorConfig* colorconfig, ROI roi, int nthreads)
 {
     ImageBuf result;
-    bool ok = ociolook(result, src, looks, from, to, inverse, unpremult, key,
+    bool ok = ociolook(result, src, looks, from, to, unpremult, inverse, key,
                        value, colorconfig, roi, nthreads);
     if (!ok && !result.has_error())
         result.errorf("ImageBufAlgo::ociolook() error");
@@ -1729,7 +1787,7 @@ ImageBufAlgo::ociodisplay(const ImageBuf& src, string_view display,
 
 bool
 ImageBufAlgo::ociofiletransform(ImageBuf& dst, const ImageBuf& src,
-                                string_view name, bool inverse, bool unpremult,
+                                string_view name, bool unpremult, bool inverse,
                                 ColorConfig* colorconfig, ROI roi, int nthreads)
 {
     pvt::LoggedTimer logtime("IBA::ociofiletransform");
@@ -1765,11 +1823,11 @@ ImageBufAlgo::ociofiletransform(ImageBuf& dst, const ImageBuf& src,
 
 ImageBuf
 ImageBufAlgo::ociofiletransform(const ImageBuf& src, string_view name,
-                                bool inverse, bool unpremult,
+                                bool unpremult, bool inverse,
                                 ColorConfig* colorconfig, ROI roi, int nthreads)
 {
     ImageBuf result;
-    bool ok = ociofiletransform(result, src, name, inverse, unpremult,
+    bool ok = ociofiletransform(result, src, name, unpremult, inverse,
                                 colorconfig, roi, nthreads);
     if (!ok && !result.has_error())
         result.errorf("ImageBufAlgo::ociofiletransform() error");

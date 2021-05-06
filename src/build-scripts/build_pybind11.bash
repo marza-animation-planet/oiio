@@ -7,8 +7,7 @@ set -ex
 
 # Repo and branch/tag/commit of pybind11 to download if we don't have it yet
 PYBIND11_REPO=${PYBIND11_REPO:=https://github.com/pybind/pybind11.git}
-PYBIND11_VERSION=${PYBIND11_VERSION:=2.4.3}
-PYBIND11_BRANCH=${PYBIND11_BRANCH:=v${PYBIND11_VERSION}}
+PYBIND11_VERSION=${PYBIND11_VERSION:=v2.5.0}
 
 # Where to put pybind11 repo source (default to the ext area)
 PYBIND11_SRC_DIR=${PYBIND11_SRC_DIR:=${PWD}/ext/pybind11}
@@ -35,18 +34,18 @@ if [[ ! -e ${PYBIND11_SRC_DIR} ]] ; then
     git clone ${PYBIND11_REPO} ${PYBIND11_SRC_DIR}
 fi
 cd ${PYBIND11_SRC_DIR}
-echo "git checkout ${PYBIND11_BRANCH} --force"
-git checkout ${PYBIND11_BRANCH} --force
+echo "git checkout ${PYBIND11_VERSION} --force"
+git checkout ${PYBIND11_VERSION} --force
 
 mkdir -p ${PYBIND11_BUILD_DIR}
 cd ${PYBIND11_BUILD_DIR}
-time cmake --config Release \
+time cmake -DCMAKE_BUILD_TYPE=Release \
            -DCMAKE_INSTALL_PREFIX=${PYBIND11_INSTALL_DIR} \
            -DPYBIND11_TEST=OFF \
            ${PYBIND11_BUILD_OPTS} ..
 time cmake --build . --config Release --target install
 
-ls -R ${PYBIND11_INSTALL_DIR}
+# ls -R ${PYBIND11_INSTALL_DIR}
 popd
 
 #echo "listing .."

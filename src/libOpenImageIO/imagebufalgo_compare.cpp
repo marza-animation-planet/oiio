@@ -3,17 +3,15 @@
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 /// \file
-/// Implementation of ImageBufAlgo algorithms that analize or compare
+/// Implementation of ImageBufAlgo algorithms that analyze or compare
 /// images.
-
-#include <OpenEXR/half.h>
 
 #include <cmath>
 #include <iostream>
 #include <limits>
 
-#include <OpenImageIO/SHA1.h>
 #include <OpenImageIO/dassert.h>
+#include <OpenImageIO/hash.h>
 #include <OpenImageIO/imagebuf.h>
 #include <OpenImageIO/imagebufalgo.h>
 #include <OpenImageIO/imagebufalgo_util.h>
@@ -137,7 +135,7 @@ computePixelStats_(const ImageBuf& src, ImageBufAlgo::PixelStats& stats,
     parallel_options opt(nthreads);
     if (src.deep()) {
         parallel_for_chunked(roi.ybegin, roi.yend, 64,
-                             [&](int id, int64_t ybegin, int64_t yend) {
+                             [&](int /*id*/, int64_t ybegin, int64_t yend) {
             ROI subroi(roi.xbegin, roi.xend, ybegin, yend, roi.zbegin,
                        roi.zend, roi.chbegin, roi.chend);
             ImageBufAlgo::PixelStats tmp(nchannels);
@@ -159,7 +157,7 @@ computePixelStats_(const ImageBuf& src, ImageBufAlgo::PixelStats& stats,
 
     } else {  // Non-deep case
         parallel_for_chunked(roi.ybegin, roi.yend, 64,
-                             [&](int id, int64_t ybegin, int64_t yend) {
+                             [&](int /*id*/, int64_t ybegin, int64_t yend) {
             ROI subroi(roi.xbegin, roi.xend, ybegin, yend, roi.zbegin,
                        roi.zend, roi.chbegin, roi.chend);
             ImageBufAlgo::PixelStats tmp(nchannels);
@@ -270,7 +268,7 @@ template<class Atype, class Btype>
 static bool
 compare_(const ImageBuf& A, const ImageBuf& B, float failthresh,
          float warnthresh, ImageBufAlgo::CompareResults& result, ROI roi,
-         int nthreads)
+         int /*nthreads*/)
 {
     imagesize_t npels = roi.npixels();
     imagesize_t nvals = npels * roi.nchannels();
@@ -283,7 +281,14 @@ compare_(const ImageBuf& A, const ImageBuf& B, float failthresh,
     result.maxerror      = 0;
     result.maxx = 0, result.maxy = 0, result.maxz = 0, result.maxc = 0;
     result.nfail = 0, result.nwarn = 0;
-    float maxval = 1.0;  // max possible value
+
+    float maxval = 1.0;
+    // N.B. [PSNR](https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio)
+    // formula requires the max possible value. We assume a normalized 1.0,
+    // but for an HDR image with potentially values > 1.0, there is no true
+    // max value, so we punt and use the highest value found in either
+    // image. The compare_value() function we call on every pixel value will
+    // check and adjust our max as needed.
 
     ImageBuf::ConstIterator<Atype> a(A, roi, ImageBuf::WrapBlack);
     ImageBuf::ConstIterator<Btype> b(B, roi, ImageBuf::WrapBlack);
@@ -379,7 +384,7 @@ isConstantColor_(const ImageBuf& src, float threshold, span<float> color,
     atomic_int result(true);
     if (threshold == 0.0f) {
         // For 0.0 threshold, use shortcut of avoiding the conversion
-        // to float, juse compare original type values.
+        // to float, just compare original type values.
         std::vector<T> constval(roi.nchannels());
         ImageBuf::ConstIterator<T, T> s(src, roi);
         for (int c = roi.chbegin; c < roi.chend; ++c)
@@ -461,7 +466,7 @@ isConstantChannel_(const ImageBuf& src, int channel, float val, float threshold,
             return;  // another parallel bucket already failed, don't bother
         if (threshold == 0.0f) {
             // For 0.0 threshold, use shortcut of avoiding the conversion
-            // to float, juse compare original type values.
+            // to float, just compare original type values.
             T constvalue = convert_type<float, T>(val);
             for (ImageBuf::ConstIterator<T, T> s(src, roi); !s.done(); ++s) {
                 if (s[channel] != constvalue) {
@@ -519,7 +524,7 @@ isMonochrome_(const ImageBuf& src, float threshold, ROI roi, int nthreads)
             return;  // another parallel bucket already failed, don't bother
         if (threshold == 0.0f) {
             // For 0.0 threshold, use shortcut of avoiding the conversion
-            // to float, juse compare original type values.
+            // to float, just compare original type values.
             for (ImageBuf::ConstIterator<T, T> s(src, roi); !s.done(); ++s) {
                 T constvalue = s[roi.chbegin];
                 for (int c = roi.chbegin + 1; c < roi.chend; ++c)
@@ -800,33 +805,25 @@ simplePixelHashSHA1(const ImageBuf& src, string_view extrainfo, ROI roi)
     if (!localpixels)
         tmp.resize(chunk * scanline_bytes);
 
-    CSHA1 sha;
-    sha.Reset();
-
+    SHA1 sha;
     for (int z = roi.zbegin, zend = roi.zend; z < zend; ++z) {
         for (int y = roi.ybegin, yend = roi.yend; y < yend; y += chunk) {
             int y1 = std::min(y + chunk, yend);
             if (localpixels) {
-                sha.Update((const unsigned char*)src.pixeladdr(roi.xbegin, y, z),
-                           (unsigned int)scanline_bytes * (y1 - y));
+                sha.append(src.pixeladdr(roi.xbegin, y, z),
+                           size_t(scanline_bytes * (y1 - y)));
             } else {
                 src.get_pixels(ROI(roi.xbegin, roi.xend, y, y1, z, z + 1),
                                src.spec().format, &tmp[0]);
-                sha.Update(&tmp[0], (unsigned int)scanline_bytes * (y1 - y));
+                sha.append(&tmp[0], size_t(scanline_bytes) * (y1 - y));
             }
         }
     }
 
     // If extra info is specified, also include it in the sha computation
-    if (!extrainfo.empty()) {
-        sha.Update((const unsigned char*)extrainfo.data(), extrainfo.size());
-    }
+    sha.append(extrainfo.data(), extrainfo.size());
 
-    sha.Final();
-    std::string hash_digest;
-    sha.ReportHashStl(hash_digest, CSHA1::REPORT_HEX_SHORT);
-
-    return hash_digest;
+    return sha.digest();
 }
 
 }  // namespace
@@ -861,16 +858,11 @@ ImageBufAlgo::computePixelHashSHA1(const ImageBuf& src, string_view extrainfo,
     // If there are multiple blocks, hash the block digests to get a final
     // hash. (This makes the parallel loop safe, because the order that the
     // blocks computed doesn't matter.)
-    CSHA1 sha;
-    sha.Reset();
+    SHA1 sha;
     for (int b = 0; b < nblocks; ++b)
-        sha.Update((const unsigned char*)results[b].c_str(), results[b].size());
-    if (extrainfo.size())
-        sha.Update((const unsigned char*)extrainfo.c_str(), extrainfo.size());
-    sha.Final();
-    std::string hash_digest;
-    sha.ReportHashStl(hash_digest, CSHA1::REPORT_HEX_SHORT);
-    return hash_digest;
+        sha.append(results[b].c_str(), results[b].size());
+    sha.append(extrainfo.c_str(), extrainfo.size());
+    return sha.digest();
 }
 
 

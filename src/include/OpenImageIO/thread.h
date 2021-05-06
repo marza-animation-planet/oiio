@@ -74,7 +74,7 @@ public:
 /// overhead is associated with a particular lock.
 template<typename T> class null_lock {
 public:
-    null_lock(T& m) noexcept {}
+    null_lock(T& /*m*/) noexcept {}
 };
 
 
@@ -468,6 +468,12 @@ public:
         m_bits.fetch_sub(WRITER, std::memory_order_release);
     }
 
+    /// lock() is a synonym for exclusive (write) lock.
+    void lock() { write_lock(); }
+
+    /// unlock() is a synonym for exclusive (write) unlock.
+    void unlock() { write_unlock(); }
+
     /// Helper class: scoped read lock for a spin_rw_mutex -- grabs the
     /// read lock upon construction, releases the lock when it exits scope.
     class read_lock_guard {
@@ -713,7 +719,7 @@ public:
     bool run_one_task(std::thread::id id);
 
     /// Return true if the calling thread is part of the thread pool. This
-    /// can be used to limit a pool thread from inadvisedly adding its own
+    /// can be used to limit a pool thread from unadvisedly adding its own
     /// subtasks to clog up the pool.
     /// DEPRECATED(2.1) -- use is_worker() instead.
     bool this_thread_is_in_pool() const;

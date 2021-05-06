@@ -20,23 +20,23 @@ using boost::integer::gcd;
 using boost::math::gcd;
 #endif
 
+#include <OpenImageIO/platform.h>
+
 #include <OpenEXR/ImfChannelList.h>
 #include <OpenEXR/ImfEnvmap.h>
 #include <OpenEXR/ImfInputFile.h>
 #include <OpenEXR/ImfTestFile.h>
 #include <OpenEXR/ImfTiledInputFile.h>
 
-#include <OpenImageIO/platform.h>
-
 #ifdef OPENEXR_VERSION_MAJOR
-#    define OPENEXR_CODED_VERSION                                              \
-        (OPENEXR_VERSION_MAJOR * 10000 + OPENEXR_VERSION_MINOR * 100           \
+#    define OPENEXR_CODED_VERSION                                    \
+        (OPENEXR_VERSION_MAJOR * 10000 + OPENEXR_VERSION_MINOR * 100 \
          + OPENEXR_VERSION_PATCH)
 #else
 #    define OPENEXR_CODED_VERSION 20000
 #endif
 
-#if OPENEXR_CODED_VERSION >= 20400                                             \
+#if OPENEXR_CODED_VERSION >= 20400 \
     || __has_include(<OpenEXR/ImfFloatVectorAttribute.h>)
 #    define OPENEXR_HAS_FLOATVECTOR 1
 #else
@@ -45,9 +45,9 @@ using boost::math::gcd;
 
 // The way that OpenEXR uses dynamic casting for attributes requires
 // temporarily suspending "hidden" symbol visibility mode.
-#ifdef __GNUC__
-#    pragma GCC visibility push(default)
-#endif
+OIIO_PRAGMA_VISIBILITY_PUSH
+OIIO_PRAGMA_WARNING_PUSH
+OIIO_GCC_PRAGMA(GCC diagnostic ignored "-Wunused-parameter")
 #include <OpenEXR/IexBaseExc.h>
 #include <OpenEXR/IexThrowErrnoExc.h>
 #include <OpenEXR/ImfBoxAttribute.h>
@@ -59,6 +59,7 @@ using boost::math::gcd;
 #include <OpenEXR/ImfDoubleAttribute.h>
 #include <OpenEXR/ImfEnvmapAttribute.h>
 #include <OpenEXR/ImfFloatAttribute.h>
+#include <OpenEXR/ImfHeader.h>
 #if OPENEXR_HAS_FLOATVECTOR
 #    include <OpenEXR/ImfFloatVectorAttribute.h>
 #endif
@@ -74,10 +75,8 @@ using boost::math::gcd;
 #include <OpenEXR/ImfTiledInputPart.h>
 #include <OpenEXR/ImfTimeCodeAttribute.h>
 #include <OpenEXR/ImfVecAttribute.h>
-
-#ifdef __GNUC__
-#    pragma GCC visibility pop
-#endif
+OIIO_PRAGMA_WARNING_POP
+OIIO_PRAGMA_VISIBILITY_POP
 
 #include <OpenEXR/ImfCRgbaFile.h>
 
@@ -85,7 +84,6 @@ using boost::math::gcd;
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/deepdata.h>
 #include <OpenImageIO/filesystem.h>
-#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imagebufalgo_util.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/strutil.h>
@@ -115,12 +113,21 @@ public:
             throw Iex::IoExc("Unexpected end of file.");
         return n;
     }
+#if OIIO_USING_IMATH >= 3
+    virtual uint64_t tellg() { return m_io->tell(); }
+    virtual void seekg(uint64_t pos)
+    {
+        if (!m_io->seek(pos))
+            throw Iex::IoExc("File input failed.");
+    }
+#else
     virtual Imath::Int64 tellg() { return m_io->tell(); }
     virtual void seekg(Imath::Int64 pos)
     {
         if (!m_io->seek(pos))
             throw Iex::IoExc("File input failed.");
     }
+#endif
     virtual void clear() {}
 
 private:
@@ -178,6 +185,12 @@ public:
                                         int xend, int ybegin, int yend,
                                         int zbegin, int zend, int chbegin,
                                         int chend, DeepData& deepdata) override;
+
+    virtual bool set_ioproxy(Filesystem::IOProxy* ioproxy) override
+    {
+        m_io = ioproxy;
+        return true;
+    }
 
 private:
     struct PartInfo {
@@ -307,8 +320,6 @@ private:
     {
         // Ones whose name we change to our convention
         m_map["cameraTransform"]  = "worldtocamera";
-        m_map["worldToCamera"]    = "worldtocamera";
-        m_map["worldToNDC"]       = "worldtoscreen";
         m_map["capDate"]          = "DateTime";
         m_map["comments"]         = "ImageDescription";
         m_map["owner"]            = "Copyright";
@@ -414,12 +425,15 @@ bool
 OpenEXRInput::open(const std::string& name, ImageSpec& newspec,
                    const ImageSpec& config)
 {
+    // First thing's first. See if we're been given an IOProxy. We have to
+    // do this before the check for non-exr files, that's why it's here and
+    // not where the rest of the configuration hints are handled.
     const ParamValue* param = config.find_attribute("oiio:ioproxy",
                                                     TypeDesc::PTR);
-    m_io = param ? param->get<Filesystem::IOProxy*>() : nullptr;
+    if (param)
+        m_io = param->get<Filesystem::IOProxy*>();
 
-    // Quick check to reject non-exr files. Don't perform these tests for
-    // the IOProxy case.
+    // Quick check to immediately reject nonexistant or non-exr files.
     if (!m_io && !Filesystem::is_regular(name)) {
         errorf("Could not open file \"%s\"", name);
         return false;
@@ -428,7 +442,8 @@ OpenEXRInput::open(const std::string& name, ImageSpec& newspec,
         errorf("\"%s\" is not an OpenEXR file", name);
         return false;
     }
-    pvt::set_exr_threads();
+
+    // Check any other configuration hints
 
     // "missingcolor" gives fill color for missing scanlines or tiles.
     if (const ParamValue* m = config.find_attribute("oiio:missingcolor")) {
@@ -451,12 +466,28 @@ OpenEXRInput::open(const std::string& name, ImageSpec& newspec,
             m_missingcolor = Strutil::extract_from_list_string<float>(mc);
     }
 
-    m_spec = ImageSpec();  // Clear everything with default constructor
+    // Before engaging further with OpenEXR, make sure it is using the right
+    // number of threads.
+    pvt::set_exr_threads();
 
+    // Clear the spec with default constructor
+    m_spec = ImageSpec();
+
+    // Establish an input stream. If we weren't given an IOProxy, create one
+    // now that just reads from the file.
     try {
         if (!m_io) {
             m_io = new Filesystem::IOFile(name, Filesystem::IOProxy::Read);
             m_local_io.reset(m_io);
+        }
+        OIIO_ASSERT(m_io);
+        if (m_io->mode() != Filesystem::IOProxy::Read) {
+            // If the proxy couldn't be opened in write mode, try to
+            // return an error.
+            std::string e = m_io->error();
+            errorf("Could not open \"%s\" (%s)", name,
+                   e.size() ? e : std::string("unknown error"));
+            return false;
         }
         m_io->seek(0);
         m_input_stream = new OpenEXRInputStream(name.c_str(), m_io);
@@ -470,6 +501,8 @@ OpenEXRInput::open(const std::string& name, ImageSpec& newspec,
         return false;
     }
 
+    // Read the header by constructing a MultiPartInputFile from the input
+    // stream.
     try {
         m_input_multipart = new Imf::MultiPartInputFile(*m_input_stream);
     } catch (const std::exception& e) {
@@ -488,6 +521,8 @@ OpenEXRInput::open(const std::string& name, ImageSpec& newspec,
     m_subimage = -1;
     m_miplevel = -1;
 
+    // Set up for the first subimage ("part"). This will trigger reading
+    // information about all the parts.
     bool ok = seek_subimage(0, 0);
     if (ok)
         newspec = m_spec;
@@ -612,9 +647,9 @@ OpenEXRInput::PartInfo::parse_header(OpenEXRInput* in,
         case Imf::B44_COMPRESSION: comp = "b44"; break;
         case Imf::B44A_COMPRESSION: comp = "b44a"; break;
 #endif
-#if defined(OPENEXR_VERSION_MAJOR)                                             \
-    && (OPENEXR_VERSION_MAJOR * 10000 + OPENEXR_VERSION_MINOR * 100            \
-        + OPENEXR_VERSION_PATCH)                                               \
+#if defined(OPENEXR_VERSION_MAJOR)                                  \
+    && (OPENEXR_VERSION_MAJOR * 10000 + OPENEXR_VERSION_MINOR * 100 \
+        + OPENEXR_VERSION_PATCH)                                    \
            >= 20200
         case Imf::DWAA_COMPRESSION: comp = "dwaa"; break;
         case Imf::DWAB_COMPRESSION: comp = "dwab"; break;
@@ -800,18 +835,19 @@ OpenEXRInput::PartInfo::parse_header(OpenEXRInput* in,
                 r[0] = n;
                 r[1] = static_cast<int>(d);
                 spec.attribute(oname, TypeRational, r);
-            } else if (int f = static_cast<int>(
-                                   gcd<long int>(rational[0], rational[1]))
-                               > 1) {
-                int r[2];
-                r[0] = n / f;
-                r[1] = static_cast<int>(d / f);
-                spec.attribute(oname, TypeRational, r);
             } else {
-                // TODO: find a way to allow the client to accept "close" rational values
-                OIIO::debug(
-                    "Don't know what to do with OpenEXR Rational attribute %s with value %d / %u that we cannot represent exactly",
-                    oname, n, d);
+                int f = static_cast<int>(gcd<long long>(n, d));
+                if (f > 1) {
+                    int r[2];
+                    r[0] = n / f;
+                    r[1] = static_cast<int>(d / f);
+                    spec.attribute(oname, TypeRational, r);
+                } else {
+                    // TODO: find a way to allow the client to accept "close" rational values
+                    OIIO::debugf(
+                        "Don't know what to do with OpenEXR Rational attribute %s with value %d / %u that we cannot represent exactly",
+                        oname, n, d);
+                }
             }
         } else {
 #if 0
@@ -982,6 +1018,10 @@ OpenEXRInput::PartInfo::query_channels(OpenEXRInput* in,
     for (auto ci = channels.begin(); ci != channels.end(); ++c, ++ci)
         cnh.emplace_back(ci.name(), c, ci.channel());
     spec.nchannels = int(cnh.size());
+    if (!spec.nchannels) {
+        in->errorf("No channels found");
+        return false;
+    }
 
     // First, do a partial sort by layername. EXR should already be in that
     // order, but take no chances.
@@ -1024,9 +1064,7 @@ OpenEXRInput::PartInfo::query_channels(OpenEXRInput* in,
     for (int c = 0; c < spec.nchannels; ++c) {
         spec.channelnames.push_back(cnh[c].fullname);
         spec.channelformats.push_back(cnh[c].datatype);
-        spec.format = TypeDesc(ImageBufAlgo::type_merge(
-            TypeDesc::BASETYPE(spec.format.basetype),
-            TypeDesc::BASETYPE(cnh[c].datatype.basetype)));
+        spec.format = TypeDesc::basetype_merge(spec.format, cnh[c].datatype);
         pixeltype.push_back(cnh[c].exr_data_type);
         chanbytes.push_back(cnh[c].datatype.size());
         all_one_format &= (cnh[c].datatype == cnh[0].datatype);
@@ -1283,7 +1321,7 @@ OpenEXRInput::read_native_scanlines(int subimage, int miplevel, int ybegin,
 
 bool
 OpenEXRInput::read_native_scanlines(int subimage, int miplevel, int ybegin,
-                                    int yend, int z, int chbegin, int chend,
+                                    int yend, int /*z*/, int chbegin, int chend,
                                     void* data)
 {
     lock_guard lock(m_mutex);
@@ -1517,7 +1555,7 @@ OpenEXRInput::read_native_tiles_individually(int subimage, int miplevel,
 
 void
 OpenEXRInput::fill_missing(int xbegin, int xend, int ybegin, int yend,
-                           int zbegin, int zend, int chbegin, int chend,
+                           int /*zbegin*/, int /*zend*/, int chbegin, int chend,
                            void* data, stride_t xstride, stride_t ystride)
 {
     std::vector<float> missingcolor = m_missingcolor;
@@ -1548,7 +1586,7 @@ OpenEXRInput::fill_missing(int xbegin, int xend, int ybegin, int yend,
 
 bool
 OpenEXRInput::read_native_deep_scanlines(int subimage, int miplevel, int ybegin,
-                                         int yend, int z, int chbegin,
+                                         int yend, int /*z*/, int chbegin,
                                          int chend, DeepData& deepdata)
 {
     lock_guard lock(m_mutex);
@@ -1619,9 +1657,9 @@ OpenEXRInput::read_native_deep_scanlines(int subimage, int miplevel, int ybegin,
 
 bool
 OpenEXRInput::read_native_deep_tiles(int subimage, int miplevel, int xbegin,
-                                     int xend, int ybegin, int yend, int zbegin,
-                                     int zend, int chbegin, int chend,
-                                     DeepData& deepdata)
+                                     int xend, int ybegin, int yend,
+                                     int /*zbegin*/, int /*zend*/, int chbegin,
+                                     int chend, DeepData& deepdata)
 {
     lock_guard lock(m_mutex);
     if (!seek_subimage(subimage, miplevel))

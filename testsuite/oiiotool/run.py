@@ -123,6 +123,24 @@ command += oiiotool ("ref/hole.tif --fillholes -o tahoe-filled.tif")
 # test hole filling for a cropped image
 command += oiiotool ("-pattern checker 64x64+32+32 3 -ch R,G,B,A=1.0 -fullsize 128x128+0+0 --croptofull -fillholes -d uint8 -o growholes.tif")
 
+# Test --min/--max
+command += oiiotool ("--pattern fill:top=0,0,0:bottom=1,1,1 64x64 3 "
+                   + "--pattern fill:left=0,0,0:right=1,1,1 64x64 3 "
+                   + "--min -d uint8 -o min.exr")
+command += oiiotool ("--pattern fill:top=0,0,0:bottom=1,1,1 64x64 3 "
+                   + "--pattern fill:left=0,0,0:right=1,1,1 64x64 3 "
+                   + "--max -d uint8 -o max.exr")
+# Test --minc/maxc val (min to all channels the same scalar)
+command += oiiotool ("--pattern fill:top=0,0,0:bottom=1,1,1 64x64 3 "
+                   + "--minc 0.25 -o cmin1.exr")
+command += oiiotool ("--pattern fill:top=0,0,0:bottom=1,1,1 64x64 3 "
+                   + "--maxc 0.75 -o cmax1.exr")
+# Test --minc/maxc val,val,val... (min per-channel scalars)
+command += oiiotool ("--pattern fill:top=0,0,0:bottom=1,1,1 64x64 3 "
+                   + "--minc 0.75,0.5,0.25 -o cmin2.exr")
+command += oiiotool ("--pattern fill:top=0,0,0:bottom=1,1,1 64x64 3 "
+                   + "--maxc 0.75,0.5,0.25 -o cmax2.exr")
+
 # test clamping
 command += oiiotool (OIIO_TESTSUITE_IMAGEDIR + "/grid.tif --resize 50%"
             + " --clamp:min=0.2:max=,,0.5,1 -o grid-clamped.tif")
@@ -187,8 +205,10 @@ command += oiiotool ("--pattern constant:color=0.5,0.0,0.0 64x64 3 --text A -att
                      "--siappendall -d half -o subimages-4.exr")
 command += oiiotool ("subimages-4.exr --subimage 3 -o subimageD3.exr")
 command += oiiotool ("subimages-4.exr --subimage layerB -o subimageB1.exr")
+command += oiiotool ("subimages-4.exr --subimage:delete=1 layerB -o subimage-noB.exr")
 command += oiiotool ("subimages-2.exr --sisplit -o subimage2.exr " +
                      "--pop -o subimage1.exr")
+command += oiiotool ("subimages-4.exr -cmul:subimages=0,2 0.5 -o subimage-individual.exr")
 
 # test sequences
 command += oiiotool ("src/tahoe-tiny.tif -o copyA.1-10#.jpg")
@@ -202,9 +222,9 @@ command += oiiotool ('-echo "16+5={16+5}" -echo "16-5={16-5}" -echo "16*5={16*5}
 command += oiiotool ('-echo "16/5={16/5}" -echo "16//5={16//5}" -echo "16%5={16%5}"')
 command += oiiotool ("src/tahoe-small.tif --pattern fill:top=0,0,0,0:bottom=0,0,1,1 " +
                      "{TOP.geom} {TOP.nchannels} -d uint8 -o exprgradient.tif")
-command += oiiotool ("src/tahoe-small.tif -cut '{TOP.width-20* 2}x{TOP.height-40+(4*2- 2 ) /6-1}+{TOP.x+100.5-80.5 }+{TOP.y+20}' -d uint8 -o exprcropped.tif")
-command += oiiotool ("src/tahoe-small.tif -o exprstrcat{TOP.compression}.tif")
-command += oiiotool ("src/tahoe-tiny.tif -subc '{TOP.MINCOLOR}' -divc '{TOP.MAXCOLOR}' -o tahoe-contraststretch.tif")
+command += oiiotool ('src/tahoe-small.tif -cut "{TOP.width-20* 2}x{TOP.height-40+(4*2- 2 ) /6-1}+{TOP.x+100.5-80.5 }+{TOP.y+20}" -d uint8 -o exprcropped.tif')
+command += oiiotool ('src/tahoe-small.tif -o exprstrcat{TOP.compression}.tif')
+command += oiiotool ('src/tahoe-tiny.tif -subc "{TOP.MINCOLOR}" -divc "{TOP.MAXCOLOR}" -o tahoe-contraststretch.tif')
 # test use of quotes inside evaluation, {TOP.foo/bar} would ordinarily want
 # to interpret '/' for division, but we want to look up metadata called
 # 'foo/bar'.
@@ -251,6 +271,8 @@ outputs = [
             "tahoe-filled.tif", "growholes.tif",
             "rangecompress.tif", "rangeexpand.tif",
             "rangecompress-luma.tif", "rangeexpand-luma.tif",
+            "min.exr", "cmin1.exr", "cmin2.exr",
+            "max.exr", "cmax1.exr", "cmax2.exr",
             "grid-clamped.tif",
             "bsplinekernel.exr", "bspline-blur.tif",
             "gauss5x5-blur.tif", "tahoe-median.tif",
@@ -258,6 +280,13 @@ outputs = [
             "unsharp.tif", "unsharp-median.tif", "tahoe-laplacian.tif",
             "fft.exr", "ifft.exr",
             "polar.exr", "unpolar.exr",
+            "subimages-2.exr",
+            "subimages-4.exr",
+            "subimageD3.exr",
+            "subimageB1.exr",
+            "subimage-noB.exr",
+            "subimage-individual.exr",
+            "subimage1.exr",
             "labeladd.exr",
             "exprgradient.tif", "exprcropped.tif", "exprstrcatlzw.tif",
             "tahoe-contraststretch.tif",

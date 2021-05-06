@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
-#include <OpenImageIO/oiioversion.h>
+#include <OpenImageIO/fmath.h>
 
 #include "fits_pvt.h"
 
@@ -86,7 +86,7 @@ FitsOutput::open(const std::string& name, const ImageSpec& spec, OpenMode mode)
 
 
 bool
-FitsOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
+FitsOutput::write_scanline(int y, int /*z*/, TypeDesc format, const void* data,
                            stride_t xstride)
 {
     if (m_spec.width == 0 && m_spec.height == 0)

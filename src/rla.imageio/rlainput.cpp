@@ -9,7 +9,6 @@
 
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/filesystem.h>
-#include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imagebufalgo_util.h>
 #include <OpenImageIO/imageio.h>
 
@@ -364,11 +363,11 @@ RLAInput::seek_subimage(int subimage, int miplevel)
     }
 
     // save some typing by using macros
-#define FIELD(x, name)                                                         \
-    if (m_rla.x > 0)                                                           \
+#define FIELD(x, name) \
+    if (m_rla.x > 0)   \
     m_spec.attribute(name, m_rla.x)
-#define STRING_FIELD(x, name)                                                  \
-    if (m_rla.x[0])                                                            \
+#define STRING_FIELD(x, name) \
+    if (m_rla.x[0])           \
     m_spec.attribute(name, m_rla.x)
 
     STRING_FIELD(Description, "ImageDescription");
@@ -500,7 +499,7 @@ RLAInput::decode_rle_span(unsigned char* buf, int n, int stride,
 
 bool
 RLAInput::decode_channel_group(int first_channel, short num_channels,
-                               short num_bits, int y)
+                               short num_bits, int /*y*/)
 {
     // Some preliminaries -- figure out various sizes and offsets
     int chsize;         // size of the channels in this group, in bytes
@@ -524,7 +523,7 @@ RLAInput::decode_channel_group(int first_channel, short num_channels,
     }
 
     // Read the big-endian values into the buffer.
-    // The channels are simply contatenated together in order.
+    // The channels are simply concatenated together in order.
     // Each channel starts with a length, from which we know how many
     // bytes of encoded RLE data to read.  Then there are RLE
     // spans for each 8-bit slice of the channel.
@@ -626,7 +625,7 @@ RLAInput::decode_channel_group(int first_channel, short num_channels,
 
 
 bool
-RLAInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+RLAInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                void* data)
 {
     lock_guard lock(m_mutex);

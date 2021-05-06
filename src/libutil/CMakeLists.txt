@@ -9,10 +9,19 @@ add_library (OpenImageIO_Util ${libOpenImageIO_Util_srcs})
 target_include_directories (OpenImageIO_Util
         PUBLIC
             ${CMAKE_INSTALL_FULL_INCLUDEDIR}
-            ${ILMBASE_INCLUDES}
+            ${IMATH_INCLUDES} ${OPENEXR_INCLUDES}
         )
 target_link_libraries (OpenImageIO_Util
         PUBLIC
+            # For OpenEXR/Imath 3.x:
+            $<$<TARGET_EXISTS:Imath::Imath>:Imath::Imath>
+            $<$<TARGET_EXISTS:Imath::Half>:Imath::Half>
+            # For OpenEXR >= 2.4/2.5 with reliable exported targets
+            $<$<TARGET_EXISTS:IlmBase::Imath>:IlmBase::Imath>
+            $<$<TARGET_EXISTS:IlmBase::Half>:IlmBase::Half>
+            $<$<TARGET_EXISTS:IlmBase::IlmThread>:IlmBase::IlmThread>
+            $<$<TARGET_EXISTS:IlmBase::Iex>:IlmBase::Iex>
+            # For OpenEXR <= 2.3:
             ${ILMBASE_LIBRARIES}
             ${GCC_ATOMIC_LIBRARIES}
         PRIVATE
@@ -30,9 +39,6 @@ if (NOT BUILD_SHARED_LIBS)
     target_compile_definitions (OpenImageIO_Util PUBLIC OIIO_STATIC_DEFINE=1)
 endif ()
 
-if (VERBOSE)
-    message(STATUS "Setting SOVERSION to: ${SOVERSION}")
-endif ()
 set_target_properties(OpenImageIO_Util
                       PROPERTIES
                          VERSION     ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}

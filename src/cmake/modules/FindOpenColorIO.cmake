@@ -36,8 +36,13 @@ find_library (OPENCOLORIO_LIBRARY
     DOC "The OCIO library")
 
 if (EXISTS "${OPENCOLORIO_INCLUDE_DIR}/OpenColorIO/OpenColorABI.h")
+    # Search twice, because this symbol changed between OCIO 1.x and 2.x
     file(STRINGS "${OPENCOLORIO_INCLUDE_DIR}/OpenColorIO/OpenColorABI.h" TMP
-         REGEX "^#define OCIO_VERSION[ \t].*$")
+         REGEX "^#define OCIO_VERSION_STR[ \t].*$")
+    if (NOT TMP)
+        file(STRINGS "${OPENCOLORIO_INCLUDE_DIR}/OpenColorIO/OpenColorABI.h" TMP
+             REGEX "^#define OCIO_VERSION[ \t].*$")
+    endif ()
     string (REGEX MATCHALL "[0-9]+[.0-9]+" OPENCOLORIO_VERSION ${TMP})
 endif ()
 
@@ -55,18 +60,19 @@ if (OPENCOLORIO_FOUND)
         add_library(OpenColorIO::OpenColorIO UNKNOWN IMPORTED)
         set_target_properties(OpenColorIO::OpenColorIO PROPERTIES
             INTERFACE_INCLUDE_DIRECTORIES "${OPENCOLORIO_INCLUDES}")
+
         set_property(TARGET OpenColorIO::OpenColorIO APPEND PROPERTY
             IMPORTED_LOCATION "${OPENCOLORIO_LIBRARIES}")
         if (LINKSTATIC)
-            set_target_properties(OpenColorIO::OpenColorIO PROPERTIES
-                INTERFACE_COMPILE_DEFINITIONS "OpenColorIO_STATIC")
+            target_compile_definitions(OpenColorIO::OpenColorIO
+                INTERFACE "-DOpenColorIO_STATIC")
         endif()
     endif ()
 endif ()
 
 if (OpenColorIO_FOUND AND LINKSTATIC)
     # Is this necessary?
-    set (OPENCOLORIO_DEFINITIONS "OpenColorIO_STATIC")
+    set (OPENCOLORIO_DEFINITIONS "-DOpenColorIO_STATIC")
     find_library (TINYXML_LIBRARY NAMES tinyxml)
     if (TINYXML_LIBRARY)
         set (OPENCOLORIO_LIBRARIES "${OPENCOLORIO_LIBRARIES};${TINYXML_LIBRARY}" CACHE STRING "" FORCE)

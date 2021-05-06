@@ -8,8 +8,6 @@
 #include <sstream>
 #include <string>
 
-#include <OpenEXR/ImathMatrix.h>
-
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/filter.h>
 #include <OpenImageIO/fmath.h>
@@ -351,8 +349,8 @@ TextureSystemImpl::environment(TextureHandle* texture_handle_,
         int s = m_imagecache->subimage_from_name(texturefile,
                                                  options.subimagename);
         if (s < 0) {
-            errorf("Unknown subimage \"%s\" in texture \"%s\"",
-                   options.subimagename, texturefile->filename());
+            error("Unknown subimage \"{}\" in texture \"{}\"",
+                  options.subimagename, texturefile->filename());
             return missing_texture(options, nchannels, result, dresultds,
                                    dresultdt);
         }
@@ -360,8 +358,8 @@ TextureSystemImpl::environment(TextureHandle* texture_handle_,
         options.subimagename.clear();
     }
     if (options.subimage < 0 || options.subimage >= texturefile->subimages()) {
-        errorf("Unknown subimage \"%s\" in texture \"%s\"",
-               options.subimagename, texturefile->filename());
+        error("Unknown subimage \"{}\" in texture \"{}\"", options.subimagename,
+              texturefile->filename());
         return missing_texture(options, nchannels, result, dresultds,
                                dresultdt);
     }
@@ -404,7 +402,7 @@ TextureSystemImpl::environment(TextureHandle* texture_handle_,
     float xfilt_noblur = std::max(safe_acos(R.dot(Rx)), 1e-8f);
     float yfilt_noblur = std::max(safe_acos(R.dot(Ry)), 1e-8f);
     int naturalres = int((float)M_PI / std::min(xfilt_noblur, yfilt_noblur));
-    // FIXME -- figure naturalres sepearately for s and t
+    // FIXME -- figure naturalres separately for s and t
     // FIXME -- ick, why is it x and y at all, shouldn't it be s and t?
     // N.B. naturalres formulated for latlong
 

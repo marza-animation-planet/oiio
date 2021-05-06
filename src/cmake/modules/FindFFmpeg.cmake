@@ -1,7 +1,7 @@
 # - Try to find ffmpeg libraries (libavcodec, libavformat and libavutil)
 # Once done this will define
 #
-#  FFMPEG_FOUND - system has ffmpeg or libav
+#  FFmpeg_FOUND - system has ffmpeg or libav
 #  FFMPEG_INCLUDE_DIR - the ffmpeg include directory
 #  FFMPEG_LIBRARIES - Link these to use ffmpeg
 #  FFMPEG_LIBAVCODEC
@@ -20,11 +20,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
-
-if (FFMPEG_LIBRARIES AND FFMPEG_INCLUDE_DIR)
-  # in cache already
-  set(FFMPEG_FOUND TRUE)
+if (FFMPEG_INCLUDES AND FFMPEG_LIBRARIES)
+    set (FFmpeg_FOUND TRUE)
 else ()
+
   # use pkg-config to get the directories and then use these values
   # in the FIND_PATH() and FIND_LIBRARY() calls
   find_package(PkgConfig)
@@ -57,13 +56,16 @@ else ()
     NAMES swscale
     HINTS ${_FFMPEG_SWSCALE_LIBRARY_DIRS} )
 
-  if (FFMPEG_LIBAVCODEC AND FFMPEG_LIBAVFORMAT AND FFMPEG_AVCODEC_INCLUDE_DIR)
-    set(FFMPEG_FOUND TRUE)
-  endif()
+  include (FindPackageHandleStandardArgs)
+  find_package_handle_standard_args (FFmpeg
+    REQUIRED_VARS   FFMPEG_LIBAVCODEC
+                    FFMPEG_LIBAVFORMAT
+                    FFMPEG_AVCODEC_INCLUDE_DIR
+    )
 
-  if (FFMPEG_FOUND)
+  if (FFmpeg_FOUND)
     set(FFMPEG_INCLUDE_DIR ${FFMPEG_AVCODEC_INCLUDE_DIR})
-
+    set(FFMPEG_INCLUDES ${FFMPEG_AVCODEC_INCLUDE_DIR})
     set(FFMPEG_LIBRARIES
       ${FFMPEG_LIBAVCODEC}
       ${FFMPEG_LIBAVFORMAT}
@@ -71,13 +73,8 @@ else ()
       ${FFMPEG_LIBSWSCALE}
     )
   endif ()
-endif ()
 
-include (FindPackageHandleStandardArgs)
-find_package_handle_standard_args (FFMPEG
-    REQUIRED_VARS   FFMPEG_INCLUDE_DIR
-                    FFMPEG_LIBRARIES
-    )
+endif ()
 
 mark_as_advanced (
     FFMPEG_INCLUDES FFMPEG_LIBRARIES

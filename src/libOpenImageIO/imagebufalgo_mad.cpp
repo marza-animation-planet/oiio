@@ -2,12 +2,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
-/// \file
-/// Implementation of ImageBufAlgo algorithms that do math on
-/// single pixels at a time.
-
-#include <OpenEXR/half.h>
-
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -32,7 +26,7 @@ mad_impl(ImageBuf& R, const ImageBuf& A, const ImageBuf& B, const ImageBuf& C,
     ImageBufAlgo::parallel_image(roi, nthreads, [&](ROI roi) {
         if ((is_same<Rtype, float>::value || is_same<Rtype, half>::value)
             && (is_same<ABCtype, float>::value || is_same<ABCtype, half>::value)
-            // && R.localpixels() // has to be, because it's writeable
+            // && R.localpixels() // has to be, because it's writable
             && A.localpixels() && B.localpixels()
             && C.localpixels()
             // && R.contains_roi(roi)  // has to be, because IBAPrep

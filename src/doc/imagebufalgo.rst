@@ -33,15 +33,25 @@ Most ImageBufAlgo functions that produce image data come in two forms:
    error, the result image returned can have any error conditions checked with
    `has_error()` and `geterror()`.
    
-   .. code-block:: cpp
+   .. tabs::
    
-       // Method 1: Return an image result
-       ImageBuf fg ("fg.exr"), bg ("bg.exr");
-       ImageBuf dst = ImageBufAlgo::over (fg, bg);
-       if (dst.has_error())
-           std::cout << "error: " << dst.geterror() << "\n";
+      .. code-tab:: c++
    
+          // Method 1: Return an image result
+          ImageBuf dst = ImageBufAlgo::over (fg, bg);
+          if (dst.has_error())
+              std::cout << "error: " << dst.geterror() << "\n";
+
+      .. code-tab:: py
    
+          # Method 1: Return an image result
+          fg = ImageBuf("fg.exr")
+          bg = ImageBuf("bg.exr")
+          dst = ImageBufAlgo.over (fg, bg)
+          if dst.has_error() :
+              print("error:", dst.geterror())
+
+
 2. Pass a destination ImageBuf reference as the first parameter.
    
    The function is passed a *destination* ImageBuf where the results will
@@ -50,15 +60,26 @@ Most ImageBufAlgo functions that produce image data come in two forms:
    destination ImageBuf (the one that is being altered) will have an error
    message set.
    
-   .. code-block:: cpp
+   .. tabs::
    
-       // Method 2: Write into an existing image
-       ImageBuf fg ("fg.exr"), bg ("bg.exr");
-       ImageBuf dst;   // will be the output image
-       bool ok = ImageBufAlgo::over (dst, fg, bg);
-       if (! ok)
-           std::cout << "error: " << dst.geterror() << "\n";
-   
+      .. code-tab:: c++
+      
+          // Method 2: Write into an existing image
+          ImageBuf fg ("fg.exr"), bg ("bg.exr");
+          ImageBuf dst;   // will be the output image
+          bool ok = ImageBufAlgo::over (dst, fg, bg);
+          if (! ok)
+              std::cout << "error: " << dst.geterror() << "\n";
+
+      .. code-tab:: py
+          
+          # Method 2: Write into an existing image
+          fg = ImageBuf("fg.exr")
+          bg = ImageBuf("bg.exr")
+          dst = ImageBuf()  # will be the output image
+          ok = ImageBufAlgo.over (dst, fg, bg)
+          if not ok :
+              print("error:", dst.geterror())
 
 
 The first option (return an ImageBuf directly) is a more compact and
@@ -151,7 +172,7 @@ pre-allocated `dst` nor a non-default ROI.
 zero() -- create a black image
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. doxygenfunction:: zero(ROI, int)
+.. doxygenfunction:: zero(ROI roi, int nthreads = 0)
 
 ..
 
@@ -176,7 +197,7 @@ zero() -- create a black image
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: zero(ImageBuf&, ROI, int)
+    .. doxygenfunction:: zero(ImageBuf &dst, ROI roi = {}, int nthreads = 0)
 
 
 |
@@ -207,7 +228,7 @@ fill() -- fill a region with a solid color or gradient
 checker() -- make a checker pattern
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. doxygenfunction:: checker(int, int, int, cspan<float>, cspan<float>, int, int, int, ROI, int)
+.. doxygenfunction:: checker(int width, int height, int depth, cspan<float> color1, cspan<float> color2, int xoffset, int yoffset, int zoffset, ROI roi, int nthreads = 0)
 ..
 
   Examples::
@@ -225,7 +246,7 @@ checker() -- make a checker pattern
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: checker(ImageBuf&, int, int, int, cspan<float>, cspan<float>, int, int, int, ROI, int)
+    .. doxygenfunction:: checker(ImageBuf &dst, int width, int height, int depth, cspan<float> color1, cspan<float> color2, int xoffset = 0, int yoffset = 0, int zoffset = 0, ROI roi = {}, int nthreads = 0)
 
 
 |
@@ -234,7 +255,7 @@ checker() -- make a checker pattern
 noise() -- make a noise pattern
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. doxygenfunction:: noise(string_view, float, float, bool, int, ROI, int)
+.. doxygenfunction:: noise(string_view noisetype, float A = 0.0f, float B = 0.1f, bool mono = false, int seed = 0, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -272,7 +293,7 @@ noise() -- make a noise pattern
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: noise(ImageBuf&, string_view, float, float, bool, int, ROI, int)
+    .. doxygenfunction:: noise(ImageBuf &dst, string_view noisetype, float A = 0.0f, float B = 0.1f, bool mono = false, int seed = 0, ROI roi = {}, int nthreads = 0)
 
 |
 
@@ -329,7 +350,7 @@ Drawing shapes: points, lines, boxes
 Drawing text
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. doxygenfunction:: render_text(ImageBuf&, int, int, string_view, int, string_view, cspan<float>, TextAlignX, TextAlignY, int, ROI, int)
+.. doxygenfunction:: render_text(ImageBuf &dst, int x, int y, string_view text, int fontsize = 16, string_view fontname = "", cspan<float> textcolor = 1.0f, TextAlignX alignx = TextAlignX::Left, TextAlignY aligny = TextAlignY::Baseline, int shadow = 0, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -386,7 +407,7 @@ Image transformations and data movement
 Shuffling channels
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. doxygenfunction:: channels(const ImageBuf&, int, cspan<int>, cspan<float>, cspan<std::string>, bool, int)
+.. doxygenfunction:: channels(const ImageBuf &src, int nchannels, cspan<int> channelorder, cspan<float> channelvalues = {}, cspan<std::string> newchannelnames = {}, bool shuffle_channel_names = false, int nthreads = 0)
 ..
 
   Examples::
@@ -419,12 +440,12 @@ Shuffling channels
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: channels(ImageBuf&, const ImageBuf&, int, cspan<int>, cspan<float>, cspan<std::string>, bool, int)
+    .. doxygenfunction:: channels(ImageBuf &dst, const ImageBuf &src, int nchannels, cspan<int> channelorder, cspan<float> channelvalues = {}, cspan<std::string> newchannelnames = {}, bool shuffle_channel_names = false, int nthreads = 0)
 
 |
 
 
-.. doxygenfunction:: channel_append(const ImageBuf&, const ImageBuf&, ROI, int)
+.. doxygenfunction:: channel_append(const ImageBuf &A, const ImageBuf &B, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -435,12 +456,12 @@ Shuffling channels
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: channel_append(ImageBuf&, const ImageBuf&, const ImageBuf&, ROI, int)
+    .. doxygenfunction:: channel_append(ImageBuf &dst, const ImageBuf &A, const ImageBuf &B, ROI roi = {}, int nthreads = 0)
 
 |
 
 
-.. doxygenfunction:: copy(const ImageBuf&, TypeDesc, ROI, int)
+.. doxygenfunction:: copy(const ImageBuf &src, TypeDesc convert = TypeUnknown, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -451,12 +472,12 @@ Shuffling channels
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: copy(ImageBuf&, const ImageBuf&, TypeDesc, ROI, int)
+    .. doxygenfunction:: copy(ImageBuf &dst, const ImageBuf &src, TypeDesc convert = TypeUnknown, ROI roi = {}, int nthreads = 0)
 
 |
 
 
-.. doxygenfunction:: crop(const ImageBuf&, ROI, int)
+.. doxygenfunction:: crop(const ImageBuf &src, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -467,12 +488,12 @@ Shuffling channels
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: crop(ImageBuf&, const ImageBuf&, ROI, int)
+    .. doxygenfunction:: crop(ImageBuf &dst, const ImageBuf &src, ROI roi = {}, int nthreads = 0)
 
 |
 
 
-.. doxygenfunction:: cut(const ImageBuf&, ROI, int)
+.. doxygenfunction:: cut(const ImageBuf &src, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -484,7 +505,7 @@ Shuffling channels
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: cut(ImageBuf&, const ImageBuf&, ROI, int)
+    .. doxygenfunction:: cut(ImageBuf &dst, const ImageBuf &src, ROI roi = {}, int nthreads = 0)
 
 |
 
@@ -558,7 +579,7 @@ Shuffling channels
 
 
 
-.. doxygenfunction:: reorient(const ImageBuf&, int)
+.. doxygenfunction:: reorient(const ImageBuf &src, int nthreads = 0)
 ..
 
   Examples::
@@ -568,13 +589,13 @@ Shuffling channels
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: reorient(ImageBuf&, const ImageBuf&, int)
+    .. doxygenfunction:: reorient(ImageBuf &dst, const ImageBuf &src, int nthreads = 0)
 
 |
 
 
 
-.. doxygenfunction:: circular_shift(const ImageBuf&, int, int, int, ROI, int)
+.. doxygenfunction:: circular_shift(const ImageBuf &src, int xshift, int yshift, int zshift = 0, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -594,7 +615,7 @@ Shuffling channels
 
   Result-as-parameter version:
 
-  .. doxygenfunction:: circular_shift(ImageBuf&, const ImageBuf&, int, int, int, ROI, int)
+  .. doxygenfunction:: circular_shift(ImageBuf &dst, const ImageBuf &src, int xshift, int yshift, int zshift = 0, ROI roi = {}, int nthreads = 0)
   ..
 
 |
@@ -634,7 +655,7 @@ Shuffling channels
 |
 
 
-.. doxygenfunction:: resample(const ImageBuf&, bool, ROI, int)
+.. doxygenfunction:: resample(const ImageBuf &src, bool interpolate = true, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -646,7 +667,7 @@ Shuffling channels
 
   Result-as-parameter version:
 
-  .. doxygenfunction:: resample(ImageBuf&, const ImageBuf&, bool, ROI, int)
+  .. doxygenfunction:: resample(ImageBuf &dst, const ImageBuf &src, bool interpolate = true, ROI roi = {}, int nthreads = 0)
   ..
 
 |
@@ -687,7 +708,7 @@ Shuffling channels
 Image arithmetic
 ================
 
-.. doxygenfunction:: add(Image_or_Const, Image_or_Const, ROI, int)
+.. doxygenfunction:: add(Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -705,14 +726,14 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: add(ImageBuf&, Image_or_Const, Image_or_Const, ROI, int)
+    .. doxygenfunction:: add(ImageBuf &dst, Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
 
 
 
 
 |
 
-.. doxygenfunction:: sub(Image_or_Const, Image_or_Const, ROI, int)
+.. doxygenfunction:: sub(Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -723,13 +744,13 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: sub(ImageBuf&, Image_or_Const, Image_or_Const, ROI, int)
+    .. doxygenfunction:: sub(ImageBuf &dst, Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
 
 
 
 |
 
-.. doxygenfunction:: absdiff(Image_or_Const, Image_or_Const, ROI, int)
+.. doxygenfunction:: absdiff(Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -740,12 +761,12 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: absdiff(ImageBuf&, Image_or_Const, Image_or_Const, ROI, int)
+    .. doxygenfunction:: absdiff(ImageBuf &dst, Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: abs(const ImageBuf&, ROI, int)
+.. doxygenfunction:: abs(const ImageBuf &A, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -755,13 +776,13 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: abs(ImageBuf&, const ImageBuf&, ROI, int)
+    .. doxygenfunction:: abs(ImageBuf &dst, const ImageBuf &A, ROI roi = {}, int nthreads = 0)
 
 
 
 |
 
-.. doxygenfunction:: mul(Image_or_Const, Image_or_Const, ROI, int)
+.. doxygenfunction:: mul(Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -777,13 +798,13 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: mul(ImageBuf&, Image_or_Const, Image_or_Const, ROI, int)
+    .. doxygenfunction:: mul(ImageBuf &dst, Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
 
 
 
 |
 
-.. doxygenfunction:: div(Image_or_Const, Image_or_Const, ROI, int)
+.. doxygenfunction:: div(Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -799,12 +820,12 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: div(ImageBuf&, Image_or_Const, Image_or_Const, ROI, int)
+    .. doxygenfunction:: div(ImageBuf &dst, Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: mad(Image_or_Const, Image_or_Const, Image_or_Const, ROI, int)
+.. doxygenfunction:: mad(Image_or_Const A, Image_or_Const B, Image_or_Const C, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -823,12 +844,12 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: mad(ImageBuf&, Image_or_Const, Image_or_Const, Image_or_Const, ROI, int)
+    .. doxygenfunction:: mad(ImageBuf &dst, Image_or_Const A, Image_or_Const B, Image_or_Const C, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: over(const ImageBuf&, const ImageBuf&, ROI, int)
+.. doxygenfunction:: over(const ImageBuf &A, const ImageBuf &B, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -839,12 +860,12 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: over(ImageBuf&, const ImageBuf&, const ImageBuf&, ROI, int)
+    .. doxygenfunction:: over(ImageBuf &dst, const ImageBuf &A, const ImageBuf &B, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: zover(const ImageBuf&, const ImageBuf&, bool, ROI, int)
+.. doxygenfunction:: zover(const ImageBuf &A, const ImageBuf &B, bool z_zeroisinf = false, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -855,12 +876,12 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: zover(ImageBuf&, const ImageBuf&, const ImageBuf&, bool, ROI, int)
+    .. doxygenfunction:: zover(ImageBuf &dst, const ImageBuf &A, const ImageBuf &B, bool z_zeroisinf = false, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: invert(const ImageBuf&, ROI, int)
+.. doxygenfunction:: invert(const ImageBuf &A, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -889,12 +910,12 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: invert(ImageBuf&, const ImageBuf&, ROI, int)
+    .. doxygenfunction:: invert(ImageBuf &dst, const ImageBuf &A, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: pow(const ImageBuf&, cspan<float>, ROI, int)
+.. doxygenfunction:: pow(const ImageBuf &A, cspan<float> B, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -906,12 +927,12 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: pow(ImageBuf&, const ImageBuf&, cspan<float>, ROI, int)
+    .. doxygenfunction:: pow(ImageBuf &dst, const ImageBuf &A, cspan<float> B, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: channel_sum(const ImageBuf&, cspan<float>, ROI, int)
+.. doxygenfunction:: channel_sum(const ImageBuf &src, cspan<float> weights = 1.0f, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -924,12 +945,37 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: channel_sum(ImageBuf&, const ImageBuf&, cspan<float>, ROI, int)
+    .. doxygenfunction:: channel_sum(ImageBuf &dst, const ImageBuf &src, cspan<float> weights = 1.0f, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: clamp(const ImageBuf&, cspan<float>, cspan<float>, bool, ROI, int)
+.. doxygenfunction:: max(Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
+.. doxygenfunction:: min(Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
+..
+
+  Examples::
+
+    // min of images A and B, assign to MinMimage
+    ImageBuf A ("a.exr");
+    ImageBuf B ("b.exr");
+    ImageBuf MinImage = ImageBufAlgo::min (Sum, A, B);
+
+    // Squash negative values in A by taking max(A, 0.0) for channels 0-2 of A
+    ImageBuf A ("a.exr");
+    ROI roi = get_roi (A.spec());
+    roi.chbegin = 0;  roi.chend = 3;
+    ImageBuf Sum = ImageBufAlgo::max (Sum, A, 0.0f, roi);
+
+  Result-as-parameter version:
+
+    .. doxygenfunction:: max(ImageBuf &dst, Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
+    .. doxygenfunction:: min(ImageBuf &dst, Image_or_Const A, Image_or_Const B, ROI roi = {}, int nthreads = 0)
+
+
+|
+
+.. doxygenfunction:: clamp(const ImageBuf &src, cspan<float> min = -std::numeric_limits<float>::max(), cspan<float> max = std::numeric_limits<float>::max(), bool clampalpha01 = false, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -950,12 +996,12 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: clamp(ImageBuf&, const ImageBuf&, cspan<float>, cspan<float>, bool, ROI, int)
+    .. doxygenfunction:: clamp(ImageBuf &dst, const ImageBuf &src, cspan<float> min = -std::numeric_limits<float>::max(), cspan<float> max = std::numeric_limits<float>::max(), bool clampalpha01 = false, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: contrast_remap(const ImageBuf&, cspan<float>, cspan<float>, cspan<float>, cspan<float>, cspan<float>, cspan<float>, ROI, int)
+.. doxygenfunction:: contrast_remap(const ImageBuf &src, cspan<float> black = 0.0f, cspan<float> white = 1.0f, cspan<float> min = 0.0f, cspan<float> max = 1.0f, cspan<float> scontrast = 1.0f, cspan<float> sthresh = 0.5f, ROI = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -993,7 +1039,7 @@ Image arithmetic
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: contrast_remap(ImageBuf&, const ImageBuf&, cspan<float>, cspan<float>, cspan<float>, cspan<float>, cspan<float>, cspan<float>, ROI, int)
+    .. doxygenfunction:: contrast_remap(ImageBuf &dst, const ImageBuf &src, cspan<float> black = 0.0f, cspan<float> white = 1.0f, cspan<float> min = 0.0f, cspan<float> max = 1.0f, cspan<float> scontrast = 1.0f, cspan<float> sthresh = 0.5f, ROI = {}, int nthreads = 0)
 
 
 |
@@ -1064,7 +1110,7 @@ Image arithmetic
 Image comparison and statistics
 ===============================
 
-.. doxygenfunction:: computePixelStats(const ImageBuf&, ROI, int)
+.. doxygenfunction:: computePixelStats
 ..
 
   The PixelStats structure is defined as follows::
@@ -1098,7 +1144,7 @@ Image comparison and statistics
 
 |
 
-.. doxygenfunction:: compare(const ImageBuf&, const ImageBuf&, float, float, ROI, int)
+.. doxygenfunction:: compare(const ImageBuf &A, const ImageBuf &B, float failthresh, float warnthresh, ROI roi = {}, int nthreads = 0)
 ..
 
   The CompareResults structure is defined as follows::
@@ -1132,13 +1178,13 @@ Image comparison and statistics
 
 |
 
-.. doxygenfunction:: compare_Yee(const ImageBuf&, const ImageBuf&, CompareResults&, float, float, ROI, int)
+.. doxygenfunction:: compare_Yee
 ..
 
 
 |
 
-.. doxygenfunction:: isConstantColor(const ImageBuf&, float, span<float>, ROI, int)
+.. doxygenfunction:: isConstantColor
 ..
 
   Examples::
@@ -1157,7 +1203,7 @@ Image comparison and statistics
 
 |
 
-.. doxygenfunction:: isConstantChannel(const ImageBuf&, int, float, float, ROI, int)
+.. doxygenfunction:: isConstantChannel
 ..
 
   Examples::
@@ -1174,7 +1220,7 @@ Image comparison and statistics
 
 |
 
-.. doxygenfunction:: isMonochrome(const ImageBuf&, float, ROI, int)
+.. doxygenfunction:: isMonochrome
 ..
 
   Examples::
@@ -1188,7 +1234,7 @@ Image comparison and statistics
 
 |
 
-.. doxygenfunction:: color_count(const ImageBuf&, imagesize_t*, int, cspan<float>, cspan<float>, ROI, int)
+.. doxygenfunction:: color_count
 ..
 
   Examples::
@@ -1210,7 +1256,7 @@ Image comparison and statistics
 
 |
 
-.. doxygenfunction:: color_range_check(const ImageBuf&, imagesize_t*, imagesize_t*, imagesize_t*, cspan<float>, cspan<float>, ROI, int)
+.. doxygenfunction:: color_range_check
 ..
 
   Examples::
@@ -1260,7 +1306,7 @@ Image comparison and statistics
 
 |
 
-.. doxygenfunction:: histogram(const ImageBuf&, int, int, float, float, bool, ROI, int)
+.. doxygenfunction:: histogram
 ..
 
   Examples::
@@ -1285,7 +1331,7 @@ Image comparison and statistics
 Convolutions and frequency-space algorithms
 ===========================================
 
-.. doxygenfunction:: make_kernel(string_view, float, float, float, bool)
+.. doxygenfunction:: make_kernel
 ..
 
   Examples::
@@ -1295,7 +1341,7 @@ Convolutions and frequency-space algorithms
 
 |
 
-.. doxygenfunction:: convolve(const ImageBuf&, const ImageBuf&, bool, ROI, int)
+.. doxygenfunction:: convolve(const ImageBuf &src, const ImageBuf &kernel, bool normalize = true, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1319,13 +1365,13 @@ Convolutions and frequency-space algorithms
 
   Result-as-parameter version:
 
-    .. doxygenfunction:: convolve(ImageBuf&, const ImageBuf&, const ImageBuf&, bool, ROI, int)
+    .. doxygenfunction:: convolve(ImageBuf &dst, const ImageBuf &src, const ImageBuf &kernel, bool normalize = true, ROI roi = {}, int nthreads = 0)
 
 
 
 |
 
-.. doxygenfunction:: laplacian(const ImageBuf&, ROI, int)
+.. doxygenfunction:: laplacian(const ImageBuf &src, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1345,7 +1391,7 @@ Convolutions and frequency-space algorithms
   | original        | Laplacian image |
   +-----------------+-----------------+
 
-  .. doxygenfunction:: laplacian(ImageBuf&, const ImageBuf&, ROI, int)
+  .. doxygenfunction:: laplacian(ImageBuf &dst, const ImageBuf &src, ROI roi = {}, int nthreads = 0)
 
 
 |
@@ -1391,7 +1437,7 @@ Convolutions and frequency-space algorithms
 Image Enhancement / Restoration
 ===============================
 
-.. doxygenfunction:: fixNonFinite(const ImageBuf&, NonFiniteFixMode, int*, ROI, int)
+.. doxygenfunction:: fixNonFinite(const ImageBuf &src, NonFiniteFixMode mode = NONFINITE_BOX3, int *pixelsFixed = nullptr, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1403,12 +1449,12 @@ Image Enhancement / Restoration
     std::cout << "Repaired " << pixelsFixed << " non-finite pixels\n";
 
   Result-as-parameter version:
-    .. doxygenfunction:: fixNonFinite(ImageBuf&, const ImageBuf&, NonFiniteFixMode, int*, ROI, int)
+    .. doxygenfunction:: fixNonFinite(ImageBuf &dst, const ImageBuf &src, NonFiniteFixMode mode = NONFINITE_BOX3, int *pixelsFixed = nullptr, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: fillholes_pushpull(const ImageBuf&, ROI, int)
+.. doxygenfunction:: fillholes_pushpull(const ImageBuf &src, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1417,12 +1463,12 @@ Image Enhancement / Restoration
     ImageBuf Filled = ImageBufAlgo::fillholes_pushpull (Src);
 
   Result-as-parameter version:
-    .. doxygenfunction:: fillholes_pushpull(ImageBuf&, const ImageBuf&, ROI, int)
+    .. doxygenfunction:: fillholes_pushpull(ImageBuf &dst, const ImageBuf &src, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: median_filter(ImageBuf&, const ImageBuf&, int, int, ROI, int)
+.. doxygenfunction:: median_filter(const ImageBuf &src, int width = 3, int height = -1, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1447,12 +1493,12 @@ Image Enhancement / Restoration
   +-----------------+-----------------+-----------------+
 
   Result-as-parameter version:
-    .. doxygenfunction:: median_filter(ImageBuf&, const ImageBuf&, int, int, ROI, int)
+    .. doxygenfunction:: median_filter(ImageBuf &dst, const ImageBuf &src, int width = 3, int height = -1, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: unsharp_mask(const ImageBuf&, string_view, float, float, float, ROI, int)
+.. doxygenfunction:: unsharp_mask(const ImageBuf &src, string_view kernel = "gaussian", float width = 3.0f, float contrast = 1.0f, float threshold = 0.0f, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1461,7 +1507,7 @@ Image Enhancement / Restoration
     ImageBuf Sharp = ImageBufAlgo::unsharp_mask (Blurry, "gaussian", 5.0f);
 
   Result-as-parameter version:
-    .. doxygenfunction:: unsharp_mask(ImageBuf&, const ImageBuf&, string_view, float, float, float, ROI, int)
+    .. doxygenfunction:: unsharp_mask(ImageBuf &dst, const ImageBuf &src, string_view kernel = "gaussian", float width = 3.0f, float contrast = 1.0f, float threshold = 0.0f, ROI roi = {}, int nthreads = 0)
 
 |
 
@@ -1469,20 +1515,20 @@ Image Enhancement / Restoration
 Morphological filters
 =====================
 
-.. doxygenfunction:: dilate(const ImageBuf&, int, int, ROI, int)
+.. doxygenfunction:: dilate(const ImageBuf &src, int width = 3, int height = -1, ROI roi = {}, int nthreads = 0)
 ..
 
   Result-as-parameter version:
-    .. doxygenfunction:: dilate(ImageBuf&, const ImageBuf&, int, int, ROI, int)
+    .. doxygenfunction:: dilate(ImageBuf &dst, const ImageBuf &src, int width = 3, int height = -1, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: erode(const ImageBuf&, int, int, ROI, int)
+.. doxygenfunction:: erode(const ImageBuf &src, int width = 3, int height = -1, ROI roi = {}, int nthreads = 0)
 ..
 
   Result-as-parameter version:
-    .. doxygenfunction:: erode(ImageBuf&, const ImageBuf&, int, int, ROI, int)
+    .. doxygenfunction:: erode(ImageBuf &dst, const ImageBuf &src, int width = 3, int height = -1, ROI roi = {}, int nthreads = 0)
 
 |
 
@@ -1580,7 +1626,7 @@ Color space conversion
 
 |
 
-.. doxygenfunction:: colormatrixtransform(const ImageBuf&, const Imath::M44f&, bool, ROI, int)
+.. doxygenfunction:: colormatrixtransform(const ImageBuf &src, const Imath::M44f &M, bool unpremult = true, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1606,12 +1652,12 @@ Color space conversion
   +-----------------+-----------------+
 
   Result-as-parameter version:
-    .. doxygenfunction:: colormatrixtransform(ImageBuf&, const ImageBuf&, const Imath::M44f&, bool, ROI, int)
+    .. doxygenfunction:: colormatrixtransform(ImageBuf &dst, const ImageBuf &src, const Imath::M44f &M, bool unpremult = true, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: ociolook(const ImageBuf&, string_view, string_view, string_view, bool, bool, string_view, string_view, ColorConfig*, ROI, int)
+.. doxygenfunction:: ociolook(const ImageBuf &src, string_view looks, string_view fromspace, string_view tospace, bool unpremult = true, bool inverse = false, string_view context_key = "", string_view context_value = "", ColorConfig *colorconfig = nullptr, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1621,11 +1667,11 @@ Color space conversion
                                            true, false, "SHOT", "pe0012");
 
   Result-as-parameter version:
-    .. doxygenfunction:: ociolook(ImageBuf&, const ImageBuf&, string_view, string_view, string_view, bool, bool, string_view, string_view, ColorConfig*, ROI, int)
+    .. doxygenfunction:: ociolook(ImageBuf &dst, const ImageBuf &src, string_view looks, string_view fromspace, string_view tospace, bool unpremult = true, bool inverse = false, string_view context_key = "", string_view context_value = "", ColorConfig *colorconfig = nullptr, ROI roi = {}, int nthreads = 0)
 
 |
 
-.. doxygenfunction:: ociodisplay(const ImageBuf&, string_view, string_view, string_view, string_view, bool, string_view, string_view, ColorConfig*, ROI, int)
+.. doxygenfunction:: ociodisplay(const ImageBuf &src, string_view display, string_view view, string_view fromspace = "", string_view looks = "", bool unpremult = true, string_view context_key = "", string_view context_value = "", ColorConfig *colorconfig = nullptr, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1635,12 +1681,12 @@ Color space conversion
                                               "", true, "SHOT", "pe0012");
 
   Result-as-parameter version:
-    .. doxygenfunction:: ociodisplay(ImageBuf&, const ImageBuf&, string_view, string_view, string_view, string_view, bool, string_view, string_view, ColorConfig*, ROI, int)
+    .. doxygenfunction:: ociodisplay(ImageBuf &dst, const ImageBuf &src, string_view display, string_view view, string_view fromspace = "", string_view looks = "", bool unpremult = true, string_view context_key = "", string_view context_value = "", ColorConfig *colorconfig = nullptr, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: ociofiletransform(const ImageBuf&, string_view, bool, bool, ColorConfig*, ROI, int)
+.. doxygenfunction:: ociofiletransform(const ImageBuf &src, string_view name, bool unpremult = true, bool inverse = false, ColorConfig *colorconfig = nullptr, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1650,7 +1696,7 @@ Color space conversion
 
 
   Result-as-parameter version:
-    .. doxygenfunction:: ociofiletransform(ImageBuf&, const ImageBuf&, string_view, bool, bool, ColorConfig*, ROI, int)
+    .. doxygenfunction:: ociofiletransform(ImageBuf &dst, const ImageBuf &src, string_view name, bool unpremult = true, bool inverse = false, ColorConfig *colorconfig = nullptr, ROI roi = {}, int nthreads = 0)
 
 
 |
@@ -1660,13 +1706,20 @@ Color space conversion
 
   Examples::
 
-    // Convert in-place from associated alpha to unassociated alpha
-    ImageBuf A ("a.exr");
+    // Convert from unassociated alpha to associated alpha by
+    // straightforward multiplication of color by alpha.
+    ImageBuf Unassoc;  // Assume somehow this has unassociated alpha
+    ImageBuf Assoc = ImageBufAlgo::premult (Unassoc);
+
+    // Convert in-place from associated alpha to unassociated alpha,
+    // preserving the color of alpha==0 pixels.
+    ImageBuf A;
     ImageBufAlgo::unpremult (A, A);
 
-    // Convert in-place from unassociated alpha to associated alpha
-    ImageBufAlgo::premult (A, A);
-
+    // Finish the round-trip back to associated, still preserving the
+    // color of alpha==0 pixels. This should result in exactly the same
+    // pixel values we started with (within precision limits).
+    ImageBufAlgo::repremult (A, A);
 
 
 .. _sec-iba-importexport:
@@ -1729,7 +1782,7 @@ Functions specific to deep images
 
 |
 
-.. doxygenfunction:: deepen(const ImageBuf&, float, ROI, int)
+.. doxygenfunction:: deepen(const ImageBuf &src, float zvalue = 1.0f, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1738,12 +1791,12 @@ Functions specific to deep images
     ImageBuf Deep = ImageBufAlgo::deepen (Flat);
 
   Result-as-parameter version:
-    .. doxygenfunction:: deepen(ImageBuf&, const ImageBuf&, float, ROI, int)
+    .. doxygenfunction:: deepen(ImageBuf &dst, const ImageBuf &src, float zvalue = 1.0f, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: flatten(const ImageBuf&, ROI, int)
+.. doxygenfunction:: flatten(const ImageBuf &src, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1752,12 +1805,12 @@ Functions specific to deep images
     ImageBuf Flat = ImageBufAlgo::flatten (Deep);
 
   Result-as-parameter version:
-    .. doxygenfunction:: flatten(ImageBuf&, const ImageBuf&, ROI, int)
+    .. doxygenfunction:: flatten(ImageBuf &dst, const ImageBuf &src, ROI roi = {}, int nthreads = 0)
 
 
 |
 
-.. doxygenfunction:: deep_merge(const ImageBuf&, const ImageBuf&, bool, ROI, int)
+.. doxygenfunction:: deep_merge(const ImageBuf &A, const ImageBuf &B, bool occlusion_cull = true, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1767,13 +1820,13 @@ Functions specific to deep images
     ImageBuf Merged = ImageBufAlgo::deep_merge (DeepA, DeepB);
 
   Result-as-parameter version:
-    .. doxygenfunction:: deep_merge(ImageBuf&, const ImageBuf&, const ImageBuf&, bool, ROI, int)
+    .. doxygenfunction:: deep_merge(ImageBuf &dst, const ImageBuf &A, const ImageBuf &B, bool occlusion_cull = true, ROI roi = {}, int nthreads = 0)
 
 
 
 |
 
-.. doxygenfunction:: deep_holdout(const ImageBuf&, const ImageBuf&, ROI, int)
+.. doxygenfunction:: deep_holdout(const ImageBuf &src, const ImageBuf &holdout, ROI roi = {}, int nthreads = 0)
 ..
 
   Examples::
@@ -1783,7 +1836,7 @@ Functions specific to deep images
     ImageBuf Merged = ImageBufAlgo::deep_holdout (Src, Holdout);
 
   Result-as-parameter version:
-    .. doxygenfunction:: deep_holdout(ImageBuf&, const ImageBuf&, const ImageBuf&, ROI, int)
+    .. doxygenfunction:: deep_holdout(ImageBuf &dst, const ImageBuf &src, const ImageBuf &holdout, ROI roi = {}, int nthreads = 0)
 
 |
 

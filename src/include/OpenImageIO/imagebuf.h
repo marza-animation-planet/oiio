@@ -117,15 +117,22 @@ public:
     ///             first subimage of the file, highest-res MIP level).
     /// @param imagecache
     ///             Optionally, a particular ImageCache to use. If nullptr,
-    ///             the default global/shared image cache will be used.
+    ///             the default global/shared image cache will be used. If
+    ///             a custom ImageCache (not the global/shared one), it is
+    ///             important that the IC should not be destroyed while the
+    ///             ImageBuf is still alive.
     /// @param config
     ///             Optionally, a pointer to an ImageSpec whose metadata
     ///             contains configuration hints that set options related
     ///             to the opening and reading of the file.
+    /// @param ioproxy
+    ///         Optional pointer to an IOProxy to use when reading from the
+    ///         file. The caller retains ownership of the proxy.
     ///
     explicit ImageBuf(string_view name, int subimage = 0, int miplevel = 0,
-                      ImageCache* imagecache  = nullptr,
-                      const ImageSpec* config = nullptr);
+                      ImageCache* imagecache       = nullptr,
+                      const ImageSpec* config      = nullptr,
+                      Filesystem::IOProxy* ioproxy = nullptr);
 
     // Deprecated synonym for `ImageBuf(name, 0, 0, imagecache, nullptr)`.
     ImageBuf(string_view name, ImageCache* imagecache);
@@ -201,14 +208,15 @@ public:
     void reset() { clear(); }
 
     // Deprecated/useless synonym for `reset(name, 0, 0, imagecache, nullptr)`
-    void reset(string_view name, ImageCache* imagecache = nullptr);
+    void reset(string_view name, ImageCache* imagecache);
 
     /// Destroy any previous contents of the ImageBuf and re-initialize it
     /// as if newly constructed with the same arguments, as a read-only
     /// representation of an existing image file.
-    void reset(string_view name, int subimage, int miplevel,
-               ImageCache* imagecache  = nullptr,
-               const ImageSpec* config = nullptr);
+    void reset(string_view name, int subimage = 0, int miplevel = 0,
+               ImageCache* imagecache       = nullptr,
+               const ImageSpec* config      = nullptr,
+               Filesystem::IOProxy* ioproxy = nullptr);
 
     /// Destroy any previous contents of the ImageBuf and re-initialize it
     /// as if newly constructed with the same arguments, as a read/write
@@ -244,11 +252,15 @@ public:
     ///             If true, preserve any ImageCache-forced data types (you
     ///             might want to do this if it is critical that the
     ///             apparent data type doesn't change, for example if you
-    ///             are calling `make_writeable()` from within a
+    ///             are calling `make_writable()` from within a
     ///             type-specialized function).
     /// @returns
     ///             Return `true` if it works (including if no read was
     ///             necessary), `false` if something went horribly wrong.
+    bool make_writable(bool keep_cache_type = false);
+
+    // DEPRECATED(2.2): This is an alternate, and less common, spelling.
+    // Let's standardize on "writable". We will eventually remove this.
     bool make_writeable(bool keep_cache_type = false);
 
     /// @}
@@ -431,6 +443,7 @@ public:
                ProgressCallback progress_callback = nullptr,
                void* progress_callback_data       = nullptr) const;
 
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
     // DEPRECATED(1.9): old version did not have the data type
     bool write(string_view filename, string_view fileformat,
                ProgressCallback progress_callback = nullptr,
@@ -439,6 +452,7 @@ public:
         return write(filename, TypeUnknown, fileformat, progress_callback,
                      progress_callback_data);
     }
+#endif  // DOXYGEN_SHOULD_SKIP_THIS
 
     /// Set the pixel data format that will be used for subsequent `write()`
     /// calls that do not themselves request a specific data type request.
@@ -475,6 +489,13 @@ public:
     /// tiling, or the tile dimensions requested, a suitable supported
     /// tiling choice will be made automatically.
     void set_write_tiles(int width = 0, int height = 0, int depth = 0);
+
+    /// Supply an IOProxy to use for a subsequent call to `write()`.
+    ///
+    /// If a proxy is set but it later turns out that the file format
+    /// selected does not support write proxies, then `write()` will fail
+    /// with an error.
+    void set_write_ioproxy(Filesystem::IOProxy* ioproxy);
 
     /// Write the pixels of the ImageBuf to an open ImageOutput. The
     /// ImageOutput must have already been opened with a spec that indicates
@@ -637,7 +658,7 @@ public:
     void interppixel_NDC(float s, float t, float* pixel,
                          WrapMode wrap = WrapBlack) const;
 
-    // DEPCRECATED (1.5) synonym for interppixel_NDC.
+    // DEPRECATED (1.5) synonym for interppixel_NDC.
     void interppixel_NDC_full(float s, float t, float* pixel,
                               WrapMode wrap = WrapBlack) const;
 
@@ -924,7 +945,7 @@ public:
     /// Error reporting for ImageBuf: call this with Python / {fmt} /
     /// std::format style formatting specification.
     template<typename... Args>
-    void fmterror(const char* fmt, const Args&... args) const
+    void errorfmt(const char* fmt, const Args&... args) const
     {
         error(Strutil::fmt::format(fmt, args...));
     }
@@ -944,6 +965,15 @@ public:
     void error(const char* fmt, const Args&... args) const
     {
         error(Strutil::format(fmt, args...));
+    }
+
+    // Error reporting for ImageBuf: call this with Python / {fmt} /
+    // std::format style formatting specification.
+    template<typename... Args>
+    OIIO_DEPRECATED("use `errorfmt` instead")
+    void fmterror(const char* fmt, const Args&... args) const
+    {
+        error(Strutil::fmt::format(fmt, args...));
     }
 
     /// Returns `true` if the ImageBuf has had an error and has an error
@@ -1370,10 +1400,10 @@ public:
         }
 
         // Make sure it's writable. Use with caution!
-        void make_writeable()
+        void make_writable()
         {
             if (!m_localpixels) {
-                const_cast<ImageBuf*>(m_ib)->make_writeable(true);
+                const_cast<ImageBuf*>(m_ib)->make_writable(true);
                 OIIO_DASSERT(m_ib->storage() != IMAGECACHE);
                 m_tile      = nullptr;
                 m_proxydata = nullptr;
@@ -1408,7 +1438,7 @@ public:
         Iterator(ImageBuf& ib, WrapMode wrap = WrapDefault)
             : IteratorBase(ib, wrap)
         {
-            make_writeable();
+            make_writable();
             pos(m_rng_xbegin, m_rng_ybegin, m_rng_zbegin);
             if (m_rng_xbegin == m_rng_xend || m_rng_ybegin == m_rng_yend
                 || m_rng_zbegin == m_rng_zend)
@@ -1420,14 +1450,14 @@ public:
                  WrapMode wrap = WrapDefault)
             : IteratorBase(ib, wrap)
         {
-            make_writeable();
+            make_writable();
             pos(x, y, z);
         }
         /// Construct read-write iteration region from ImageBuf and ROI.
         Iterator(ImageBuf& ib, const ROI& roi, WrapMode wrap = WrapDefault)
             : IteratorBase(ib, roi, wrap)
         {
-            make_writeable();
+            make_writable();
             pos(m_rng_xbegin, m_rng_ybegin, m_rng_zbegin);
             if (m_rng_xbegin == m_rng_xend || m_rng_ybegin == m_rng_yend
                 || m_rng_zbegin == m_rng_zend)
@@ -1439,7 +1469,7 @@ public:
                  int zbegin = 0, int zend = 1, WrapMode wrap = WrapDefault)
             : IteratorBase(ib, xbegin, xend, ybegin, yend, zbegin, zend, wrap)
         {
-            make_writeable();
+            make_writable();
             pos(m_rng_xbegin, m_rng_ybegin, m_rng_zbegin);
             if (m_rng_xbegin == m_rng_xend || m_rng_ybegin == m_rng_yend
                 || m_rng_zbegin == m_rng_zend)
@@ -1450,7 +1480,7 @@ public:
         Iterator(Iterator& i)
             : IteratorBase(i.m_ib, i.m_wrap)
         {
-            make_writeable();
+            make_writable();
             pos(i.m_x, i.m_y, i.m_z);
         }
 

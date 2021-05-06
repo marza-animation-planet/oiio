@@ -8,8 +8,8 @@ import SCons.Script # pylint: disable=import-error
 
 
 major = 2
-minor = 1
-patch = 20
+minor = 2
+patch = 14
 
 
 env = excons.MakeBaseEnv()

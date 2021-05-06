@@ -7,7 +7,7 @@
 
 // Python.h uses the 'register' keyword, don't warn about it being
 // deprecated in C++17.
-#if (__cplusplus >= 201703L && defined(__GNUC__))
+#if (__cplusplus >= 201703L && defined(__GNUC__)) || defined(__clang__)
 #    pragma GCC diagnostic ignored "-Wregister"
 #endif
 
@@ -24,7 +24,10 @@
 // Avoid a compiler warning from a duplication in tiffconf.h/pyconfig.h
 #undef SIZEOF_LONG
 
-#include <OpenEXR/half.h>
+// Avoid a problem with copysign defined in pyconfig.h on Windows.
+#ifdef copysign
+#    undef copysign
+#endif
 
 #include <OpenImageIO/deepdata.h>
 #include <OpenImageIO/imagebuf.h>
@@ -32,6 +35,10 @@
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/span.h>
 #include <OpenImageIO/typedesc.h>
+
+#if PY_MAJOR_VERSION < 3
+OIIO_CLANG_PRAGMA(GCC diagnostic ignored "-Wunused-value")
+#endif
 
 #include <pybind11/numpy.h>
 #include <pybind11/operators.h>
@@ -48,6 +55,35 @@ namespace py = pybind11;
 // Python3 is always unicode, so return a true str
 #    define PY_STR py::str
 #endif
+
+
+namespace pybind11 {
+namespace detail {
+
+    // This half casting support for numpy was all derived from discussions
+    // here: https://github.com/pybind/pybind11/issues/1776
+
+    // Similar to enums in `pybind11/numpy.h`. Determined by doing:
+    // python3 -c 'import numpy as np; print(np.dtype(np.float16).num)'
+    constexpr int NPY_FLOAT16 = 23;
+
+    template<> struct npy_format_descriptor<half> {
+        static pybind11::dtype dtype()
+        {
+            handle ptr = npy_api::get().PyArray_DescrFromType_(NPY_FLOAT16);
+            return reinterpret_borrow<pybind11::dtype>(ptr);
+        }
+        static std::string format()
+        {
+            // following: https://docs.python.org/3/library/struct.html#format-characters
+            return "e";
+        }
+        static constexpr auto name = _("float16");
+    };
+
+}  // namespace detail
+}  // namespace pybind11
+
 
 
 namespace PyOpenImageIO {
@@ -74,7 +110,7 @@ void declare_global (py::module& m);
 // bool PyProgressCallback(void*, float);
 // object C_array_to_Python_array (const char *data, TypeDesc type, size_t size);
 const char * python_array_code (TypeDesc format);
-TypeDesc typedesc_from_python_array_code (char code);
+TypeDesc typedesc_from_python_array_code (string_view code);
 
 
 inline std::string
@@ -90,6 +126,7 @@ template<> struct PyTypeForCType<int> { typedef py::int_ type; };
 template<> struct PyTypeForCType<unsigned int> { typedef py::int_ type; };
 template<> struct PyTypeForCType<short> { typedef py::int_ type; };
 template<> struct PyTypeForCType<unsigned short> { typedef py::int_ type; };
+template<> struct PyTypeForCType<int64_t> { typedef py::int_ type; };
 template<> struct PyTypeForCType<float> { typedef py::float_ type; };
 template<> struct PyTypeForCType<half> { typedef py::float_ type; };
 template<> struct PyTypeForCType<double> { typedef py::float_ type; };
@@ -293,7 +330,8 @@ py_buffer_to_stdvector(std::vector<T>& vals, const py::buffer& obj)
 // Specialization for reading strings
 template<>
 inline bool
-py_buffer_to_stdvector(std::vector<std::string>& vals, const py::buffer& obj)
+py_buffer_to_stdvector(std::vector<std::string>& /*vals*/,
+                       const py::buffer& /*obj*/)
 {
     return false;  // not supported
 }
@@ -302,7 +340,8 @@ py_buffer_to_stdvector(std::vector<std::string>& vals, const py::buffer& obj)
 // Specialization for reading TypeDesc
 template<>
 inline bool
-py_buffer_to_stdvector(std::vector<TypeDesc>& vals, const py::buffer& obj)
+py_buffer_to_stdvector(std::vector<TypeDesc>& /*vals*/,
+                       const py::buffer& /*obj*/)
 {
     return false;  // not supported
 }
@@ -526,8 +565,7 @@ make_numpy_array(TypeDesc format, void* data, int dims, size_t chans,
         return make_numpy_array((double*)data, dims, chans, width, height,
                                 depth);
     if (format == TypeDesc::HALF)
-        return make_numpy_array((unsigned short*)data, dims, chans, width,
-                                height, depth);
+        return make_numpy_array((half*)data, dims, chans, width, height, depth);
     if (format == TypeDesc::UINT)
         return make_numpy_array((unsigned int*)data, dims, chans, width, height,
                                 depth);
@@ -545,9 +583,9 @@ ParamValue_getitem(const ParamValue& self, bool allitems = false)
     TypeDesc t = self.type();
     int nvals  = allitems ? self.nvalues() : 1;
 
-#define ParamValue_convert_dispatch(TYPE)                                      \
-case TypeDesc::TYPE:                                                           \
-    return C_to_val_or_tuple((CType<TypeDesc::TYPE>::type*)self.data(), t,     \
+#define ParamValue_convert_dispatch(TYPE)                                  \
+case TypeDesc::TYPE:                                                       \
+    return C_to_val_or_tuple((CType<TypeDesc::TYPE>::type*)self.data(), t, \
                              nvals)
 
     switch (t.basetype) {

@@ -59,8 +59,8 @@ private:
 
     /// Helper function: decode a pixel.
     inline void decode_pixel(unsigned char* in, unsigned char* out,
-                             unsigned char* palette, int& bytespp,
-                             int& palbytespp, int& alphabits);
+                             unsigned char* palette, int bytespp,
+                             int palbytespp);
 
     /// Helper: read, with error detection
     ///
@@ -110,10 +110,10 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
     }
 
     // due to struct packing, we may get a corrupt header if we just load the
-    // struct from file; to adress that, read every member individually
+    // struct from file; to address that, read every member individually
     // save some typing
-#define RH(memb)                                                               \
-    if (!fread(&m_tga.memb, sizeof(m_tga.memb), 1))                            \
+#define RH(memb)                                    \
+    if (!fread(&m_tga.memb, sizeof(m_tga.memb), 1)) \
     return false
 
     RH(idlen);
@@ -252,7 +252,7 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
         //std::cerr << "[tga] extension area size: " << s << "\n";
         if (s >= 495) {
             union {
-                unsigned char c[324];  // so as to accomodate the comments
+                unsigned char c[324];  // so as to accommodate the comments
                 uint16_t s[6];
                 uint32_t l;
             } buf;
@@ -398,14 +398,15 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
             // now load the thumbnail
             if (ofs_thumb) {
                 Filesystem::fseek(m_file, ofs_thumb, SEEK_SET);
-
+                // Read the thumbnail dimensions -- sometimes it's 0x0 to
+                // indicate no thumbnail.
+                if (!fread(&buf.c, 2, 1))
+                    return false;
+            }
+            if (ofs_thumb && buf.c[0] > 0 && buf.c[1] > 0) {
                 // most of this code is a dupe of readimg(); according to the
                 // spec, the thumbnail is in the same format as the main image
                 // but uncompressed
-
-                // thumbnail dimensions
-                if (!fread(&buf.c, 2, 1))
-                    return false;
                 m_spec.attribute("thumbnail_width", (int)buf.c[0]);
                 m_spec.attribute("thumbnail_height", (int)buf.c[1]);
                 m_spec.attribute("thumbnail_nchannels", m_spec.nchannels);
@@ -437,7 +438,7 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
                         if (!fread(in, bytespp, 1))
                             return false;
                         decode_pixel(in, pixel, palette.get(), bytespp,
-                                     palbytespp, alphabits);
+                                     palbytespp);
                         memcpy(&m_buf[y * buf.c[0] * m_spec.nchannels
                                       + x * m_spec.nchannels],
                                pixel, m_spec.nchannels);
@@ -447,7 +448,7 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
                 // finally, add the thumbnail to attributes
                 m_spec.attribute("thumbnail_image",
                                  TypeDesc(TypeDesc::UINT8, m_buf.size()),
-                                 &m_buf[0]);
+                                 m_buf.data());
                 m_buf.clear();
             }
         }
@@ -483,8 +484,7 @@ TGAInput::open(const std::string& name, ImageSpec& newspec,
 
 inline void
 TGAInput::decode_pixel(unsigned char* in, unsigned char* out,
-                       unsigned char* palette, int& bytespp, int& palbytespp,
-                       int& alphabits)
+                       unsigned char* palette, int bytespp, int palbytespp)
 {
     unsigned int k = 0;
     // I hate nested switches...
@@ -642,8 +642,7 @@ TGAInput::readimg()
             for (int64_t x = 0; x < m_spec.width; x++) {
                 if (!fread(in, bytespp, 1))
                     return false;
-                decode_pixel(in, pixel, palette, bytespp, palbytespp,
-                             alphabits);
+                decode_pixel(in, pixel, palette, bytespp, palbytespp);
                 memcpy(&m_buf[y * m_spec.width * m_spec.nchannels
                               + x * m_spec.nchannels],
                        pixel, m_spec.nchannels);
@@ -658,8 +657,7 @@ TGAInput::readimg()
                 if (!fread(in, 1 + bytespp, 1))
                     return false;
                 packet_size = 1 + (in[0] & 0x7f);
-                decode_pixel(&in[1], pixel, palette, bytespp, palbytespp,
-                             alphabits);
+                decode_pixel(&in[1], pixel, palette, bytespp, palbytespp);
                 if (in[0] & 0x80) {  // run length packet
                     /*std::cerr << "[tga] run length packet "
                               << packet_size << "\n";*/
@@ -700,7 +698,7 @@ TGAInput::readimg()
                             if (!fread(&in[1], bytespp, 1))
                                 return false;
                             decode_pixel(&in[1], pixel, palette, bytespp,
-                                         palbytespp, alphabits);
+                                         palbytespp);
                         }
                     }
                 }
@@ -750,7 +748,7 @@ TGAInput::readimg()
             int64_t size = m_spec.image_pixels();
             float gamma  = m_spec.get_float_attribute("oiio:Gamma", 1.0f);
 
-            associateAlpha((unsigned char*)&m_buf[0], size, m_spec.nchannels,
+            associateAlpha((unsigned char*)m_buf.data(), size, m_spec.nchannels,
                            m_spec.alpha_channel, gamma);
         }
     }
@@ -775,7 +773,7 @@ TGAInput::close()
 
 
 bool
-TGAInput::read_native_scanline(int subimage, int miplevel, int y, int z,
+TGAInput::read_native_scanline(int subimage, int miplevel, int y, int /*z*/,
                                void* data)
 {
     lock_guard lock(m_mutex);
@@ -788,7 +786,7 @@ TGAInput::read_native_scanline(int subimage, int miplevel, int y, int z,
     if (m_tga.attr & FLAG_Y_FLIP)
         y = m_spec.height - y - 1;
     size_t size = spec().scanline_bytes();
-    memcpy(data, &m_buf[0] + y * size, size);
+    memcpy(data, m_buf.data() + y * size, size);
     return true;
 }
 

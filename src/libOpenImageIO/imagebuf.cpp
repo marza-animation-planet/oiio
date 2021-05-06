@@ -6,9 +6,6 @@
 #include <iostream>
 #include <memory>
 
-#include <OpenEXR/ImathFun.h>
-#include <OpenEXR/half.h>
-
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/deepdata.h>
 #include <OpenImageIO/fmath.h>
@@ -80,14 +77,17 @@ set_roi_full(ImageSpec& spec, const ROI& newroi)
 class ImageBufImpl {
 public:
     ImageBufImpl(string_view filename, int subimage, int miplevel,
-                 ImageCache* imagecache = NULL, const ImageSpec* spec = NULL,
-                 void* buffer = NULL, const ImageSpec* config = NULL);
+                 ImageCache* imagecache = nullptr,
+                 const ImageSpec* spec = nullptr, void* buffer = nullptr,
+                 const ImageSpec* config      = nullptr,
+                 Filesystem::IOProxy* ioproxy = nullptr);
     ImageBufImpl(const ImageBufImpl& src);
     ~ImageBufImpl();
 
     void clear();
     void reset(string_view name, int subimage, int miplevel,
-               ImageCache* imagecache, const ImageSpec* config);
+               ImageCache* imagecache, const ImageSpec* config,
+               Filesystem::IOProxy* ioproxy);
     // Reset the buf to blank, given the spec. If nativespec is also
     // supplied, use it for the "native" spec, otherwise make the nativespec
     // just copy the regular spec.
@@ -103,9 +103,9 @@ public:
     void copy_metadata(const ImageBufImpl& src);
 
     template<typename... Args>
-    void error(const char* fmt, const Args&... args) const
+    void errorfmt(const char* fmt, const Args&... args) const
     {
-        error(Strutil::sprintf(fmt, args...));
+        error(Strutil::fmt::format(fmt, args...));
     }
 
     template<typename... Args>
@@ -230,6 +230,17 @@ public:
         return (z * m_spec.height + y) * m_spec.width + x;
     }
 
+    // Invalidate the file in our imagecache and the shared one
+    void invalidate(ustring filename, bool force)
+    {
+        ImageCache* shared_imagecache = ImageCache::create(true);
+        OIIO_DASSERT(shared_imagecache);
+        if (m_imagecache)
+            m_imagecache->invalidate(filename, force);  // *our* IC
+        if (m_imagecache != shared_imagecache)
+            shared_imagecache->invalidate(filename, force);  // the shared IC
+    }
+
 private:
     ImageBuf::IBStorage m_storage;  ///< Pixel storage class
     ustring m_name;                 ///< Filename of the image
@@ -262,7 +273,9 @@ private:
     int m_write_tile_height;
     int m_write_tile_depth;
     std::unique_ptr<ImageSpec> m_configspec;  // Configuration spec
-    mutable std::string m_err;                ///< Last error message
+    Filesystem::IOProxy* m_rioproxy = nullptr;
+    Filesystem::IOProxy* m_wioproxy = nullptr;
+    mutable std::string m_err;  ///< Last error message
 
     // Private reset m_pixels to new allocation of new size, copy if
     // data is not nullptr. Return nullptr if an allocation of that size
@@ -296,7 +309,8 @@ ImageBuf::impl_deleter(ImageBufImpl* todel)
 
 ImageBufImpl::ImageBufImpl(string_view filename, int subimage, int miplevel,
                            ImageCache* imagecache, const ImageSpec* spec,
-                           void* buffer, const ImageSpec* config)
+                           void* buffer, const ImageSpec* config,
+                           Filesystem::IOProxy* ioproxy)
     : m_storage(ImageBuf::UNINITIALIZED)
     , m_name(filename)
     , m_nsubimages(0)
@@ -341,11 +355,19 @@ ImageBufImpl::ImageBufImpl(string_view filename, int subimage, int miplevel,
         m_spec_valid = true;
     } else if (filename.length() > 0) {
         OIIO_DASSERT(buffer == nullptr);
+        // Invalidate the image in cache. Do so unconditionally if there's
+        // a chance that configuration hints may have changed.
+        invalidate(m_name, config || m_configspec);
         // If a filename was given, read the spec and set it up as an
         // ImageCache-backed image.  Reallocate later if an explicit read()
         // is called to force read into a local buffer.
         if (config)
             m_configspec.reset(new ImageSpec(*config));
+        m_rioproxy = ioproxy;
+        if (m_rioproxy) {
+            add_configspec();
+            m_configspec->attribute("oiio:ioproxy", TypeDesc::PTR, &m_rioproxy);
+        }
         read(subimage, miplevel);
         // FIXME: investigate if the above read is really necessary, or if
         // it can be eliminated and done fully lazily.
@@ -382,6 +404,8 @@ ImageBufImpl::ImageBufImpl(const ImageBufImpl& src)
     , m_write_tile_width(src.m_write_tile_width)
     , m_write_tile_height(src.m_write_tile_height)
     , m_write_tile_depth(src.m_write_tile_depth)
+// NO -- copy ctr does not transfer proxy   , m_rioproxy(src.m_rioproxy)
+// NO -- copy ctr does not transfer proxy   , m_wioproxy(src.m_wioproxy)
 {
     m_spec_valid   = src.m_spec_valid;
     m_pixels_valid = src.m_pixels_valid;
@@ -411,7 +435,7 @@ ImageBufImpl::~ImageBufImpl()
     // externally and passed to the ImageBuf ctr or reset() method, or
     // else init_spec requested the system-wide shared cache, which
     // does not need to be destroyed.
-    free_pixels();
+    clear();
 }
 
 
@@ -424,9 +448,11 @@ ImageBuf::ImageBuf()
 
 
 ImageBuf::ImageBuf(string_view filename, int subimage, int miplevel,
-                   ImageCache* imagecache, const ImageSpec* config)
+                   ImageCache* imagecache, const ImageSpec* config,
+                   Filesystem::IOProxy* ioproxy)
     : m_impl(new ImageBufImpl(filename, subimage, miplevel, imagecache,
-                              NULL /*spec*/, NULL /*buffer*/, config),
+                              nullptr /*spec*/, nullptr /*buffer*/, config,
+                              ioproxy),
              &impl_deleter)
 {
 }
@@ -545,13 +571,17 @@ ImageBufImpl::new_pixels(size_t size, const void* data)
 void
 ImageBufImpl::free_pixels()
 {
-    IB_local_mem_current -= m_allocated_size;
+    if (m_allocated_size) {
+        if (pvt::oiio_print_debug > 1)
+            OIIO::debug("IB freed %d MB, global IB memory now %d MB\n",
+                        m_allocated_size >> 20, IB_local_mem_current >> 20);
+        IB_local_mem_current -= m_allocated_size;
+        m_allocated_size = 0;
+    }
     m_pixels.reset();
-    if (m_allocated_size && pvt::oiio_print_debug > 1)
-        OIIO::debug("IB freed %d MB, global IB memory now %d MB\n",
-                    m_allocated_size >> 20, IB_local_mem_current >> 20);
-    m_allocated_size = 0;
-    m_storage        = ImageBuf::UNINITIALIZED;
+    m_deepdata.free();
+    m_storage = ImageBuf::UNINITIALIZED;
+    m_blackpixel.clear();
 }
 
 
@@ -612,7 +642,11 @@ ImageBuf::storage() const
 void
 ImageBufImpl::clear()
 {
-    m_storage = ImageBuf::UNINITIALIZED;
+    if (storage() == ImageBuf::IMAGECACHE && m_imagecache && !m_name.empty()) {
+        m_imagecache->close(m_name);
+        invalidate(m_name, false);
+    }
+    free_pixels();
     m_name.clear();
     m_fileformat.clear();
     m_nsubimages       = 0;
@@ -621,7 +655,7 @@ ImageBufImpl::clear()
     m_spec             = ImageSpec();
     m_nativespec       = ImageSpec();
     m_pixels.reset();
-    m_localpixels    = NULL;
+    m_localpixels    = nullptr;
     m_spec_valid     = false;
     m_pixels_valid   = false;
     m_badfile        = false;
@@ -630,13 +664,15 @@ ImageBufImpl::clear()
     m_scanline_bytes = 0;
     m_plane_bytes    = 0;
     m_channel_bytes  = 0;
-    m_imagecache     = NULL;
+    m_imagecache     = nullptr;
     m_deepdata.free();
     m_blackpixel.clear();
     m_write_format.clear();
     m_write_tile_width  = 0;
     m_write_tile_height = 0;
     m_write_tile_depth  = 0;
+    m_rioproxy          = nullptr;
+    m_wioproxy          = nullptr;
     m_configspec.reset();
 }
 
@@ -652,16 +688,23 @@ ImageBuf::clear()
 
 void
 ImageBufImpl::reset(string_view filename, int subimage, int miplevel,
-                    ImageCache* imagecache, const ImageSpec* config)
+                    ImageCache* imagecache, const ImageSpec* config,
+                    Filesystem::IOProxy* ioproxy)
 {
     clear();
-    m_name             = ustring(filename);
+    m_name = ustring(filename);
+    invalidate(m_name, false);
     m_current_subimage = subimage;
     m_current_miplevel = miplevel;
     if (imagecache)
         m_imagecache = imagecache;
     if (config)
         m_configspec.reset(new ImageSpec(*config));
+    m_rioproxy = ioproxy;
+    if (m_rioproxy) {
+        add_configspec();
+        m_configspec->attribute("oiio:ioproxy", TypeDesc::PTR, &m_rioproxy);
+    }
 
     if (m_name.length() > 0) {
         // If a filename was given, read the spec and set it up as an
@@ -675,9 +718,10 @@ ImageBufImpl::reset(string_view filename, int subimage, int miplevel,
 
 void
 ImageBuf::reset(string_view filename, int subimage, int miplevel,
-                ImageCache* imagecache, const ImageSpec* config)
+                ImageCache* imagecache, const ImageSpec* config,
+                Filesystem::IOProxy* ioproxy)
 {
-    m_impl->reset(filename, subimage, miplevel, imagecache, config);
+    m_impl->reset(filename, subimage, miplevel, imagecache, config, ioproxy);
 }
 
 
@@ -685,7 +729,7 @@ ImageBuf::reset(string_view filename, int subimage, int miplevel,
 void
 ImageBuf::reset(string_view filename, ImageCache* imagecache)
 {
-    m_impl->reset(filename, 0, 0, imagecache, NULL);
+    m_impl->reset(filename, 0, 0, imagecache, nullptr, nullptr);
 }
 
 
@@ -801,12 +845,15 @@ ImageBufImpl::init_spec(string_view filename, int subimage, int miplevel)
         && m_current_subimage == subimage && m_current_miplevel == miplevel)
         return true;  // Already done
 
-    if (!m_imagecache) {
+    m_name = filename;
+
+    // Make sure we have access to an imagecache. Also invalidate any cache
+    // info for the file just in case it has changed on disk.
+    if (!m_imagecache)
         m_imagecache = ImageCache::create(true /* shared cache */);
-    }
+    invalidate(m_name, false);
 
     m_pixels_valid = false;
-    m_name         = filename;
     m_nsubimages   = 0;
     m_nmiplevels   = 0;
     static ustring s_subimages("subimages"), s_miplevels("miplevels");
@@ -905,14 +952,15 @@ ImageBufImpl::read(int subimage, int miplevel, int chbegin, int chend,
     bool use_channel_subset = (chbegin != 0 || chend != nativespec().nchannels);
 
     if (m_spec.deep) {
-        auto input = ImageInput::open(m_name.string(), m_configspec.get());
+        auto input = ImageInput::open(m_name.string(), m_configspec.get(),
+                                      m_rioproxy);
         if (!input) {
-            errorf("%s", OIIO::geterror());
+            error(OIIO::geterror());
             return false;
         }
         input->threads(threads());  // Pass on our thread policy
         if (!input->read_native_deep_image(subimage, miplevel, m_deepdata)) {
-            errorf("%s", input->geterror());
+            error(input->geterror());
             return false;
         }
         m_spec         = m_nativespec;  // Deep images always use native data
@@ -976,7 +1024,7 @@ ImageBufImpl::read(int subimage, int miplevel, int chbegin, int chend,
     m_spec.tile_height = m_nativespec.tile_height;
     m_spec.tile_depth  = m_nativespec.tile_depth;
 
-    if (force
+    if (force || m_rioproxy
         || (convert != TypeDesc::UNKNOWN && convert != m_cachedpixeltype
             && convert.size() >= m_cachedpixeltype.size()
             && convert.size() >= m_nativespec.format.size())) {
@@ -999,7 +1047,8 @@ ImageBufImpl::read(int subimage, int miplevel, int chbegin, int chend,
                 m_configspec->attribute("oiio:UnassociatedAlpha", unassoc);
             }
         }
-        auto in = ImageInput::open(m_name.string(), m_configspec.get());
+        auto in = ImageInput::open(m_name.string(), m_configspec.get(),
+                                   m_rioproxy);
         bool ok = true;
         if (in) {
             in->threads(threads());  // Pass on our thread policy
@@ -1018,11 +1067,11 @@ ImageBufImpl::read(int subimage, int miplevel, int chbegin, int chend,
                 m_pixels_valid = true;
             } else {
                 m_pixels_valid = false;
-                errorf("%s", in->geterror());
+                error(in->geterror());
             }
         } else {
             m_pixels_valid = false;
-            errorf("%s", OIIO::geterror());
+            error(OIIO::geterror());
         }
         return m_pixels_valid;
     }
@@ -1034,10 +1083,11 @@ ImageBufImpl::read(int subimage, int miplevel, int chbegin, int chend,
                                  m_spec.y + m_spec.height, m_spec.z,
                                  m_spec.z + m_spec.depth, chbegin, chend,
                                  m_spec.format, m_localpixels)) {
+        m_imagecache->close(m_name);
         m_pixels_valid = true;
     } else {
         m_pixels_valid = false;
-        errorf("%s", m_imagecache->geterror());
+        error(m_imagecache->geterror());
     }
 
     return m_pixels_valid;
@@ -1090,6 +1140,14 @@ ImageBuf::set_write_tiles(int width, int height, int depth)
     m_impl->m_write_tile_width  = width;
     m_impl->m_write_tile_height = height;
     m_impl->m_write_tile_depth  = std::max(1, depth);
+}
+
+
+
+void
+ImageBuf::set_write_ioproxy(Filesystem::IOProxy* ioproxy)
+{
+    m_impl->m_wioproxy = ioproxy;
 }
 
 
@@ -1184,7 +1242,7 @@ ImageBuf::write(ImageOutput* out, ProgressCallback progress_callback,
         }
     }
     if (!ok)
-        errorf("%s", out->geterror());
+        error(out->geterror());
     return ok;
 }
 
@@ -1221,15 +1279,11 @@ ImageBuf::write(string_view _filename, TypeDesc dtype, string_view _fileformat,
     // pixels in the cache will then be likely wrong; (b) on Windows, if the
     // cache holds an open file handle for reading, we will not be able to
     // open the same file for writing.
-    ImageCache* shared_imagecache = ImageCache::create(true);
-    ustring ufilename(filename);
-    shared_imagecache->invalidate(ufilename);  // the shared IC
-    if (imagecache() && imagecache() != shared_imagecache)
-        imagecache()->invalidate(ufilename);  // *our* IC
+    m_impl->invalidate(ustring(filename), true);
 
-    auto out = ImageOutput::create(fileformat.c_str(), "" /* searchpath */);
+    auto out = ImageOutput::create(fileformat);
     if (!out) {
-        errorf("%s", geterror());
+        error(geterror());
         return false;
     }
     out->threads(threads());  // Pass on our thread policy
@@ -1255,15 +1309,25 @@ ImageBuf::write(string_view _filename, TypeDesc dtype, string_view _fileformat,
         newspec.channelformats.clear();
     } else if (m_impl->m_write_format.size() != 0) {
         // If set_write_format was called for the ImageBuf, it overrides
-        if (m_impl->m_write_format.size())
-            newspec.set_format(m_impl->write_format());
-        else
-            newspec.set_format(nativespec().format);
+        TypeDesc biggest;  // starts as Unknown
+        // Figure out the "biggest" of the channel formats, make that the
+        // presumed default format.
+        for (auto& f : m_impl->m_write_format)
+            biggest = TypeDesc::basetype_merge(biggest, f);
+        newspec.set_format(biggest);
+        // Copy the channel formats, change any 'unknown' to the default
         newspec.channelformats = m_impl->m_write_format;
         newspec.channelformats.resize(newspec.nchannels, newspec.format);
-        for (auto& f : newspec.channelformats)
+        bool alldefault = true;
+        for (auto& f : newspec.channelformats) {
             if (f == TypeUnknown)
                 f = newspec.format;
+            alldefault &= (f == newspec.format);
+        }
+        // If all channel formats are the same, get rid of them, the default
+        // captures all the info we need.
+        if (alldefault)
+            newspec.channelformats.clear();
     } else {
         // No override on the ImageBuf, nor on this call to write(), so
         // we just use what is known from the imagespec.
@@ -1271,8 +1335,17 @@ ImageBuf::write(string_view _filename, TypeDesc dtype, string_view _fileformat,
         newspec.channelformats = nativespec().channelformats;
     }
 
+    if (m_impl->m_wioproxy) {
+        if (!out->supports("ioproxy")
+            || !out->set_ioproxy(m_impl->m_wioproxy)) {
+            errorf("Format %s does not support writing via IOProxy",
+                   out->format_name());
+            return false;
+        }
+    }
+
     if (!out->open(filename.c_str(), newspec)) {
-        errorf("%s", out->geterror());
+        error(out->geterror());
         return false;
     }
     if (!write(out.get(), progress_callback, progress_callback_data))
@@ -1286,13 +1359,21 @@ ImageBuf::write(string_view _filename, TypeDesc dtype, string_view _fileformat,
 
 
 bool
-ImageBuf::make_writeable(bool keep_cache_type)
+ImageBuf::make_writable(bool keep_cache_type)
 {
     if (storage() == IMAGECACHE) {
         return read(subimage(), miplevel(), 0, -1, true /*force*/,
                     keep_cache_type ? m_impl->m_cachedpixeltype : TypeDesc());
     }
     return true;
+}
+
+
+
+bool
+ImageBuf::make_writeable(bool keep_cache_type)
+{
+    return make_writable(keep_cache_type);
 }
 
 
@@ -1924,7 +2005,7 @@ ImageBuf::setpixel(int i, const float* pixel, int maxchannels)
 
 template<typename D, typename S>
 static bool
-get_pixels_(const ImageBuf& buf, const ImageBuf& dummyarg, ROI whole_roi,
+get_pixels_(const ImageBuf& buf, const ImageBuf& /*dummy*/, ROI whole_roi,
             ROI roi, void* r_, stride_t xstride, stride_t ystride,
             stride_t zstride, int nthreads = 0)
 {

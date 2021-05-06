@@ -82,7 +82,7 @@ parallel_image (ROI roi, parallel_image_options opt,
         xchunk = ychunk = std::max (int64_t(1), int64_t(std::sqrt(opt.maxthreads))/2);
     }
 
-    auto task = [&](int id, int64_t xbegin, int64_t xend,
+    auto task = [&](int /*id*/, int64_t xbegin, int64_t xend,
                     int64_t ybegin, int64_t yend) {
         f (ROI (xbegin, xend, ybegin, yend, roi.zbegin, roi.zend,
                 roi.chbegin, roi.chend));
@@ -160,23 +160,18 @@ enum IBAprep_flags {
 
 
 
-/// Given data types a and b, return a type that is a best guess for one
-/// that can handle both without any loss of range or precision.
+// DEPRECATED(2.3): Prefer TypeDesc::basetype_merge().
 TypeDesc::BASETYPE OIIO_API type_merge (TypeDesc::BASETYPE a, TypeDesc::BASETYPE b);
 
-inline TypeDesc::BASETYPE
-type_merge (TypeDesc::BASETYPE a, TypeDesc::BASETYPE b, TypeDesc::BASETYPE c)
-{
-    return type_merge (type_merge(a,b), c);
-}
-
+// DEPRECATED(2.3): Prefer TypeDesc::basetype_merge().
 inline TypeDesc type_merge (TypeDesc a, TypeDesc b) {
-    return type_merge (TypeDesc::BASETYPE(a.basetype), TypeDesc::BASETYPE(b.basetype));
+    return TypeDesc::basetype_merge(a, b);
 }
 
+// DEPRECATED(2.3): Prefer TypeDesc::basetype_merge().
 inline TypeDesc type_merge (TypeDesc a, TypeDesc b, TypeDesc c)
 {
-    return type_merge (type_merge(a,b), c);
+    return TypeDesc::basetype_merge(TypeDesc::basetype_merge(a,b), c);
 }
 
 
@@ -358,7 +353,7 @@ inline TypeDesc type_merge (TypeDesc a, TypeDesc b, TypeDesc c)
             OIIO_DISPATCH_COMMON_TYPES2_HELP(ret,name,func,uint16_t,Atype,R,A,__VA_ARGS__); \
             break;                                                      \
         default: {                                                      \
-            /* other combinationd: convert to float, then copy back */  \
+            /* other combinations: convert to float, then copy back */  \
             ImageBuf Rtmp;                                              \
             if ((R).initialized())                                      \
                 Rtmp.copy (R, TypeDesc::FLOAT);                         \

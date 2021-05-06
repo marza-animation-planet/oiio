@@ -8,8 +8,9 @@ import SCons.Script # pylint: disable=import-error
 
 
 major = 2
-minor = 0
-patch = 14
+minor = 1
+patch = 20
+
 
 env = excons.MakeBaseEnv()
 out_basedir = excons.OutputBaseDirectory()
@@ -44,29 +45,25 @@ overrides = {}
 oiio_dependencies = []
 
 # build options
+oiio_opts["BUILD_DOCS"] = 0
 oiio_opts["LINKSTATIC"] = 1
-oiio_opts["USE_fPIC"] = 1
-oiio_opts["BUILDSTATIC"] = (1 if staticlib else 0)
+oiio_opts["BUILD_SHARED_LIBS"] = (0 if staticlib else 1)
 oiio_opts["OIIO_THREAD_ALLOW_DCLP"] = 1
 oiio_opts["SOVERSION"] = "%s.%s" % (major, minor)
-oiio_opts["USE_CPP"] = 11
 oiio_opts["USE_LIBCPLUSPLUS"] = 0
 oiio_opts["USE_CCACHE"] = 0
 oiio_opts["CODECOV"] = 0
-oiio_opts["HIDE_SYMBOLS"] = 1
 oiio_opts["USE_SIMD"] = simd
 oiio_opts["OIIO_BUILD_TESTS"] = 0
 oiio_opts["OIIO_BUILD_TOOLS"] = 1
 oiio_opts["EMBEDPLUGINS"] = 1
 oiio_opts["CMAKE_INSTALL_LIBDIR"] = "lib"
 oiio_opts["VERBOSE"] = verbose
-oiio_opts["USE_WEBP"] = 0
 
 # python
 oiio_opts["PYLIB_INCLUDE_SONAME"] = 0
 oiio_opts["PYLIB_LIB_PREFIX"] = 0
 oiio_opts["PYTHON_VERSION"] = python_ver
-oiio_opts["OIIO_PYTHON_VERSION"] = python_ver
 oiio_opts["USE_PYTHON"] = excons.GetArgument("oiio-python", 1, int)
 oiio_opts["PYBIND11_INCLUDE_DIR"] = os.path.abspath("pybind11/include")
 oiio_opts["ROBINMAP_INCLUDE_DIR"] = os.path.abspath("robin-map")
@@ -134,68 +131,39 @@ if rv["require"]:
       libs.append(path)
 
    oiio_opts["BOOST_CUSTOM"] = 1
-   oiio_opts["BOOST_NO_AUTOLINK"] = 1
+   oiio_opts["Boost_USE_STATIC_LIBS"] = 1
    oiio_opts["Boost_VERSION"] = intver
    oiio_opts["Boost_INCLUDE_DIRS"] = rv["incdir"]
    oiio_opts["Boost_LIBRARY_DIRS"] = rv["libdir"]
    oiio_opts["Boost_LIBRARIES"] = ";".join(libs)
    boost_outputs = libs
 
-   # in boost version more recent than 1.63 (at least), python version was added to the library name
-   # look for those in priority
-   pylib = rv["libdir"] + "/libboost_python" + python_ver.replace(".", "") + libsuffix
-   if not os.path.isfile(pylib):
-      pylib = rv["libdir"] + "/libboost_python" + libsuffix
-   if not os.path.isfile(pylib):
-      SCons.Script.ARGUMENTS["boost-python-static"] = "1"
-      pyrv = excons.ExternalLibRequire("boost-python")
-      if pyrv["require"] and pyrv["libdir"] != rv["libdir"]:
-         pylibsuffix = excons.GetArgument("boost-python-suffix", None)
-         if pylibsuffix is None:
-            pylibsuffix = libsuffix
-         else:
-            pylibsuffix += (".lib" if sys.platform == "win32" else ".a")
-         pylib = pyrv["libdir"] + "/libboost_python" + python_ver.replace(".", "") + pylibsuffix
-         if not os.path.isfile(pylib):
-            pylib = pyrv["libdir"] + "/libboost_python" + pylibsuffix
-         if pyrv["incdir"] != rv["incdir"]:
-            oiio_opts["Boost_INCLUDE_DIRS"] += ";%s" % pyrv["incdir"]
-         oiio_opts["Boost_LIBRARY_DIRS"] += ";%s" % pyrv["libdir"]
-
-   if os.path.isfile(pylib):
-      oiio_opts["boost_PYTHON_FOUND"] = 1
-      oiio_opts["Boost_PYTHON_LIBRARIES"] = pylib
-   else:
-      excons.WarnOnce("No valid Boost python found. Skipping python module.", tool="OIIO")
-      oiio_opts["boost_PYTHON_FOUND"] = 0   
 else:
    excons.WarnOnce("Boost is require to build OpenImageIO, please provide root directory using 'with-boost=' flag", tool="OIIO")
    sys.exit(1)
 
-## addtional
+## additional
 oiio_opts["USE_FIELD3D"] = 0
 oiio_opts["USE_JPEGTURBO"] = 1
 oiio_opts["USE_OPENJPEG"] = 1
 oiio_opts["USE_FREETYPE"] = 1
 oiio_opts["USE_LIBRAW"] = 1
-oiio_opts["USE_OCIO"] = 1
+oiio_opts["USE_OPENCOLORIO"] = 1
 oiio_opts["USE_FFMPEG"] = 0
 oiio_opts["USE_OPENCV"] = 0
 oiio_opts["USE_PTEX"] = 0
 oiio_opts["USE_GIF"] = 0
-oiio_opts["USE_JASPER"] = 0
 oiio_opts["USE_NUKE"] = 0
-oiio_opts["USE_OPENSSL"] = 0
+oiio_opts["USE_WEBP"] = 0
 # Not building 'iv' so far
 oiio_opts["USE_QT"] = 0
 oiio_opts["USE_OPENGL"] = 0
-oiio_opts["FORCE_OPENGL_1"] = 0
 
 ## extra args
 oiio_opts["EXTRA_DSO_LINK_ARGS"] = ""
 oiio_opts["EXTRA_CPP_ARGS"] = ""
-if sys.platform != "win32":
-    oiio_opts["EXTRA_CPP_ARGS"] = " -Wno-deprecated-declarations"
+# if sys.platform != "win32":
+#     oiio_opts["EXTRA_CPP_ARGS"] = " -Wno-deprecated-declarations"
 
 export_zlib = []
 export_bzip2 = []
@@ -229,6 +197,7 @@ if not rv["require"]:
     export_zlib = [z_path]
     oiio_opts["ZLIB_INCLUDE_DIR"] = out_incdir
     oiio_opts["ZLIB_LIBRARY"] = z_path
+    oiio_opts["ZLIB_LIBRARY_RELEASE"] = z_path
 
     overrides["with-zlib"] = os.path.dirname(os.path.dirname(z_path))
     overrides["zlib-static"] = z_static
@@ -238,6 +207,7 @@ else:
     export_zlib = [rv.get("libpath")]
     oiio_opts["ZLIB_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["ZLIB_LIBRARY"] = rv["libpath"]
+    oiio_opts["ZLIB_LIBRARY_RELEASE"] = rv["libpath"]
 
 # bzip2 (no deps [SCons])
 def Bzip2Libname(static):
@@ -255,6 +225,7 @@ if not rv["require"]:
     bzip2_outputs = [bz2_path, "{}/bzlib.h".format(out_incdir)]
     export_bzip2 = [bz2_path]
     oiio_opts["BZIP2_LIBRARY"] = bz2_path
+    oiio_opts["BZIP2_LIBRARY_RELEASE"] = bz2_path
     oiio_opts["BZIP2_INCLUDE_DIR"] = out_incdir
 
     overrides["with-bz2"] = os.path.dirname(os.path.dirname(bz2_path))
@@ -264,6 +235,7 @@ else:
     bzip2_outputs = []
     export_bzip2 = [rv.get("libpath")]
     oiio_opts["BZIP2_LIBRARY"] = rv["libpath"]
+    oiio_opts["BZIP2_LIBRARY_RELEASE"] = rv["libpath"]
     oiio_opts["BZIP2_INCLUDE_DIR"] = rv["incdir"]
 
 oiio_dependencies += bzip2_outputs
@@ -304,10 +276,8 @@ if not rv["require"]:
     openjpeg_path = OpenjpegPath() # pylint: disable=undefined-variable
     openjpeg_outputs = [OpenjpegPath()] # pylint: disable=undefined-variable
     export_openjpeg = [OpenjpegPath()] # pylint: disable=undefined-variable
-    oiio_opts["OPENJPEG_HOME"] = excons.OutputBaseDirectory()
     oiio_opts["OPENJPEG_INCLUDE_DIR"] = out_incdir + "/openjpeg-2.4"
 else:
-    oiio_opts["OPENJPEG_HOME"] = os.path.dirname(rv["incdir"])
     incdir = None
     if os.path.isdir(rv["incdir"]):
         for item in os.listdir(rv["incdir"]):
@@ -339,10 +309,6 @@ if rv["require"] is None:
                    "{}/jbig_ar.h".format(out_incdir)]
    export_jbig = [JbigPath()] # pylint: disable=undefined-variable
 
-   oiio_opts["JBIG_LIBRARY"] = jbig_path
-   oiio_opts["JBIG_LIBRARY_RELEASE"] = jbig_path
-   oiio_opts["JBIG_INCLUDE_DIR"] = out_incdir
-
    overrides["libtiff-use-jbig"] = 1
    overrides["with-jbig"] = os.path.dirname(os.path.dirname(JbigPath())) # pylint: disable=undefined-variable
    overrides["jbig-name"] = JbigName() # pylint: disable=undefined-variable
@@ -355,10 +321,6 @@ else:
    if os.path.isfile(jbig_path) and os.path.isdir(jbig_incdir) and os.path.isdir(jbig_libdir):
       jbig_outputs = []
       export_jbig = [jbig_path]
-
-      oiio_opts["JBIG_LIBRARY"] = jbig_path
-      oiio_opts["JBIG_LIBRARY_RELEASE"] = jbig_path
-      oiio_opts["JBIG_INCLUDE_DIR"] = jbig_incdir
 
       overrides["libtiff-use-jbig"] = 1
       overrides["with-jbig-inc"] = jbig_incdir
@@ -389,6 +351,7 @@ if not rv["require"]:
     export_png = [png_path]
     oiio_opts["PNG_INCLUDE_DIR"] = out_incdir
     oiio_opts["PNG_LIBRARY"] = png_path
+    oiio_opts["PNG_LIBRARY_RELEASE"] = png_path
     
     overrides["with-libpng"] = os.path.dirname(os.path.dirname(png_path))
     overrides["libpng-static"] = png_static
@@ -398,6 +361,7 @@ else:
     export_png = [rv.get("libpath")]
     oiio_opts["PNG_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["PNG_LIBRARY"] = rv["libpath"]
+    oiio_opts["PNG_LIBRARY_RELEASE"] = rv["libpath"]
 
 oiio_dependencies += libpng_outputs
 
@@ -416,8 +380,7 @@ if not rv["require"]:
     export_tiff = [tiff_path]
     oiio_opts["TIFF_INCLUDE_DIR"] = out_incdir
     oiio_opts["TIFF_LIBRARY"] = tiff_path
-    if overrides["libtiff-use-jbig"] != 0:
-       oiio_opts["TIFF_LIBRARIES"] = "%s;%s" % (tiff_path, oiio_opts["JBIG_LIBRARY"])
+    oiio_opts["TIFF_LIBRARY_RELEASE"] = tiff_path
 
     overrides["with-libtiff"] = os.path.dirname(os.path.dirname(tiff_path))
     overrides["libtiff-static"] = excons.GetArgument("libtiff-static", 1, int)
@@ -427,8 +390,7 @@ else:
     export_tiff = [rv.get("libpath")]
     oiio_opts["TIFF_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["TIFF_LIBRARY"] = rv["libpath"]
-    if overrides["libtiff-use-jbig"] != 0:
-       oiio_opts["TIFF_LIBRARIES"] = "%s;%s" % (rv["libpath"], oiio_opts["JBIG_LIBRARY"])
+    oiio_opts["TIFF_LIBRARY_RELEASE"] = rv["libpath"]
 
 oiio_dependencies += tiff_outputs
 
@@ -446,6 +408,7 @@ if not rv["require"]:
     lcms2_outputs = [lcms2_path, "{}/lcms2.h".format(out_incdir)]
     export_lcms2 = [lcms2_path]
     oiio_opts["LCMS2_LIBRARY"] = lcms2_path
+    oiio_opts["LCMS2_LIBRARIES"] = "%s;%s" % (lcms2_path, jbig_path)
 
     overrides["with-lcms2"] = os.path.dirname(os.path.dirname(lcms2_path))
     overrides["lcms2-static"] = lcms2_static
@@ -456,6 +419,7 @@ else:
     export_lcms2 = [rv.get("libpath")]
     oiio_opts["LCMS2_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["LCMS2_LIBRARY"] = rv["libpath"]
+    oiio_opts["LCMS2_LIBRARIES"] = "%s;%s" % (rv["libpath"], jbig_path)
 
 oiio_dependencies += lcms2_outputs
 
@@ -517,17 +481,16 @@ if not rv["require"]:
     ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
     ocio_outputs = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath(), "{}/OpenColorIO/OpenColorIO.h".format(out_incdir)] # pylint: disable=undefined-variable
     export_ocio = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath()] # pylint: disable=undefined-variable
-    oiio_opts["OCIO_INCLUDE_PATH"] = out_incdir
-    oiio_opts["OCIO_LIBRARIES"] = OCIOPath(ocio_static) # pylint: disable=undefined-variable
-    oiio_opts["LCMS2_LIBRARY"] = LCMS2Path() # pylint: disable=undefined-variable
+    oiio_opts["OPENCOLORIO_INCLUDE_DIR"] = out_incdir
+    oiio_opts["OPENCOLORIO_LIBRARY"] = OCIOPath(ocio_static) # pylint: disable=undefined-variable
     oiio_opts["YAML_LIBRARY"] = YamlCppPath() # pylint: disable=undefined-variable
     oiio_opts["TINYXML_LIBRARY"] = TinyXmlPath() # pylint: disable=undefined-variable
 else:
     ocio_outputs = []
     export_ocio = [rv.get("libpath")]
 
-    oiio_opts["OCIO_INCLUDE_PATH"] = rv["incdir"]
-    oiio_opts["OCIO_LIBRARIES"] = rv["libpath"]
+    oiio_opts["OPENCOLORIO_INCLUDE_DIR"] = rv["incdir"]
+    oiio_opts["OPENCOLORIO_LIBRARY"] = rv["libpath"]
 
     rv = excons.ExternalLibRequire("tinyxml")
     if rv["require"]:
@@ -555,7 +518,6 @@ if not rv["require"]:
     openexr_imf = IlmImfPath(openexr_static) # pylint: disable=undefined-variable
     openexr_outputs = [openexr_imf, openexr_imath, openexr_iex, openexr_half, openexr_ilmt]
 
-    oiio_opts["OPENEXR_HOME"] = out_basedir
     oiio_opts["OPENEXR_INCLUDE_DIR"] = out_incdir
     oiio_opts["OPENEXR_HALF_LIBRARY"] = openexr_half
     oiio_opts["OPENEXR_IEX_LIBRARY"] = openexr_iex
@@ -567,7 +529,6 @@ else:
     openexr_outputs = []
     export_openexr = []
 
-    oiio_opts["OPENEXR_HOME"] = os.path.dirname(rv["incdir"])
     oiio_opts["OPENEXR_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["OPENEXR_HALF_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Half")
     oiio_opts["OPENEXR_IEX_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Iex")
@@ -628,13 +589,11 @@ def OiioExtraLibPaths():
 prjs.append({"name": "oiio",
              "type": "cmake",
              "cmake-opts": oiio_opts,
+             "cmake-flags": "-Wno-dev",
              "cmake-cfgs": excons.CollectFiles(["src"], patterns=["CMakeLists.txt"], recursive=True) + ["CMakeLists.txt"] + oiio_dependencies,
              "cmake-srcs": excons.CollectFiles(["src"], patterns=["*.cpp"], recursive=True),
              "cmake-outputs": map(lambda x: out_incdir + "/OpenImageIO/" + os.path.basename(x), excons.glob("src/include/OpenImageIO/*.h")) +
                               [OiioPath(staticlib)]})
-
-import pprint
-pprint.pprint(map(str, prjs[-1]["cmake-cfgs"]))
 
 excons.AddHelpOptions(oiio="""OPENIMAGEIO OPTIONS
   oiio-static=0|1        : Toggle between static and shared library build [0]

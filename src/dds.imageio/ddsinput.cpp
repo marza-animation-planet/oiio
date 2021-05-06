@@ -1,32 +1,6 @@
-/*
-  Copyright 2010 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <cstdio>
@@ -39,7 +13,7 @@
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/typedesc.h>
 
-#include "squish/squish.h"
+#include "squish.h"
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
@@ -123,7 +97,7 @@ private:
     {
         size_t n = ::fread(buf, itemsize, nitems, m_file);
         if (n != nitems)
-            error("Read error");
+            errorf("Read error");
         return n == nitems;
     }
 };
@@ -160,7 +134,7 @@ DDSInput::open(const std::string& name, ImageSpec& newspec)
 
     m_file = Filesystem::fopen(name, "rb");
     if (!m_file) {
-        error("Could not open file \"%s\"", name.c_str());
+        errorf("Could not open file \"%s\"", name);
         return false;
     }
 
@@ -249,7 +223,7 @@ DDSInput::open(const std::string& name, ImageSpec& newspec)
                  && m_dds.flags & DDS_DEPTH))
         || (m_dds.caps.flags2 & DDS_CAPS2_CUBEMAP
             && !(m_dds.caps.flags1 & DDS_CAPS1_COMPLEX))) {
-        error("Invalid DDS header, possibly corrupt file");
+        errorf("Invalid DDS header, possibly corrupt file");
         return false;
     }
 
@@ -262,7 +236,7 @@ DDSInput::open(const std::string& name, ImageSpec& newspec)
             && !((m_dds.fmt.flags & DDS_PF_RGB)
                  | (m_dds.fmt.flags & DDS_PF_LUMINANCE)
                  | (m_dds.fmt.flags & DDS_PF_ALPHA)))) {
-        error("Image with no data");
+        errorf("Image with no data");
         return false;
     }
 
@@ -272,7 +246,7 @@ DDSInput::open(const std::string& name, ImageSpec& newspec)
         && m_dds.fmt.fourCC != DDS_4CC_DXT2 && m_dds.fmt.fourCC != DDS_4CC_DXT3
         && m_dds.fmt.fourCC != DDS_4CC_DXT4
         && m_dds.fmt.fourCC != DDS_4CC_DXT5) {
-        error("Unsupported compression type");
+        errorf("Unsupported compression type");
         return false;
     }
 

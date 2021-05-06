@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <memory>
 #include <vector>
@@ -318,7 +292,7 @@ GIFInput::read_subimage_data()
     } else if (m_gif_file->SColorMap) {  // global colormap
         colormap = m_gif_file->SColorMap->Colors;
     } else {
-        error("Neither local nor global colormap present.");
+        errorf("Neither local nor global colormap present.");
         return false;
     }
 
@@ -387,12 +361,12 @@ GIFInput::seek_subimage(int subimage, int miplevel)
         int giflib_error;
         if (!(m_gif_file = DGifOpenFileName(m_filename.c_str(),
                                             &giflib_error))) {
-            error(GifErrorString(giflib_error));
+            errorf("%s", GifErrorString(giflib_error));
             return false;
         }
 #else
         if (!(m_gif_file = DGifOpenFileName(m_filename.c_str()))) {
-            error("Error trying to open the file.");
+            errorf("Error trying to open the file.");
             return false;
         }
 #endif
@@ -447,13 +421,13 @@ GIFInput::report_last_error(void)
     // error was for *this* file.  So if you're using giflib prior to
     // version 5, beware.
 #if GIFLIB_MAJOR >= 5
-    error("%s", GifErrorString(m_gif_file->Error));
+    errorf("%s", GifErrorString(m_gif_file->Error));
 #elif GIFLIB_MAJOR == 4 && GIFLIB_MINOR >= 2
     spin_lock lock(gif_error_mutex);
-    error("%s", GifErrorString());
+    errorf("%s", GifErrorString());
 #else
     spin_lock lock(gif_error_mutex);
-    error("GIF error %d", GifLastError());
+    errorf("GIF error %d", GifLastError());
 #endif
 }
 
@@ -468,7 +442,7 @@ GIFInput::close(void)
 #else
         if (DGifCloseFile(m_gif_file) == GIF_ERROR) {
 #endif
-            error("Error trying to close the file.");
+            errorf("Error trying to close the file.");
             return false;
         }
         m_gif_file = NULL;

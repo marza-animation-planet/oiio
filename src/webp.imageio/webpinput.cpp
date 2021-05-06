@@ -1,32 +1,6 @@
-/*
-  Copyright 2011 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cstdio>
 
@@ -76,24 +50,25 @@ WebpInput::open(const std::string& name, ImageSpec& spec)
 
     // Perform preliminary test on file type.
     if (!Filesystem::is_regular(m_filename)) {
-        error("Not a regular file \"%s\"", m_filename.c_str());
+        errorf("Not a regular file \"%s\"", m_filename);
         return false;
     }
 
     // Get file size and check we've got enough data to decode WebP.
     m_image_size = Filesystem::file_size(name);
     if (m_image_size == uint64_t(-1)) {
-        error("Failed to get size for \"%s\"", m_filename);
+        errorf("Failed to get size for \"%s\"", m_filename);
         return false;
     }
     if (m_image_size < 12) {
-        error("File size is less than WebP header for file \"%s\"", m_filename);
+        errorf("File size is less than WebP header for file \"%s\"",
+               m_filename);
         return false;
     }
 
     m_file = Filesystem::fopen(m_filename, "rb");
     if (!m_file) {
-        error("Could not open file \"%s\"", m_filename.c_str());
+        errorf("Could not open file \"%s\"", m_filename);
         return false;
     }
 
@@ -103,15 +78,15 @@ WebpInput::open(const std::string& name, ImageSpec& spec)
     size_t numRead = fread(&image_header[0], sizeof(uint8_t),
                            image_header.size(), m_file);
     if (numRead != image_header.size()) {
-        error("Read failure for header of \"%s\" (expected %d bytes, read %d)",
-              m_filename, image_header.size(), numRead);
+        errorf("Read failure for header of \"%s\" (expected %d bytes, read %d)",
+               m_filename, image_header.size(), numRead);
         close();
         return false;
     }
 
     int width = 0, height = 0;
     if (!WebPGetInfo(&image_header[0], image_header.size(), &width, &height)) {
-        error("%s is not a WebP image file", m_filename.c_str());
+        errorf("%s is not a WebP image file", m_filename);
         close();
         return false;
     }
@@ -123,8 +98,8 @@ WebpInput::open(const std::string& name, ImageSpec& spec)
     numRead = fread(&encoded_image[0], sizeof(uint8_t), encoded_image.size(),
                     m_file);
     if (numRead != encoded_image.size()) {
-        error("Read failure for \"%s\" (expected %d bytes, read %d)",
-              m_filename, encoded_image.size(), numRead);
+        errorf("Read failure for \"%s\" (expected %d bytes, read %d)",
+               m_filename, encoded_image.size(), numRead);
         close();
         return false;
     }
@@ -138,7 +113,7 @@ WebpInput::open(const std::string& name, ImageSpec& spec)
     if (!(m_decoded_image = WebPDecodeRGBA(&encoded_image[0],
                                            encoded_image.size(), &m_spec.width,
                                            &m_spec.height))) {
-        error("Couldn't decode %s", m_filename.c_str());
+        errorf("Couldn't decode %s", m_filename);
         close();
         return false;
     }

@@ -1,32 +1,6 @@
-/*
-  Copyright 2011 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #pragma once
@@ -82,6 +56,7 @@ public:
     bool autopremult;  // auto premult unassociated alpha input
     bool nativeread;   // force native data type reads
     bool printinfo_verbose;
+    bool metamerge;  // Merge source input metadata into output
     int cachesize;
     int autotile;
     int frame_padding;
@@ -158,6 +133,10 @@ public:
         return true;
     }
 
+    /// Force partial read of image (if it hasn't been yet), just enough
+    /// that the nativespec can be examined.
+    bool read_nativespec(ImageRecRef img);
+
     // If required_images are not yet on the stack, then postpone this
     // call by putting it on the 'pending' list and return true.
     // Otherwise (if enough images are on the stack), return false.
@@ -213,7 +192,8 @@ public:
     // existing width and height (rounding to the nearest whole number of
     // pixels.
     bool adjust_geometry(string_view command, int& w, int& h, int& x, int& y,
-                         const char* geom, bool allow_scaling = false) const;
+                         const char* geom, bool allow_scaling = false,
+                         bool allow_size = true) const;
 
     // Expand substitution expressions in string str. Expressions are
     // enclosed in braces: {...}. An expression consists of:
@@ -227,8 +207,11 @@ public:
     //     spec, such as "width", "ImageDescription", etc.
     string_view express(string_view str);
 
-    int extract_options(std::map<std::string, std::string>& options,
-                        std::string command);
+    // Given a command with perhaps optional modifiers (for example,
+    // "--cmd:a=1:pi=3.14"), extract the options and insert them into a
+    // ParamValueList. For example, having attribute "a" with value "1"
+    // and attribute "pi" with value "3.14".
+    static ParamValueList extract_options(string_view command);
 
     // Error base case -- single unformatted string.
     void error(string_view command, string_view message = "") const;
@@ -394,6 +377,9 @@ public:
     // it's lazily kept as name only, without reading the file.)
     bool elaborated() const { return m_elaborated; }
 
+    // Read just enough to fill in the nativespecs
+    bool read_nativespec();
+
     bool read(ReadPolicy readpolicy   = ReadDefault,
               string_view channel_set = "");
 
@@ -461,9 +447,12 @@ public:
 
     // Get or set the configuration spec that will be used any time the
     // image is opened.
-    const ImageSpec* configspec() const { return &m_configspec; }
-    void configspec(const ImageSpec& spec) { m_configspec = spec; }
-    void clear_configspec() { configspec(ImageSpec()); }
+    const ImageSpec* configspec() const { return m_configspec.get(); }
+    void configspec(const ImageSpec& spec)
+    {
+        m_configspec.reset(new ImageSpec(spec));
+    }
+    void clear_configspec() { m_configspec.reset(); }
 
     /// Error reporting for ImageRec: call this with printf-like arguments.
     /// Note however that this is fully typesafe!
@@ -493,7 +482,7 @@ private:
     TypeDesc m_input_dataformat;
     ImageCache* m_imagecache = nullptr;
     mutable std::string m_err;
-    ImageSpec m_configspec;
+    std::unique_ptr<ImageSpec> m_configspec;
 
     // Add to the error message
     void append_error(string_view message) const;
@@ -651,9 +640,9 @@ public:
 
         // Parse the options.
         options.clear();
-        options["allsubimages"] = std::to_string((int)ot.allsubimages);
+        options["allsubimages"] = (int)ot.allsubimages;
         option_defaults();  // this can be customized to set up defaults
-        ot.extract_options(options, args[0]);
+        options = ot.extract_options(args[0]);
 
         // Read all input images, and reserve (and push) the output image.
         int subimages = compute_subimages();
@@ -684,6 +673,13 @@ public:
             bool ok = impl(nimages() ? &img[0] : NULL);
             if (!ok)
                 ot.errorf(opname(), "%s", img[0]->geterror());
+
+            // Merge metadata if called for
+            if (ot.metamerge)
+                for (int i = 1; i < nimages(); ++i)
+                    img[0]->specmod().extra_attribs.merge(
+                        img[i]->spec().extra_attribs);
+
             ir[0]->update_spec_from_imagebuf(s);
         }
 
@@ -724,7 +720,7 @@ public:
     virtual bool cleanup() { return true; }
 
     // Override this if the impl uses options and needs any of them set
-    // to defaults. This will be called separate
+    // to defaults. This will be called separately for each subimage.
     virtual void option_defaults() {}
 
     // Default subimage logic: if the global -a flag was set or if this command
@@ -733,7 +729,7 @@ public:
     // the first subimage. Override this is you want another behavior.
     virtual int compute_subimages()
     {
-        int all_subimages = Strutil::from_string<int>(options["allsubimages"]);
+        int all_subimages = options.get_int("allsubimages", ot.allsubimages);
         return all_subimages ? (nimages() > 1 ? ir[1]->subimages() : 1) : 1;
     }
 
@@ -749,7 +745,7 @@ protected:
     std::vector<ImageRecRef> ir;
     std::vector<ImageBuf*> img;
     std::vector<string_view> args;
-    std::map<std::string, std::string> options;
+    ParamValueList options;
 };
 
 

@@ -1,32 +1,6 @@
-/*
-  Copyright 2016 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 // This implementation of thread_pool is based on CTPL.
@@ -138,7 +112,7 @@ public:
     // get the number of running threads in the pool
     int size() const
     {
-        DASSERT(m_size == static_cast<int>(this->threads.size()));
+        OIIO_DASSERT(m_size == static_cast<int>(this->threads.size()));
         return m_size;
     }
 
@@ -226,7 +200,7 @@ public:
             this->isDone = true;  // give the waiting threads a command to finish
         }
 
-#if defined(WIN32)
+#if defined(_WIN32)
         // When the static variable in default_thread_pool() is destroyed during DLL unloading,
         // the thread_pool destructor is called but the threads are already terminated.
         // So it is illegal to communicate with those other threads at this point.
@@ -236,7 +210,8 @@ public:
             = std::any_of(this->threads.begin(), this->threads.end(),
                           [](std::unique_ptr<std::thread>& t) {
                               DWORD rcode;
-                              GetExitCodeThread(t->native_handle(), &rcode);
+                              GetExitCodeThread((HANDLE)t->native_handle(),
+                                                &rcode);
                               return rcode != STILL_ACTIVE;
                           });
 
@@ -278,22 +253,16 @@ public:
         std::function<void(int)>* f = nullptr;
         bool isPop                  = this->q.pop(f);
         if (isPop) {
-            DASSERT(f);
+            OIIO_DASSERT(f);
             std::unique_ptr<std::function<void(int id)>> func(
                 f);  // at return, delete the function even if an exception occurred
             register_worker(id);
             (*f)(-1);
             deregister_worker(id);
         } else {
-            DASSERT(f == nullptr);
+            OIIO_DASSERT(f == nullptr);
         }
         return isPop;
-    }
-
-    bool this_thread_is_in_pool() const
-    {
-        int* p = m_pool_members.get();
-        return p && (*p);
     }
 
     void register_worker(std::thread::id id)
@@ -306,7 +275,7 @@ public:
         spin_lock lock(m_worker_threadids_mutex);
         m_worker_threadids[id] -= 1;
     }
-    bool is_worker(std::thread::id id)
+    bool is_worker(std::thread::id id) const
     {
         spin_lock lock(m_worker_threadids_mutex);
         return m_worker_threadids[id] != 0;
@@ -327,7 +296,6 @@ private:
         std::shared_ptr<std::atomic<bool>> flag(
             this->flags[i]);  // a copy of the shared ptr to the flag
         auto f = [this, i, flag /* a copy of the shared ptr to the flag */]() {
-            this->m_pool_members.reset(new int(1));  // I'm in the pool
             register_worker(std::this_thread::get_id());
             std::atomic<bool>& _flag = *flag;
             std::function<void(int id)>* _f;
@@ -339,11 +307,10 @@ private:
                     (*_f)(i);
                     if (_flag) {
                         // the thread is wanted to stop, return even if the queue is not empty yet
-                        this->m_pool_members
-                            .reset();  // I'm no longer in the pool
                         return;
-                    } else
+                    } else {
                         isPop = this->q.pop(_f);
+                    }
                 }
                 // the queue is empty here, wait for the next command
                 std::unique_lock<std::mutex> lock(this->mutex);
@@ -356,7 +323,6 @@ private:
                 if (!isPop)
                     break;  // if the queue is empty and this->isDone == true or *flag then return
             }
-            this->m_pool_members.reset();  // I'm no longer in the pool
             deregister_worker(std::this_thread::get_id());
         };
         this->threads[i].reset(
@@ -380,9 +346,8 @@ private:
     int m_size { 0 };           // Number of threads in the queue
     std::mutex mutex;
     std::condition_variable cv;
-    boost::thread_specific_ptr<int> m_pool_members;  // Who's in the pool
-    boost::container::flat_map<std::thread::id, int> m_worker_threadids;
-    spin_mutex m_worker_threadids_mutex;
+    mutable boost::container::flat_map<std::thread::id, int> m_worker_threadids;
+    mutable spin_mutex m_worker_threadids_mutex;
 };
 
 
@@ -449,10 +414,12 @@ thread_pool::push_queue_and_notify(std::function<void(int id)>* f)
 }
 
 
+
+/// DEPRECATED(2.1) -- use is_worker() instead.
 bool
 thread_pool::this_thread_is_in_pool() const
 {
-    return m_impl->this_thread_is_in_pool();
+    return is_worker();
 }
 
 
@@ -469,6 +436,14 @@ thread_pool::deregister_worker(std::thread::id id)
     m_impl->deregister_worker(id);
 }
 
+bool
+thread_pool::is_worker(std::thread::id id) const
+{
+    return m_impl->is_worker(id);
+}
+
+
+// DEPRECATED(2.1)
 bool
 thread_pool::is_worker(std::thread::id id)
 {
@@ -496,7 +471,7 @@ default_thread_pool()
 void
 task_set::wait_for_task(size_t taskindex, bool block)
 {
-    DASSERT(submitter() == std::this_thread::get_id());
+    OIIO_DASSERT(submitter() == std::this_thread::get_id());
     if (taskindex >= m_futures.size())
         return;  // nothing to wait for
     auto& f(m_futures[taskindex]);
@@ -534,7 +509,7 @@ task_set::wait_for_task(size_t taskindex, bool block)
 void
 task_set::wait(bool block)
 {
-    DASSERT(submitter() == std::this_thread::get_id());
+    OIIO_DASSERT(submitter() == std::this_thread::get_id());
     const std::chrono::milliseconds wait_time(0);
     if (m_pool->is_worker(m_submitter_thread))
         block = true;  // don't get into recursive work stealing

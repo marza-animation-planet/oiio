@@ -1,36 +1,17 @@
-/*
-Copyright 2008-2017 Larry Gritz et al. All Rights Reserved.
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
- * Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
- * Redistributions in binary form must reproduce the above copyright
-   notice, this list of conditions and the following disclaimer in the
-   documentation and/or other materials provided with the distribution.
- * Neither the name of the software's owners nor the names of its
-   contributors may be used to endorse or promote products derived from
-   this software without specific prior written permission.
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-(This is the Modified BSD License)
-*/
+#include <limits>
 
+#include <OpenEXR/ImathColor.h>
+#include <OpenEXR/ImathMatrix.h>
+#include <OpenEXR/ImathVec.h>
 
 #include <OpenImageIO/paramlist.h>
 #include <OpenImageIO/unittest.h>
-#include <limits>
+
 
 using namespace OIIO;
 
@@ -142,8 +123,8 @@ test_value_types()
     }
 
     {
-        unsigned long long ullmatrix[] = { 0xffffffffffffffffLL,
-                                           0xffffffffffffffffLL };
+        unsigned long long ullmatrix[] = { 0xffffffffffffffffULL,
+                                           0xffffffffffffffffULL };
         ret = test_numeric(&ullmatrix[0], 1, TypeDesc::UINT64);
         OIIO_CHECK_EQUAL(ret, "18446744073709551615");
         ret = test_numeric(ullmatrix,
@@ -175,13 +156,13 @@ test_value_types()
         };
         ParamValue p("name", TypeMatrix, 1, matrix16);
         std::string s = p.get_string();
-        OIIO_CHECK_EQUAL(s, "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16");
-        OIIO_CHECK_NE(s, "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16,");
+        OIIO_CHECK_EQUAL(
+            s, "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16");
         ParamValue q("name", TypeMatrix,
                      sizeof(matrix16) / (16 * sizeof(float)), matrix16);
         OIIO_CHECK_EQUAL(
             q.get_string(),
-            "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16, 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25");
+            "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25");
     }
 
     // Test rational
@@ -243,7 +224,7 @@ test_from_string()
     OIIO_CHECK_EQUAL(data, list_test(data, type));
 
     type = TypeMatrix;
-    data = "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16";
+    data = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16";
     OIIO_CHECK_EQUAL(data, list_test(data, type));
 
     type = TypeString;
@@ -280,6 +261,92 @@ test_paramlist()
     pl.remove("foo");
     OIIO_CHECK_ASSERT(!pl.contains("foo"));
     OIIO_CHECK_ASSERT(pl.contains("bar"));
+
+    {
+        // Check merge
+        ParamValueList list1, list2;
+        list1.emplace_back("b", 2);
+        list1.emplace_back("c", 3);
+        list1.emplace_back("a", 1);
+        list2.emplace_back("d", 11);
+        list2.emplace_back("c", 10);
+        list1.merge(list2, /*override=*/false);
+        OIIO_CHECK_EQUAL(list1.size(), 4);
+        OIIO_CHECK_EQUAL(list1.get_int("a"), 1);
+        OIIO_CHECK_EQUAL(list1.get_int("b"), 2);
+        OIIO_CHECK_EQUAL(list1.get_int("c"), 3);
+        OIIO_CHECK_EQUAL(list1.get_int("d"), 11);
+        list1.merge(list2, /*override=*/true);
+        OIIO_CHECK_EQUAL(list1.size(), 4);
+        OIIO_CHECK_EQUAL(list1.get_int("a"), 1);
+        OIIO_CHECK_EQUAL(list1.get_int("b"), 2);
+        OIIO_CHECK_EQUAL(list1.get_int("c"), 10);
+        OIIO_CHECK_EQUAL(list1.get_int("d"), 11);
+
+        // Check sort
+        OIIO_CHECK_EQUAL(list1[0].name(), "b");
+        OIIO_CHECK_EQUAL(list1[1].name(), "c");
+        OIIO_CHECK_EQUAL(list1[2].name(), "a");
+        OIIO_CHECK_EQUAL(list1[3].name(), "d");
+        list1.sort();
+        OIIO_CHECK_EQUAL(list1[0].name(), "a");
+        OIIO_CHECK_EQUAL(list1[1].name(), "b");
+        OIIO_CHECK_EQUAL(list1[2].name(), "c");
+        OIIO_CHECK_EQUAL(list1[3].name(), "d");
+    }
+}
+
+
+
+static void
+test_delegates()
+{
+    std::cout << "test_delegates\n";
+    ParamValueList pl;
+    pl["foo"]  = 42;
+    pl["pi"]   = float(M_PI);
+    pl["bar"]  = "barbarbar?";
+    pl["bar2"] = std::string("barbarbar?");
+    pl["bar3"] = ustring("barbarbar?");
+    pl["bar4"] = string_view("barbarbar?");
+    pl["red"]  = Imath::Color3f(1.0f, 0.0f, 0.0f);
+    pl["xy"]   = Imath::V3f(0.5f, 0.5f, 0.0f);
+    pl["Tx"]   = Imath::M44f(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 42, 0, 0, 1);
+
+    OIIO_CHECK_EQUAL(pl["absent"].get<int>(), 0);
+    OIIO_CHECK_EQUAL(pl["absent"].type(), TypeUnknown);
+    OIIO_CHECK_EQUAL(pl["foo"].get<int>(), 42);
+    OIIO_CHECK_EQUAL(pl["foo"].type(), TypeInt);
+    OIIO_CHECK_EQUAL(pl["foo"].as_string(), "42");
+    OIIO_CHECK_EQUAL(pl["pi"].get<float>(), float(M_PI));
+    OIIO_CHECK_EQUAL(pl["bar"].get<std::string>(), "barbarbar?");
+    OIIO_CHECK_EQUAL(pl["bar"].get<string_view>(), "barbarbar?");
+    OIIO_CHECK_EQUAL(pl["bar"].get<ustring>(), "barbarbar?");
+    OIIO_CHECK_EQUAL(pl["bar"].as_string(), "barbarbar?");
+    OIIO_CHECK_EQUAL(pl["bar2"].get<std::string>(), "barbarbar?");
+    OIIO_CHECK_EQUAL(pl["bar3"].get<std::string>(), "barbarbar?");
+    OIIO_CHECK_EQUAL(pl["bar4"].get<std::string>(), "barbarbar?");
+    OIIO_CHECK_EQUAL(pl["red"].get<Imath::Color3f>(),
+                     Imath::Color3f(1.0f, 0.0f, 0.0f));
+    std::vector<float> redvec { 1.0f, 0.0f, 0.0f };
+    OIIO_CHECK_EQUAL(pl["red"].as_vec<float>(), redvec);
+    OIIO_CHECK_EQUAL(pl["red"].get_indexed<float>(0), 1.0f);
+    OIIO_CHECK_EQUAL(pl["red"].get_indexed<float>(1), 0.0f);
+    OIIO_CHECK_EQUAL(pl["red"].get_indexed<float>(2), 0.0f);
+    OIIO_CHECK_EQUAL(pl["xy"].get<Imath::V3f>(), Imath::V3f(0.5f, 0.5f, 0.0f));
+    OIIO_CHECK_EQUAL(pl["Tx"].get<Imath::M44f>(),
+                     Imath::M44f(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 42, 0, 0,
+                                 1));
+    std::string s = pl["foo"];
+    OIIO_CHECK_EQUAL(s, "42");
+
+    string_view sv = pl["foo"].get();
+    OIIO_CHECK_EQUAL(sv, "42");
+
+    Strutil::printf("Delegate-loaded array is\n");
+    for (auto&& p : pl)
+        Strutil::printf(" %16s : %s\n", p.name(), p.get_string());
+    Strutil::printf("\n");
 }
 
 
@@ -291,6 +358,7 @@ main(int argc, char* argv[])
     test_value_types();
     test_from_string();
     test_paramlist();
+    test_delegates();
 
     return unit_test_failures;
 }

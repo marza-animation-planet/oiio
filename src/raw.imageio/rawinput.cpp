@@ -1,32 +1,6 @@
-/*
-  Copyright 2013 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <algorithm>
 #include <ctime> /* time_t, struct tm, gmtime */
@@ -244,11 +218,15 @@ raw_input_imageio_create()
 }
 
 OIIO_EXPORT const char* raw_input_extensions[]
-    = { "bay", "bmq",  "cr2", "crw", "cs1", "dc2", "dcr", "dng", "erf",
-        "fff", "hdr",  "k25", "kdc", "mdc", "mos", "mrw", "nef", "orf",
-        "pef", "pxn",  "raf", "raw", "rdc", "sr2", "srf", "x3f", "arw",
-        "3fr", "cine", "ia",  "kc2", "mef", "nrw", "qtk", "rw2", "sti",
-        "rwl", "srw",  "drf", "dsc", "ptx", "cap", "iiq", "rwz", nullptr };
+    = { "bay", "bmq", "cr2",
+#if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 20, 0)
+        "cr3",
+#endif
+        "crw", "cs1", "dc2", "dcr", "dng", "erf", "fff",  "hdr",  "k25",
+        "kdc", "mdc", "mos", "mrw", "nef", "orf", "pef",  "pxn",  "raf",
+        "raw", "rdc", "sr2", "srf", "x3f", "arw", "3fr",  "cine", "ia",
+        "kc2", "mef", "nrw", "qtk", "rw2", "sti", "rwl",  "srw",  "drf",
+        "dsc", "ptx", "cap", "iiq", "rwz", "cr3", nullptr };
 
 OIIO_PLUGIN_EXPORTS_END
 
@@ -368,7 +346,16 @@ RawInput::open_raw(bool unpack, const std::string& name,
                    const ImageSpec& config)
 {
     // std::cout << "open_raw " << name << " unpack=" << unpack << "\n";
-    m_processor.reset(new LibRaw);
+    {
+        // See https://github.com/OpenImageIO/oiio/issues/2630
+        // Something inside LibRaw constructor is not thread safe. Use a
+        // static mutex here to make sure only one thread is constructing a
+        // LibRaw at a time. Cross fingers and hope all the rest of LibRaw
+        // is re-entrant.
+        static std::mutex libraw_ctr_mutex;
+        std::lock_guard<std::mutex> lock(libraw_ctr_mutex);
+        m_processor.reset(new LibRaw);
+    }
 
     // Temp spec for exif parser callback to dump into
     ImageSpec exifspec;
@@ -379,24 +366,29 @@ RawInput::open_raw(bool unpack, const std::string& name,
 
     int ret;
     if ((ret = m_processor->open_file(name.c_str())) != LIBRAW_SUCCESS) {
-        error("Could not open file \"%s\", %s", m_filename,
-              libraw_strerror(ret));
+        errorf("Could not open file \"%s\", %s", m_filename,
+               libraw_strerror(ret));
         return false;
     }
 
-    ASSERT(!m_unpacked);
+    OIIO_ASSERT(!m_unpacked);
     if (unpack) {
         if ((ret = m_processor->unpack()) != LIBRAW_SUCCESS) {
-            error("Could not unpack \"%s\", %s", m_filename,
-                  libraw_strerror(ret));
+            errorf("Could not unpack \"%s\", %s", m_filename,
+                   libraw_strerror(ret));
             return false;
         }
     }
     m_processor->adjust_sizes_info_only();
 
+    // Process image at half size if "raw:half_size" is not 0
+    m_processor->imgdata.params.half_size
+        = config.get_int_attribute("raw:half_size", 0);
+    int div = m_processor->imgdata.params.half_size == 0 ? 1 : 2;
+
     // Set file information
-    m_spec = ImageSpec(m_processor->imgdata.sizes.iwidth,
-                       m_processor->imgdata.sizes.iheight,
+    m_spec = ImageSpec(m_processor->imgdata.sizes.iwidth / div,
+                       m_processor->imgdata.sizes.iheight / div,
                        3,  // LibRaw should only give us 3 channels
                        TypeDesc::UINT16);
     // Move the exif attribs we already read into the spec we care about
@@ -426,6 +418,24 @@ RawInput::open_raw(bool unpack, const std::string& name,
         if (p && p->type() == TypeDesc(TypeDesc::DOUBLE, 2)) {
             m_processor->imgdata.params.aber[0] = p->get<double>(0);
             m_processor->imgdata.params.aber[2] = p->get<double>(1);
+        }
+    }
+    // Set user white balance coefficients.
+    // Only has effect if "raw:use_camera_wb" is equal to 0,
+    // i.e. we are not using the camera white balance
+    {
+        auto p = config.find_attribute("raw:user_mul");
+        if (p && p->type() == TypeDesc(TypeDesc::FLOAT, 4)) {
+            m_processor->imgdata.params.user_mul[0] = p->get<float>(0);
+            m_processor->imgdata.params.user_mul[1] = p->get<float>(1);
+            m_processor->imgdata.params.user_mul[2] = p->get<float>(2);
+            m_processor->imgdata.params.user_mul[3] = p->get<float>(3);
+        }
+        if (p && p->type() == TypeDesc(TypeDesc::DOUBLE, 4)) {
+            m_processor->imgdata.params.user_mul[0] = p->get<double>(0);
+            m_processor->imgdata.params.user_mul[1] = p->get<double>(1);
+            m_processor->imgdata.params.user_mul[2] = p->get<double>(2);
+            m_processor->imgdata.params.user_mul[3] = p->get<double>(3);
         }
     }
 
@@ -503,7 +513,7 @@ RawInput::open_raw(bool unpack, const std::string& name,
     float exposure = config.get_float_attribute("raw:Exposure", -1.0f);
     if (exposure >= 0.0f) {
         if (exposure < 0.25f || exposure > 8.0f) {
-            error("raw:Exposure invalid value. range 0.25f - 8.0f");
+            errorf("raw:Exposure invalid value. range 0.25f - 8.0f");
             return false;
         }
         m_processor->imgdata.params.exp_correc
@@ -518,7 +528,7 @@ RawInput::open_raw(bool unpack, const std::string& name,
     int highlight_mode = config.get_int_attribute("raw:HighlightMode", 0);
     if (highlight_mode != 0) {
         if (highlight_mode < 0 || highlight_mode > 9) {
-            error("raw:HighlightMode invalid value. range 0-9");
+            errorf("raw:HighlightMode invalid value. range 0-9");
             return false;
         }
         m_processor->imgdata.params.highlight = highlight_mode;
@@ -562,8 +572,8 @@ RawInput::open_raw(bool unpack, const std::string& name,
             libraw_decoder_info_t decoder_info;
             m_processor->get_decoder_info(&decoder_info);
             if (!(decoder_info.decoder_flags & LIBRAW_DECODER_FLATFIELD)) {
-                error("Unable to extract unbayered data from file \"%s\"",
-                      name.c_str());
+                errorf("Unable to extract unbayered data from file \"%s\"",
+                       name);
                 return false;
             }
 
@@ -581,7 +591,7 @@ RawInput::open_raw(bool unpack, const std::string& name,
             m_spec.erase_attribute("raw:Colorspace");
             m_spec.erase_attribute("raw:Exposure");
         } else {
-            error("raw:Demosaic set to unknown value");
+            errorf("raw:Demosaic set to unknown value");
             return false;
         }
         // Set the attribute in the output spec
@@ -595,6 +605,15 @@ RawInput::open_raw(bool unpack, const std::string& name,
 
     const libraw_image_sizes_t& sizes(m_processor->imgdata.sizes);
     m_spec.attribute("PixelAspectRatio", (float)sizes.pixel_aspect);
+
+    // Libraw rotate the pixels automatically.
+    // The "flip" field gives the information about this rotation.
+    // This rotation is dependent on the camera orientation sensor.
+    // This information may be important for the user.
+    if (sizes.flip != 0) {
+        m_spec.attribute("raw:flip", sizes.flip);
+    }
+
     // FIXME: sizes. top_margin, left_margin, raw_pitch, mask?
 
     const libraw_iparams_t& idata(m_processor->imgdata.idata);
@@ -643,8 +662,12 @@ RawInput::open_raw(bool unpack, const std::string& name,
 #if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 17, 0)
     if (other.parsed_gps.gpsparsed) {
         add("GPS", "Latitude", other.parsed_gps.latitude, false, 0.0f);
+#    if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 20, 0)
+        add("GPS", "Longitude", other.parsed_gps.longitude, false, 0.0f);
+#    else
         add("GPS", "Longitude", other.parsed_gps.longtitude, false,
             0.0f);  // N.B. wrong spelling!
+#    endif
         add("GPS", "TimeStamp", other.parsed_gps.gpstimestamp, false, 0.0f);
         add("GPS", "Altitude", other.parsed_gps.altitude, false, 0.0f);
         add("GPS", "LatitudeRef", string_view(&other.parsed_gps.latref, 1),
@@ -657,7 +680,26 @@ RawInput::open_raw(bool unpack, const std::string& name,
             false);
     }
 #endif
-#if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 19, 0)
+#if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 20, 0)
+    const libraw_makernotes_t& makernotes(m_processor->imgdata.makernotes);
+    const libraw_metadata_common_t& common(makernotes.common);
+    // float FlashEC;
+    // float FlashGN;
+    // float CameraTemperature;
+    // float SensorTemperature;
+    // float SensorTemperature2;
+    // float LensTemperature;
+    // float AmbientTemperature;
+    // float BatteryTemperature;
+    // float exifAmbientTemperature;
+    add("Exif", "Humidity", common.exifHumidity, false, 0.0f);
+    add("Exif", "Pressure", common.exifPressure, false, 0.0f);
+    add("Exif", "WaterDepth", common.exifWaterDepth, false, 0.0f);
+    add("Exif", "Acceleration", common.exifAcceleration, false, 0.0f);
+    add("Exif", "CameraElevactionAngle", common.exifCameraElevationAngle, false,
+        0.0f);
+    // float real_ISO;
+#elif LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 19, 0)
     // float FlashEC;
     // float FlashGN;
     // float CameraTemperature;
@@ -861,9 +903,13 @@ RawInput::get_makernotes_olympus()
 {
 #if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 18, 0)
     auto const& mn(m_processor->imgdata.makernotes.olympus);
+#    if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 20, 0)
+    MAKERF(SensorCalibration);
+#    else
     MAKERF(OlympusCropID);
     MAKERF(OlympusFrame); /* upper left XY, lower right XY */
     MAKERF(OlympusSensorCalibration);
+#    endif
     MAKERF(FocusMode);
     MAKERF(AutoFocus);
     MAKERF(AFPoint);
@@ -938,12 +984,23 @@ RawInput::get_makernotes_fuji()
 {
 #if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 18, 0)
     auto const& mn(m_processor->imgdata.makernotes.fuji);
+
+#    if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 20, 0)
+    add(m_make, "ExpoMidPointShift", mn.ExpoMidPointShift);
+    add(m_make, "DynamicRange", mn.DynamicRange);
+    add(m_make, "FilmMode", mn.FilmMode);
+    add(m_make, "DynamicRangeSetting", mn.DynamicRangeSetting);
+    add(m_make, "DevelopmentDynamicRange", mn.DevelopmentDynamicRange);
+    add(m_make, "AutoDynamicRange", mn.AutoDynamicRange);
+#    else
     add(m_make, "ExpoMidPointShift", mn.FujiExpoMidPointShift);
     add(m_make, "DynamicRange", mn.FujiDynamicRange);
     add(m_make, "FilmMode", mn.FujiFilmMode);
     add(m_make, "DynamicRangeSetting", mn.FujiDynamicRangeSetting);
     add(m_make, "DevelopmentDynamicRange", mn.FujiDevelopmentDynamicRange);
     add(m_make, "AutoDynamicRange", mn.FujiAutoDynamicRange);
+#    endif
+
     MAKERF(FocusMode);
     MAKERF(AFMode);
     MAKERF(FocusPixel);
@@ -967,8 +1024,14 @@ RawInput::get_makernotes_sony()
 {
 #if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 18, 0)
     auto const& mn(m_processor->imgdata.makernotes.sony);
+#endif
+
+#if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 20, 0)
+    MAKERF(CameraType);
+#elif LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 18, 0)
     MAKERF(SonyCameraType);
 #endif
+
 #if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 19, 0)
     // uchar Sony0x9400_version; /* 0 if not found/deciphered, 0xa, 0xb, 0xc following exiftool convention */
     // uchar Sony0x9400_ReleaseMode2;
@@ -976,12 +1039,14 @@ RawInput::get_makernotes_sony()
     // uchar Sony0x9400_SequenceLength1;
     // unsigned Sony0x9400_SequenceFileNumber;
     // uchar Sony0x9400_SequenceLength2;
+#    if LIBRAW_VERSION < LIBRAW_MAKE_VERSION(0, 20, 0)
     if (mn.raw_crop.cwidth || mn.raw_crop.cheight) {
         add(m_make, "cropleft", mn.raw_crop.cleft, true);
         add(m_make, "croptop", mn.raw_crop.ctop, true);
         add(m_make, "cropwidth", mn.raw_crop.cwidth, true);
         add(m_make, "cropheight", mn.raw_crop.cheight, true);
     }
+#    endif
     MAKERF(AFMicroAdjValue);
     MAKERF(AFMicroAdjOn);
     MAKER(AFMicroAdjRegisteredLenses, 0);
@@ -1054,17 +1119,29 @@ RawInput::get_lensinfo()
         MAKER(Adapter, 0);
         MAKER(AttachmentID, 0ULL);
         MAKER(Attachment, 0);
+#    if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 20, 0)
+        MAKER(FocalUnits, 0);
+#    else
         MAKER(CanonFocalUnits, 0);
+#    endif
         MAKER(FocalLengthIn35mmFormat, 0.0f);
     }
 
     if (Strutil::iequals(m_make, "Nikon")) {
         auto const& mn(m_processor->imgdata.lens.nikon);
+#    if LIBRAW_VERSION >= LIBRAW_MAKE_VERSION(0, 20, 0)
+        add(m_make, "EffectiveMaxAp", mn.EffectiveMaxAp);
+        add(m_make, "LensIDNumber", mn.LensIDNumber);
+        add(m_make, "LensFStops", mn.LensFStops);
+        add(m_make, "MCUVersion", mn.MCUVersion);
+        add(m_make, "LensType", mn.LensType);
+#    else
         add(m_make, "EffectiveMaxAp", mn.NikonEffectiveMaxAp);
         add(m_make, "LensIDNumber", mn.NikonLensIDNumber);
         add(m_make, "LensFStops", mn.NikonLensFStops);
         add(m_make, "MCUVersion", mn.NikonMCUVersion);
         add(m_make, "LensType", mn.NikonLensType);
+#    endif
     }
     if (Strutil::iequals(m_make, "DNG")) {
         auto const& mn(m_processor->imgdata.lens.dng);
@@ -1133,23 +1210,23 @@ RawInput::process()
     if (!m_image) {
         int ret = m_processor->dcraw_process();
         if (ret != LIBRAW_SUCCESS) {
-            error("Processing image failed, %s", libraw_strerror(ret));
+            errorf("Processing image failed, %s", libraw_strerror(ret));
             return false;
         }
 
         m_image = m_processor->dcraw_make_mem_image(&ret);
         if (!m_image) {
-            error("LibRaw failed to create in memory image");
+            errorf("LibRaw failed to create in memory image");
             return false;
         }
 
         if (m_image->type != LIBRAW_IMAGE_BITMAP) {
-            error("LibRaw did not return expected image type");
+            errorf("LibRaw did not return expected image type");
             return false;
         }
 
         if (m_image->colors != 3) {
-            error("LibRaw did not return 3 channel image");
+            errorf("LibRaw did not return 3 channel image");
             return false;
         }
     }

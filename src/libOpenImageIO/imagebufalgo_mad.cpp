@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 /// \file
 /// Implementation of ImageBufAlgo algorithms that do math on
@@ -81,7 +55,7 @@ mad_impl(ImageBuf& R, const ImageBuf& A, const ImageBuf& B, const ImageBuf& C,
                         = (const ABCtype*)B.pixeladdr(roi.xbegin, y, z);
                     const ABCtype* craw
                         = (const ABCtype*)C.pixeladdr(roi.xbegin, y, z);
-                    DASSERT(araw && braw && craw);
+                    OIIO_DASSERT(araw && braw && craw);
                     // The straightforward loop auto-vectorizes very well,
                     // there's no benefit to using explicit SIMD here.
                     for (int x = 0; x < nxvalues; ++x)
@@ -179,14 +153,14 @@ ImageBufAlgo::mad(ImageBuf& dst, Image_or_Const A_, Image_or_Const B_,
     // Get pointers to any image. At least one of A or B must be an image.
     const ImageBuf *A = A_.imgptr(), *B = B_.imgptr(), *C = C_.imgptr();
     if (!A && !B) {
-        dst.error(
+        dst.errorf(
             "ImageBufAlgo::mad(): at least one of the first two arguments must be an image");
         return false;
     }
     // All of the arguments that are images need to be initialized
     if ((A && !A->initialized()) || (B && !B->initialized())
         || (C && !C->initialized())) {
-        dst.error("Uninitialized input image");
+        dst.errorf("Uninitialized input image");
         return false;
     }
 
@@ -254,7 +228,7 @@ ImageBufAlgo::mad(Image_or_Const A, Image_or_Const B, Image_or_Const C, ROI roi,
     ImageBuf result;
     bool ok = mad(result, A, B, C, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::mad() error");
+        result.errorf("ImageBufAlgo::mad() error");
     return result;
 }
 
@@ -274,7 +248,7 @@ ImageBufAlgo::invert(const ImageBuf& A, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = invert(result, A, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("invert error");
+        result.errorf("invert error");
     return result;
 }
 

@@ -2004,7 +2004,6 @@ weight of each channel in the sum.
 \apiend
 
 \apiitem{\ce --contrast}
-\NEW % 1.9
 Remap pixel values from [black, white] to [min, max], with an optional
 smooth sigmoidal contrast stretch as well.
 
@@ -2049,7 +2048,6 @@ Creates an RGB color map based on the luminance of the input image. The
 Or, {\cf mapname} may also be a comma-separated list of RGB triples, to form
 a custom color map curve.
 
-\NEW % 1.9
 Note that \qkw{magma}, \qkw{inferno}, \qkw{plasma}, \qkw{viridis} are
 perceptually uniform, strictly increasing in luminance, look good when
 converted to grayscale, and work for people with all types of
@@ -2062,7 +2060,7 @@ compared to the preferred ones.
 \begin{code}
     oiiotool tahoe.jpg --colormap inferno -o inferno.jpg
     oiiotool tahoe.jpg --colormap viridis -o viridis.jpg
-    oiiotool tahoe.jpg --colormap spectrum -o spectrum.jpg
+    oiiotool tahoe.jpg --colormap turbo -o turbo.jpg
     oiiotool tahoe.jpg --colormap .25,.25,.25,0,.5,0,1,0,0 -o custom.jpg
 \end{code}
 
@@ -2070,9 +2068,9 @@ compared to the preferred ones.
 \includegraphics[width=0.9in]{figures/tahoe-small.jpg} &
 \includegraphics[width=0.9in]{figures/colormap-inferno.jpg} &
 \includegraphics[width=0.9in]{figures/colormap-viridis.jpg} &
-\includegraphics[width=0.9in]{figures/colormap-spectrum.jpg} &
+\includegraphics[width=0.9in]{figures/colormap-turbo.jpg} &
 \includegraphics[width=0.9in]{figures/colormap-custom.jpg} \\
-original & inferno & viridis & spectrum & custom values \\
+original & inferno & viridis & turbo & custom values \\
 \end{tabular}
 \apiend
 

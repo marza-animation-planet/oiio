@@ -1,32 +1,6 @@
-/*
-  Copyright 2011 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 /// \file
@@ -80,7 +54,7 @@ ImageBufAlgo::from_IplImage(const IplImage* ipl, TypeDesc convert)
     pvt::LoggedTimer logtime("IBA::from_IplImage");
     ImageBuf dst;
     if (!ipl) {
-        dst.error("Passed NULL source IplImage");
+        dst.errorf("Passed NULL source IplImage");
         return dst;
     }
 #ifdef USE_OPENCV
@@ -93,7 +67,7 @@ ImageBufAlgo::from_IplImage(const IplImage* ipl, TypeDesc convert)
     case int(IPL_DEPTH_32F): srcformat = TypeDesc::FLOAT; break;
     case int(IPL_DEPTH_64F): srcformat = TypeDesc::DOUBLE; break;
     default:
-        dst.error("Unsupported IplImage depth %d", (int)ipl->depth);
+        dst.errorf("Unsupported IplImage depth %d", (int)ipl->depth);
         return dst;
     }
 
@@ -104,7 +78,7 @@ ImageBufAlgo::from_IplImage(const IplImage* ipl, TypeDesc convert)
 
     if (ipl->dataOrder != IPL_DATA_ORDER_PIXEL) {
         // We don't handle separate color channels, and OpenCV doesn't either
-        dst.error("Unsupported IplImage data order %d", (int)ipl->dataOrder);
+        dst.errorf("Unsupported IplImage data order %d", (int)ipl->dataOrder);
         return dst;
     }
 
@@ -138,7 +112,7 @@ ImageBufAlgo::from_IplImage(const IplImage* ipl, TypeDesc convert)
     // probably templated by type.
 
 #else
-    dst.error(
+    dst.errorf(
         "fromIplImage not supported -- no OpenCV support at compile time");
 #endif
 
@@ -158,7 +132,7 @@ ImageBufAlgo::to_IplImage(const ImageBuf& src)
 
     // Make sure the image buffer is initialized.
     if (!tmp.initialized() && !tmp.read(tmp.subimage(), tmp.miplevel(), true)) {
-        DASSERT(0 && "Could not initialize ImageBuf.");
+        OIIO_DASSERT(0 && "Could not initialize ImageBuf.");
         return NULL;
     }
 
@@ -187,13 +161,13 @@ ImageBufAlgo::to_IplImage(const ImageBuf& src)
         dstFormat     = IPL_DEPTH_64F;
         dstSpecFormat = spec.format;
     } else {
-        DASSERT(0 && "Unknown data format in ImageBuf.");
+        OIIO_DASSERT(0 && "Unknown data format in ImageBuf.");
         return NULL;
     }
     IplImage* ipl = cvCreateImage(cvSize(spec.width, spec.height), dstFormat,
                                   spec.nchannels);
     if (!ipl) {
-        DASSERT(0 && "Unable to create IplImage.");
+        OIIO_DASSERT(0 && "Unable to create IplImage.");
         return NULL;
     }
 
@@ -209,7 +183,7 @@ ImageBufAlgo::to_IplImage(const ImageBuf& src)
                                    linestep, 0);
 
     if (!converted) {
-        DASSERT(0 && "convert_image failed.");
+        OIIO_DASSERT(0 && "convert_image failed.");
         cvReleaseImage(&ipl);
         return NULL;
     }
@@ -289,7 +263,7 @@ ImageBufAlgo::from_OpenCV(const cv::Mat& mat, TypeDesc convert, ROI roi,
     }
 
 #else
-    dst.error(
+    dst.errorf(
         "from_OpenCV() not supported -- no OpenCV support at compile time");
 #endif
 
@@ -333,12 +307,12 @@ ImageBufAlgo::to_OpenCV(cv::Mat& dst, const ImageBuf& src, ROI roi,
     } else if (spec.format == TypeDesc(TypeDesc::DOUBLE)) {
         dstFormat = CV_MAKETYPE(CV_64F, chans);
     } else {
-        DASSERT(0 && "Unknown data format in ImageBuf.");
+        OIIO_DASSERT(0 && "Unknown data format in ImageBuf.");
         return false;
     }
     cv::Mat mat(roi.height(), roi.width(), dstFormat);
     if (mat.empty()) {
-        DASSERT(0 && "Unable to create cv::Mat.");
+        OIIO_DASSERT(0 && "Unable to create cv::Mat.");
         return false;
     }
 
@@ -351,7 +325,7 @@ ImageBufAlgo::to_OpenCV(cv::Mat& dst, const ImageBuf& src, ROI roi,
         dstSpecFormat, pixelsize, linestep, 0, -1, -1, nthreads);
 
     if (!converted) {
-        DASSERT(0 && "convert_image failed.");
+        OIIO_DASSERT(0 && "convert_image failed.");
         return false;
     }
 
@@ -415,12 +389,12 @@ ImageBufAlgo::capture_image(int cameranum, TypeDesc convert)
         lock_guard lock(opencv_mutex);
         auto cvcam = cameras[cameranum];
         if (!cvcam) {
-            dst.error("Could not create a capture camera (OpenCV error)");
+            dst.errorf("Could not create a capture camera (OpenCV error)");
             return dst;  // failed somehow
         }
         (*cvcam) >> frame;
         if (frame.empty()) {
-            dst.error("Could not cvQueryFrame (OpenCV error)");
+            dst.errorf("Could not cvQueryFrame (OpenCV error)");
             return dst;  // failed somehow
         }
     }
@@ -441,7 +415,7 @@ ImageBufAlgo::capture_image(int cameranum, TypeDesc convert)
         dst.specmod().attribute("DateTime", datetime);
     }
 #else
-    dst.error(
+    dst.errorf(
         "capture_image not supported -- no OpenCV support at compile time");
 #endif
     return dst;

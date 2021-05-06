@@ -1,32 +1,6 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <cstdio>
@@ -102,7 +76,7 @@ private:
     {
         size_t n = ::fwrite(buf, itemsize, nitems, m_file);
         if (n != nitems)
-            error("Write error");
+            errorf("Write error");
         return n == nitems;
     }
 
@@ -113,7 +87,7 @@ private:
     {
         size_t n = ::fread(buf, itemsize, nitems, m_file);
         if (n != nitems)
-            error("Read error");
+            errorf("Read error");
         return n == nitems;
     }
 };
@@ -154,7 +128,7 @@ ICOOutput::open(const std::string& name, const ImageSpec& userspec,
                 OpenMode mode)
 {
     if (mode == AppendMIPLevel) {
-        error("%s does not support MIP levels", format_name());
+        errorf("%s does not support MIP levels", format_name());
         return false;
     }
 
@@ -165,18 +139,18 @@ ICOOutput::open(const std::string& name, const ImageSpec& userspec,
 
     // Check for things this format doesn't support
     if (m_spec.width < 1 || m_spec.height < 1) {
-        error("Image resolution must be at least 1x1, you asked for %d x %d",
-              m_spec.width, m_spec.height);
+        errorf("Image resolution must be at least 1x1, you asked for %d x %d",
+               m_spec.width, m_spec.height);
         return false;
     } else if (m_spec.width > 256 || m_spec.height > 256) {
-        error("Image resolution must be at most 256x256, you asked for %d x %d",
-              m_spec.width, m_spec.height);
+        errorf("Image resolution must be at most 256x256, you asked for %d x %d",
+               m_spec.width, m_spec.height);
         return false;
     }
     if (m_spec.depth < 1)
         m_spec.depth = 1;
     if (m_spec.depth > 1) {
-        error("%s does not support volume images (depth > 1)", format_name());
+        errorf("%s does not support volume images (depth > 1)", format_name());
         return false;
     }
 
@@ -191,7 +165,7 @@ ICOOutput::open(const std::string& name, const ImageSpec& userspec,
         std::string s = PNG_pvt::create_write_struct(m_png, m_info,
                                                      m_color_type, m_spec);
         if (s.length()) {
-            error("%s", s.c_str());
+            errorf("%s", s);
             return false;
         }
     } else {
@@ -202,7 +176,7 @@ ICOOutput::open(const std::string& name, const ImageSpec& userspec,
         case 3: m_color_type = PNG_COLOR_TYPE_RGB; break;
         case 4: m_color_type = PNG_COLOR_TYPE_RGB_ALPHA; break;
         default:
-            error("ICO only supports 1-4 channels, not %d", m_spec.nchannels);
+            errorf("ICO only supports 1-4 channels, not %d", m_spec.nchannels);
             return false;
         }
 
@@ -229,7 +203,7 @@ ICOOutput::open(const std::string& name, const ImageSpec& userspec,
 
     m_file = Filesystem::fopen(name, mode == AppendSubimage ? "r+b" : "wb");
     if (!m_file) {
-        error("Could not open file \"%s\"", name.c_str());
+        errorf("Could not open \"%s\"", name);
         return false;
     }
 
@@ -262,7 +236,7 @@ ICOOutput::open(const std::string& name, const ImageSpec& userspec,
                   << ico.type << " count = " << ico.count << "\n";*/
 
         if (ico.reserved != 0 || ico.type != 1) {
-            error("File failed ICO header check");
+            errorf("File failed ICO header check");
             return false;
         }
 
@@ -438,7 +412,7 @@ ICOOutput::close()
     bool ok = true;
     if (m_spec.tile_width) {
         // Handle tile emulation -- output the buffered pixels
-        ASSERT(m_tilebuffer.size());
+        OIIO_ASSERT(m_tilebuffer.size());
         ok &= write_scanlines(m_spec.y, m_spec.y + m_spec.height, 0,
                               m_spec.format, &m_tilebuffer[0]);
         std::vector<unsigned char>().swap(m_tilebuffer);
@@ -470,7 +444,7 @@ ICOOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
 
     if (m_want_png) {
         if (!PNG_pvt::write_row(m_png, (png_byte*)data)) {
-            error("PNG library error");
+            errorf("PNG library error");
             return false;
         }
     } else {

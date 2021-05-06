@@ -1,10 +1,62 @@
 Installation instructions for OpenImageIO
 =========================================
 
-For the most up-to-date build instructions (and in any case somewhat
-more detailed than here), please see our wiki:
+# Table of Contents
+1. [OpenImageIO's Dependences](#dependencies)
+2. [Installing binaries from package managers](#installingfrompackagemanagers)
+3. [Building OIIO from source](#buildingfromsource)
 
-https://sites.google.com/site/openimageio/checking-out-and-building-openimageio
+
+Dependencies
+------------
+
+NEW or CHANGED MINIMUM dependencies since the last major release are **bold**.
+
+### Required dependencies -- OIIO will not build at all without these
+
+ * C++11 (also builds with C++14 and C++17)
+ * Compilers: gcc 4.8.2 - 9.2, clang 3.3 - 10.0, **MSVS 2015 - 2019**,
+   icc version 13 or higher
+ * Boost >= 1.53 (tested up through 1.71)
+ * **CMake >= 3.12** (tested up through 3.16)
+ * OpenEXR >= 2.0 (recommended: 2.2 or higher; tested through 2.4)
+ * libTIFF >= 3.9 (recommended: 4.0+)
+
+### Optional dependencies -- features may be disabled if not found
+ * If you are building the `iv` viewer (which will be disabled if any of
+   these are not found):
+     * Qt >= 5.6 (tested through 5.15)
+     * OpenGL
+ * If you are building the Python bindings or running the testsuite:
+     * Python >= 2.7 (tested against 2.7, 3.6, 3.7, 3.8)
+     * NumPy
+     * **pybind11 >= 2.4.2** (Tested through 2.5. For this
+       case, or if no pybind11 is found already on the system, OIIO will
+       auto-download it.)
+ * If you want support for camera "RAW" formats:
+     * LibRaw >= 0.15 (tested 0.15 - 0.20; LibRaw >= 0.18 is necessary for
+       ACES support and much better recognition of camera metadata)
+ * If you want support for a wide variety of video formats:
+     * ffmpeg >= 2.6 (tested through 4.1)
+ * If you want support for jpeg 2000 images:
+     * OpenJpeg >= 1.5 (tested through 2.3; version 2.0+ is strongly recommended)
+ * If you want support for Field3D files:
+     * Field3D
+ * If you want support for OpenVDB files:
+     * OpenVDB >= 5.0 and Intel TBB >= 2018
+ * If you want support for converting to and from OpenCV data structures,
+   or for capturing images from a camera:
+     * OpenCV 2.x, 3.x, or 4.x
+ * If you want support for GIF images:
+     * giflib >= 4.1 (5.0+ is strongly recommended for stability and
+       thread safety)
+ * If you want support for HEIF/HEIC images:
+     * libheif >= 1.3 (tested through 1.9; older versions may also work, we
+       haven't tested)
+* If you want support for DDS files:
+     * libsquish >= 1.13
+     * But... if not found on the system, an embedded version will be used.
+
 
 Supported platforms at present include Linux (32 and 64 bit),
 Mac OS X, and Windows.
@@ -18,55 +70,89 @@ to the 'lib' directory where OpenImageIO is installed, or else it will
 not be able to find the plugins.
 
 
-Dependencies
-------------
+Installing from package managers
+================================
 
-NEW or CHANGED MINIMUM dependencies since the last major release are **bold**.
+If all you want to do is install the OIIO libraries, headers, and command
+line tools as quickly as possible (don't need OIIO source or any custom
+build options), maybe one of these packages managers will do it for you:
 
-### Required dependencies -- OIIO will not build at all without these
+* vckpg (https://github.com/Microsoft/vcpkg)
+    * https://github.com/Microsoft/vcpkg/tree/master/ports/openimageio
+    * `.\vcpkg install openimageio [tools]`
+* homebrew (https://github.com/Homebrew/brew)
+    * https://formulae.brew.sh/formula/openimageio
+    * `brew install openimageio`
+* macports (https://github.com/macports/macports-ports)
+    * https://www.macports.org/ports.php?by=name&substr=openimageio
+    * `port install openimageio`
+* fink (https://github.com/fink/fink)
+    * http://pdb.finkproject.org/pdb/package.php/libopenimageio2.1-shlibs
+    * `fink install openimageio`
+* conan (https://github.com/conan-io/conan)
 
- * C++11 (also builds with C++14 and C++17)
- * Compilers: gcc 4.8.2 - 8.2, clang 3.3 - 9.0, **MSVS 2015 - 2019**,
-   icc version 13 or higher
- * Boost >= 1.53 (tested up through 1.70)
- * CMake >= 3.2.2 (tested up through 3.14)
- * OpenEXR >= 2.0 (recommended: 2.2 or 2.3)
- * libTIFF >= 3.9 (recommended: 4.0+)
+If these work for you and it's all you need, bingo! You are done.
 
-### Optional dependencies -- features may be disabled if not found
- * If you are building the `iv` viewer (which will be disabled if any of
-   these are not found):
-     * Qt >= 5.6 (tested through 5.15)
-     * OpenGL
- * If you are building the Python bindings or running the testsuite:
-     * Python >= 2.7 (tested against 2.7, 3.6, 3.7)
-     * **NumPy**
-     * **pybind11 >= 2.2.0** (Tested through 2.4.2. It is known that 2.4.0
-       and 2.4.1 have bugs and don't build properly for C++11. For this
-       case, or if no pybind11 is found already on the system, OIIO will
-       auto-download it.)
- * If you want support for camera "RAW" formats:
-     * libRaw >= 0.15 (tested 0.15 - 0.19; libRaw >= 0.18 is necessary for
-       ACES support and much better recognition of camera metadata)
- * If you want support for a wide variety of video formats:
-     * ffmpeg >= 2.6 (tested through 4.1)
- * If you want support for jpeg 2000 images:
-     * OpenJpeg >= 1.5 (tested through 2.3; version 1.5 is strongly discouraged)
- * If you want support for Field3D files:
-     * Field3D
- * If you want support for OpenVDB files:
-     * OpenVDB >= 5.0 and Intel TBB >= 2018
- * If you want support for converting to and from OpenCV data structures,
-   or for capturing images from a camera:
-     * OpenCV 2.x, 3.x, or 4.x
+
+
+Building from source
+====================
+
+
+Dependency control and disabling components
+-------------------------------------------
+
+**Hints for finding dependencies**
+
+For each external dependency PkgName, our CMake build system will recognize
+the following optional variable:
+
+    PkgName_ROOT=...
+
+to specify a hint about where the package is installed. It can either be
+a CMake variable (set by `-DPkgName_ROOT=...` on the CMake command line),
+or an environment variable of the same name, or a variable setting on the
+Make wrapper (`make PkgName_ROOT=...`).
+
+**Disabling optional dependencies and individual components**
+
+`USE_PYTHON=0` : Omits building the Python bindings.
+
+`OIIO_BUILD_TESTS=0` : Omits building tests (you probably don't need them
+unless you are a developer of OIIO or want to verify that your build
+passes all tests).
+
+`OIIO_BUILD_TOOLS=0` : Disables building all the command line tools (such
+as iinfo, oiiotool, maketx, etc.).
+
+`ENABLE_toolname=0` : Disables building the named command line tool (iinfo,
+oiiotool, etc.). This works both as a CMake variable and also as an
+environment variable.
+
+`ENABLE_formatname=0` : Disables building support for the particular named
+file format (jpeg, fits, png, etc.). This works both as a CMake variable and
+also as an environment variable.
+
+`ENABLE_PkgName=0` : Disables use of an *optional* dependency (such as
+FFmpeg, Field3D, Webp, etc.) -- even if the dependency is found on the
+system. This will obviously disable any functionality that requires the
+dependency. This works both as a CMake variable and
+also as an environment variable.
+
 
 
 Building OpenImageIO on Linux or OS X
 -------------------------------------
 
 The following dependencies must be installed to build the core of
-OpenImageIO: Boost, libjpeg, libtiff, libpng and OpenEXR.  These can be
-installed using the standard package managers on your system.
+OpenImageIO:
+* Boost
+* libjpeg
+* libtiff
+* libpng
+* OpenEXR.
+
+These can be installed using the standard package managers on your system.
 Optionally, to build the image viewing tools, you will need Qt and OpenGL.
 
 On OS X, these dependencies can be installed using Fink, MacPorts or
@@ -88,9 +174,9 @@ directories must notify the CMake system using environment variables.
 For example, set QTDIR to point at the root of the Qt library location
 so that CMake can find it (see CMake configuration output).
 
-On Linux and OS X, you can build from source from the top-level
+**On Linux and OS X, you can build from source from the top-level
 directory by just typing 'make'.  (Yes, we have a 'make' wrapper around
-our CMake build, it simplifies things.)
+our CMake build, it simplifies things.)**
 
 During the make, various temporary files (object files, etc.) will
 be put in build/PLATFORM, where 'PLATFORM' will be the name of the
@@ -109,7 +195,6 @@ Make targets you should know about:
 |  make realclean   |  Get rid of both build/PLATFORM and dist/PLATFORM     |
 |  make nuke        |  Get rid of all build/ and dist/, for all platforms   |
 |  make profile     |  Build a profilable version dist/PLATFORM.profile     |
-|  make doxygen     |  Build the Doxygen docs                               |
 |  make help        |  Print all the make options                           |
 
 Additionally, a few helpful modifiers alter some build-time options:
@@ -123,7 +208,7 @@ Additionally, a few helpful modifiers alter some build-time options:
 | make USE_QT=0 ...         |  Skip anything that needs Qt                   |
 | make MYCC=xx MYCXX=yy ... |  Use custom compilers                          |
 | make USE_PYTHON=0 ...     |  Don't build the Python binding                |
-| make BUILDSTATIC=1 ...    |  Build static library instead of shared        |
+| make BUILD_SHARED_LIBS=0  |  Build static library instead of shared        |
 | make LINKSTATIC=1 ...     |  Link with static external libraries when possible |
 | make SOVERSION=nn ...     |  Include the specifed major version number in the shared object metadata |
 | make NAMESPACE=name       |   Wrap everything in another namespace         |
@@ -137,7 +222,7 @@ CMake directly:
     cd build
     cmake ..
 
-If the compile stops because of warnings, try again with 
+If the compile stops because of warnings, try again with
 
     make nuke
     make STOP_ON_WARNING=0
@@ -153,8 +238,7 @@ or, if you are using CMake directly,
 Building on Windows
 -------------------
 
-See the latest Windows build docs on our web site:
-https://sites.google.com/site/openimageio/building-oiio-on-windows
+**Method 1 - Default**
 
 1. Check out the trunk or a branch of your choice.  The remainder of
    these instructions assume that you checked out the trunk to the
@@ -240,6 +324,13 @@ D:\OIIO\external\dist\windows\zlib-1.2.3 directory. If it can't find
 ZLIB and PNG, add
 D:\OIIO\external\dist\windows\zlib-1.2.3;D:\OIIO\external\dist\windows\libpng-1.2.3.
 
+**Method 2 - Using vcpkg**
+
+1. Visit Microsoft's vcpkg GitHub page: https://github.com/Microsoft/vcpkg. Also note that the openimageio package is located here: https://github.com/Microsoft/vcpkg/tree/master/ports/openimageio
+
+2. Follow vcpkg installation instructions and complete the install. Please note vcpkg has its own list of prerequisites listed on their page.
+
+3. Execute the PowerShell command from where vcpkg is located in directory. ``.\vcpkg install openimageio``
 
 Test Images
 -----------

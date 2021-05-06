@@ -1,38 +1,16 @@
-/*
-  Copyright 2018 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/imageio.h>
 
 #include <OpenEXR/ImathMatrix.h>
+
+#if OIIO_GNUC_VERSION >= 60000
+#    pragma GCC diagnostic ignored "-Wstrict-overflow"
+#endif
 
 #include <openvdb/openvdb.h>
 #include <openvdb/tools/Dense.h>
@@ -76,7 +54,7 @@ class OpenVDBInput final : public ImageInput {
 
     void init()
     {
-        ASSERT(!m_input);
+        OIIO_DASSERT(!m_input);
         std::string().swap(m_name);
         std::vector<layerrecord>().swap(m_layers);
         m_subimage   = -1;
@@ -230,6 +208,7 @@ template<typename GridType> struct VDBReader {
     {
         // Probe for a cell-centered voxel
         enum { kOffset = LeafType::DIM / 2 };
+        // const int kOffset = LeafType::DIM / 2;
         const openvdb::Coord xyz(x + kOffset, y + kOffset, z + kOffset);
         const RootType& root = grid.tree().root();
         // Use the GridType::ConstAccessor so only one query needs to be done.
@@ -237,11 +216,9 @@ template<typename GridType> struct VDBReader {
         typename GridType::ConstAccessor cache = grid.getConstAccessor();
         if (auto* leaf = root.probeConstLeafAndCache(xyz, cache)) {
             CoordBBox bbox = leaf->getNodeBoundingBox();
-            ASSERT((bbox.min().x() == x && bbox.min().y() == y
-                    && bbox.min().z() == z)
-                   && "Tile access unaligned");
-            ASSERT((bbox.dim() == Coord(LeafType::DIM))
-                   && "Unexpected tile dimensions");
+            if (bbox.min().x() != x || bbox.min().y() != y
+                || bbox.min().z() != z || bbox.dim() != Coord(LeafType::DIM))
+                return false;  // unaligned or unexpected tile dimensions
             // Have OpenVDB fill the dense block, into the values pointer
             DenseT dense(bbox, values);
             leaf->copyToDense(bbox, dense);
@@ -346,13 +323,13 @@ openVDB(const std::string& filename, const ImageInput* errReport)
             return file;
 
     } catch (const std::exception& e) {
-        errReport->error("Could not open '%s': %s", filename, e.what());
+        errReport->errorf("Could not open '%s': %s", filename, e.what());
         return nullptr;
     } catch (...) {
         errhint = "Unknown exception thrown";
     }
 
-    errReport->error("Could not open '%s': %s", filename, errhint);
+    errReport->errorf("Could not open '%s': %s", filename, errhint);
     return nullptr;
 }
 
@@ -507,7 +484,6 @@ OpenVDBInput::open(const std::string& filename, ImageSpec& newspec)
     auto file = openVDB(filename, this);
     if (!file)
         return false;
-    ASSERT(file->isOpen());
 
     try {
         for (io::File::NameIterator name = file->beginName(),
@@ -540,7 +516,7 @@ OpenVDBInput::open(const std::string& filename, ImageSpec& newspec)
 
             channelnames.resize(layerspec.nchannels);
             if (layerspec.nchannels > 1) {
-                ASSERT(layerspec.nchannels <= 4);
+                OIIO_DASSERT(layerspec.nchannels <= 4);
                 const bool iscolor = layer.name == "Cd"
                                      || layer.name == "color";
                 const char kChanName[4]
@@ -556,7 +532,7 @@ OpenVDBInput::open(const std::string& filename, ImageSpec& newspec)
         }
     } catch (const std::exception& e) {
         init();  // Reset to initial state
-        error("Could not open '%s': %s", filename, e.what());
+        errorf("Could not open '%s': %s", filename, e.what());
         return false;
     }
     m_name       = filename;

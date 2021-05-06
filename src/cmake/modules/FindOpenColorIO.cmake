@@ -1,60 +1,84 @@
 # Module to find OpenColorIO
 #
-# This module will first look into the directories defined by the variables:
-#   - OCIO_PATH, OCIO_INCLUDE_PATH, OCIO_LIBRARY_PATH
+# This module will first look into the directories hinted by the variables:
+#   - OpenColorIO_ROOT, OPENCOLORIO_INCLUDE_PATH, OPENCOLORIO_LIBRARY_PATH
 #
 # This module defines the following variables:
 #
-# OCIO_FOUND       - True if OpenColorIO was found.
-# OCIO_INCLUDES -    where to find OpenColorIO.h
-# OCIO_LIBRARIES   - list of libraries to link against when using OpenColorIO
+# OPENCOLORIO_FOUND       - True if OpenColorIO was found.
+# OPENCOLORIO_INCLUDES    - where to find OpenColorIO.h
+# OPENCOLORIO_LIBRARIES   - list of libraries to link against when using OpenColorIO
+# OPENCOLORIO_DEFINITIONS - Definitions needed when using OpenColorIO
 
-# Other standarnd issue macros
 include (FindPackageHandleStandardArgs)
 include (FindPackageMessage)
 
-    if (NOT OpenColorIO_FIND_QUIETLY)
-        if (OCIO_PATH)
-            message(STATUS "OCIO path explicitly specified: ${OCIO_PATH}")
-        endif()
-        if (OCIO_INCLUDE_PATH)
-            message(STATUS "OCIO INCLUDE_PATH explicitly specified: ${OCIO_INCLUDE_PATH}")
-        endif()
-        if (OCIO_LIBRARY_PATH)
-            message(STATUS "OCIO LIBRARY_PATH explicitly specified: ${OCIO_LIBRARY_PATH}")
-        endif()
-    endif ()
-    FIND_PATH(OCIO_INCLUDES
-        OpenColorIO/OpenColorIO.h
-        PATHS
-        ${OCIO_INCLUDE_PATH}
-        ${OCIO_PATH}/include/
-        /usr/include
-        /usr/local/include
+find_path (OPENCOLORIO_INCLUDE_DIR
+    OpenColorIO/OpenColorIO.h
+    HINTS
+        ${OPENCOLORIO_INCLUDE_PATH}
+        ENV OPENCOLORIO_INCLUDE_PATH
+    PATHS
         /sw/include
         /opt/local/include
-        DOC "The directory where OpenColorIO/OpenColorIO.h resides")
-    FIND_LIBRARY(OCIO_LIBRARIES
-        NAMES OCIO OpenColorIO
-        PATHS
-        ${OCIO_LIBRARY_PATH}
-        ${OCIO_PATH}/lib/
+    DOC "The directory where OpenColorIO/OpenColorIO.h resides")
+
+find_library (OPENCOLORIO_LIBRARY
+    NAMES OCIO OpenColorIO
+    HINTS
+        ${OPENCOLORIO_LIBRARY_PATH}
+        ENV OPENCOLORIO_LIBRARY_PATH
+    PATHS
         /usr/lib64
-        /usr/lib
         /usr/local/lib64
-        /usr/local/lib
         /sw/lib
         /opt/local/lib
-        DOC "The OCIO library")
+    DOC "The OCIO library")
 
-    if(OCIO_INCLUDES AND OCIO_LIBRARIES)
-        set(OCIO_FOUND TRUE)
-        if (NOT OpenColorIO_FIND_QUIETLY)
-            message(STATUS "Found OCIO library ${OCIO_LIBRARIES}")
-            message(STATUS "Found OCIO includes ${OCIO_INCLUDES}")
-        endif ()
-    else()
-        set(OCIO_FOUND FALSE)
-        message(STATUS "OCIO not found. Specify OCIO_PATH to locate it")
-    endif()
+if (EXISTS "${OPENCOLORIO_INCLUDE_DIR}/OpenColorIO/OpenColorABI.h")
+    file(STRINGS "${OPENCOLORIO_INCLUDE_DIR}/OpenColorIO/OpenColorABI.h" TMP
+         REGEX "^#define OCIO_VERSION[ \t].*$")
+    string (REGEX MATCHALL "[0-9]+[.0-9]+" OPENCOLORIO_VERSION ${TMP})
+endif ()
+
+find_package_handle_standard_args (OpenColorIO
+    REQUIRED_VARS   OPENCOLORIO_INCLUDE_DIR OPENCOLORIO_LIBRARY
+    FOUND_VAR       OPENCOLORIO_FOUND
+    VERSION_VAR     OPENCOLORIO_VERSION
+    )
+
+if (OPENCOLORIO_FOUND)
+    set (OPENCOLORIO_INCLUDES ${OPENCOLORIO_INCLUDE_DIR})
+    set (OPENCOLORIO_LIBRARIES ${OPENCOLORIO_LIBRARY})
+    set (OPENCOLORIO_DEFINITIONS "")
+    if (NOT TARGET OpenColorIO::OpenColorIO)
+        add_library(OpenColorIO::OpenColorIO UNKNOWN IMPORTED)
+        set_target_properties(OpenColorIO::OpenColorIO PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${OPENCOLORIO_INCLUDES}")
+
+        set_property(TARGET OpenColorIO::OpenColorIO APPEND PROPERTY
+            IMPORTED_LOCATION "${OPENCOLORIO_LIBRARIES}")
+        if (LINKSTATIC)
+            set_target_properties(OpenColorIO::OpenColorIO PROPERTIES
+                INTERFACE_COMPILE_DEFINITIONS "-DOpenColorIO_STATIC")
+        endif()
+    endif ()
+endif ()
+
+if (OpenColorIO_FOUND AND LINKSTATIC)
+    # Is this necessary?
+    set (OPENCOLORIO_DEFINITIONS "-DOpenColorIO_STATIC")
+    find_library (TINYXML_LIBRARY NAMES tinyxml)
+    if (TINYXML_LIBRARY)
+        set (OPENCOLORIO_LIBRARIES "${OPENCOLORIO_LIBRARIES};${TINYXML_LIBRARY}" CACHE STRING "" FORCE)
+    endif ()
+    find_library (YAML_LIBRARY NAMES yaml-cpp)
+    if (YAML_LIBRARY)
+        set (OPENCOLORIO_LIBRARIES "${OPENCOLORIO_LIBRARIES};${YAML_LIBRARY}" CACHE STRING "" FORCE)
+    endif ()
+    find_library (LCMS2_LIBRARY NAMES lcms2)
+    if (LCMS2_LIBRARY)
+        set (OPENCOLORIO_LIBRARIES "${OPENCOLORIO_LIBRARIES};${LCMS2_LIBRARY}" CACHE STRING "" FORCE)
+    endif ()
+endif ()
 

@@ -1,32 +1,6 @@
-/*
-  Copyright 2010 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include "sgi_pvt.h"
 
@@ -58,7 +32,7 @@ bool
 SgiOutput::open(const std::string& name, const ImageSpec& spec, OpenMode mode)
 {
     if (mode != Create) {
-        error("%s does not support subimages or MIP levels", format_name());
+        errorf("%s does not support subimages or MIP levels", format_name());
         return false;
     }
 
@@ -67,9 +41,14 @@ SgiOutput::open(const std::string& name, const ImageSpec& spec, OpenMode mode)
     m_filename = name;
     m_spec     = spec;
 
+    if (m_spec.width >= 65535 || m_spec.height >= 65535) {
+        errorf("Exceeds the maximum resolution (65535)");
+        return false;
+    }
+
     m_fd = Filesystem::fopen(m_filename, "wb");
     if (!m_fd) {
-        error("Unable to open file \"%s\"", m_filename.c_str());
+        errorf("Could not open \"%s\"", name);
         return false;
     }
 
@@ -108,12 +87,13 @@ SgiOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
     // content ourselves with only writing uncompressed data, and don't
     // attempt to write with RLE encoding.
 
-    int bpc = m_spec.format.size();  // bytes per channel
-    std::vector<unsigned char> channeldata(m_spec.width * bpc);
+    size_t bpc = m_spec.format.size();  // bytes per channel
+    std::unique_ptr<unsigned char[]> channeldata(
+        new unsigned char[m_spec.width * bpc]);
 
-    for (int c = 0; c < m_spec.nchannels; ++c) {
+    for (int64_t c = 0; c < m_spec.nchannels; ++c) {
         unsigned char* cdata = (unsigned char*)data + c * bpc;
-        for (int x = 0; x < m_spec.width; ++x) {
+        for (int64_t x = 0; x < m_spec.width; ++x) {
             channeldata[x * bpc] = cdata[0];
             if (bpc == 2)
                 channeldata[x * bpc + 1] = cdata[1];
@@ -121,9 +101,10 @@ SgiOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
         }
         if (bpc == 2 && littleendian())
             swap_endian((unsigned short*)&channeldata[0], m_spec.width);
-        long scanline_offset = sgi_pvt::SGI_HEADER_LEN
-                               + (c * m_spec.height + y) * m_spec.width * bpc;
-        fseek(m_fd, scanline_offset, SEEK_SET);
+        ptrdiff_t scanline_offset = sgi_pvt::SGI_HEADER_LEN
+                                    + ptrdiff_t(c * m_spec.height + y)
+                                          * m_spec.width * bpc;
+        Filesystem::fseek(m_fd, scanline_offset, SEEK_SET);
         if (!fwrite(&channeldata[0], 1, m_spec.width * bpc)) {
             return false;
         }
@@ -156,7 +137,7 @@ SgiOutput::close()
     bool ok = true;
     if (m_spec.tile_width) {
         // Handle tile emulation -- output the buffered pixels
-        ASSERT(m_tilebuffer.size());
+        OIIO_ASSERT(m_tilebuffer.size());
         ok &= write_scanlines(m_spec.y, m_spec.y + m_spec.height, 0,
                               m_spec.format, &m_tilebuffer[0]);
         std::vector<unsigned char>().swap(m_tilebuffer);
@@ -220,7 +201,7 @@ SgiOutput::create_and_write_header()
         || !fwrite(&sgi_header.pixmax) || !fwrite(&sgi_header.dummy)
         || !fwrite(sgi_header.imagename, 1, 80) || !fwrite(&sgi_header.colormap)
         || !fwrite(dummy, 404, 1)) {
-        error("Error writing to \"%s\"", m_filename);
+        errorf("Error writing to \"%s\"", m_filename);
         return false;
     }
     return true;

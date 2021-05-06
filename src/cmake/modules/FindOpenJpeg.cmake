@@ -1,11 +1,11 @@
 # Module to find OpenJpeg.
 #
 # This module will first look into the directories defined by the variables:
-#   - OPENJPEG_HOME
+#   - OpenJpeg_ROOT
 #
 # This module defines the following variables:
 #
-# OPENJPEG_INCLUDE_DIR - where to find openjpeg.h
+# OPENJPEG_INCLUDES    - where to find openjpeg.h
 # OPENJPEG_LIBRARIES   - list of libraries to link against when using OpenJpeg.
 # OPENJPEG_FOUND       - True if OpenJpeg was found.
 # OPENJPEG_VERSION     - Set to the OpenJPEG version found
@@ -17,7 +17,6 @@ macro (PREFIX_FIND_INCLUDE_DIR prefix includefile libpath_var)
   string (TOUPPER ${prefix}_INCLUDE_DIR tmp_varname)
   find_path(${tmp_varname} ${includefile}
     PATHS ${${libpath_var}}
-    PATH_SUFFIXES include
     NO_DEFAULT_PATH
   )
   if (${tmp_varname})
@@ -32,13 +31,11 @@ macro (PREFIX_FIND_LIB prefix libname libpath_var liblist_var cachelist_var)
   find_library(${tmp_prefix}_LIBRARY_RELEASE
     NAMES ${libname}
     PATHS ${${libpath_var}}
-    PATH_SUFFIXES lib
     NO_DEFAULT_PATH
   )
   find_library(${tmp_prefix}_LIBRARY_DEBUG
     NAMES ${libname}d ${libname}_d ${libname}debug ${libname}_debug
     PATHS ${${libpath_var}}
-    PATH_SUFFIXES lib
     NO_DEFAULT_PATH
   )
   # Properly define ${tmp_prefix}_LIBRARY (cached) and ${tmp_prefix}_LIBRARIES
@@ -85,20 +82,20 @@ set (OpenJpeg_library_paths
   /sw/lib
   /opt/local/lib)
 
-if (OPENJPEG_HOME)
+if (OpenJpeg_ROOT)
   set (OpenJpeg_library_paths
-       ${OPENJPEG_HOME}/lib
-       ${OPENJPEG_HOME}/lib64
-       ${OPENJPEG_HOME}/bin
+       ${OpenJpeg_ROOT}/lib
+       ${OpenJpeg_ROOT}/lib64
+       ${OpenJpeg_ROOT}/bin
        ${OpenJpeg_library_paths}
       )
   set (OpenJpeg_include_paths
-       ${OPENJPEG_HOME}/include/openjpeg-2.3
-       ${OPENJPEG_HOME}/include/openjpeg-2.2
-       ${OPENJPEG_HOME}/include/openjpeg-2.1
-       ${OPENJPEG_HOME}/include/openjpeg-2.0
-       ${OPENJPEG_HOME}/include/openjpeg
-       ${OPENJPEG_HOME}/include
+       ${OpenJpeg_ROOT}/include/openjpeg-2.3
+       ${OpenJpeg_ROOT}/include/openjpeg-2.2
+       ${OpenJpeg_ROOT}/include/openjpeg-2.1
+       ${OpenJpeg_ROOT}/include/openjpeg-2.0
+       ${OpenJpeg_ROOT}/include/openjpeg
+       ${OpenJpeg_ROOT}/include
        ${OpenJpeg_include_paths}
       )
 endif()
@@ -154,10 +151,12 @@ else ()
 endif ()
 
 # Use the standard function to handle OPENJPEG_FOUND
-FIND_PACKAGE_HANDLE_STANDARD_ARGS (OpenJpeg DEFAULT_MSG
-  OPENJPEG_INCLUDE_DIR ${OpenJpeg_libvars})
+FIND_PACKAGE_HANDLE_STANDARD_ARGS (OpenJpeg
+  VERSION_VAR OPENJPEG_VERSION
+  REQUIRED_VARS OPENJPEG_INCLUDE_DIR ${OpenJpeg_libvars})
 
 if (OPENJPEG_FOUND)
+  set (OPENJPEG_INCLUDES ${OPENJPEG_INCLUDE_DIR})
   set (OPENJPEG_LIBRARIES "")
   foreach (tmplib ${OpenJpeg_libvars})
     list (APPEND OPENJPEG_LIBRARIES ${${tmplib}})

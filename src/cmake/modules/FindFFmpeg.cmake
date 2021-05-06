@@ -8,18 +8,23 @@
 #  FFMPEG_LIBAVFORMAT
 #  FFMPEG_LIBAVUTIL
 #
-#  Copyright (c) 2008 Andreas Schneider <mail@cynapses.org>
-#  Modified for other libraries by Lasse Kärkkäinen <tronic>
-#  Modified for Hedgewars by Stepik777
+# Original:
+#   Copyright (c) 2008 Andreas Schneider <mail@cynapses.org>
+#   Modified for other libraries by Lasse Kärkkäinen <tronic>
+#   Modified for Hedgewars by Stepik777
+#   Redistribution and use is allowed according to the terms of the New
+#   BSD license.
 #
-#  Redistribution and use is allowed according to the terms of the New
-#  BSD license.
-#
+# Modifications:
+# Copyright 2008-present Contributors to the OpenImageIO project.
+# SPDX-License-Identifier: BSD-3-Clause
+# https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
+
 
 if (FFMPEG_LIBRARIES AND FFMPEG_INCLUDE_DIR)
   # in cache already
   set(FFMPEG_FOUND TRUE)
-else (FFMPEG_LIBRARIES AND FFMPEG_INCLUDE_DIR)
+else ()
   # use pkg-config to get the directories and then use these values
   # in the FIND_PATH() and FIND_LIBRARY() calls
   find_package(PkgConfig)
@@ -32,29 +37,25 @@ else (FFMPEG_LIBRARIES AND FFMPEG_INCLUDE_DIR)
 
   find_path(FFMPEG_AVCODEC_INCLUDE_DIR
     NAMES libavcodec/version.h
-    PATHS ${_FFMPEG_AVCODEC_INCLUDE_DIRS} /usr/include /usr/local/include /opt/local/include /sw/include
+    HINTS ${_FFMPEG_AVCODEC_INCLUDE_DIRS}
     PATH_SUFFIXES ffmpeg libav
   )
 
   find_library(FFMPEG_LIBAVCODEC
     NAMES avcodec
-    PATHS ${_FFMPEG_AVCODEC_LIBRARY_DIRS} /usr/lib /usr/local/lib /opt/local/lib /sw/lib
-  )
+    HINTS ${_FFMPEG_AVCODEC_LIBRARY_DIRS} )
 
   find_library(FFMPEG_LIBAVFORMAT
     NAMES avformat
-    PATHS ${_FFMPEG_AVFORMAT_LIBRARY_DIRS} /usr/lib /usr/local/lib /opt/local/lib /sw/lib
-  )
+    HINTS ${_FFMPEG_AVFORMAT_LIBRARY_DIRS} )
 
   find_library(FFMPEG_LIBAVUTIL
     NAMES avutil
-    PATHS ${_FFMPEG_AVUTIL_LIBRARY_DIRS} /usr/lib /usr/local/lib /opt/local/lib /sw/lib
-  )
+    HINTS ${_FFMPEG_AVUTIL_LIBRARY_DIRS} )
 
   find_library(FFMPEG_LIBSWSCALE
     NAMES swscale
-    PATHS ${_FFMPEG_SWSCALE_LIBRARY_DIRS} /usr/lib /usr/local/lib /opt/local/lib /sw/lib
-  )
+    HINTS ${_FFMPEG_SWSCALE_LIBRARY_DIRS} )
 
   if (FFMPEG_LIBAVCODEC AND FFMPEG_LIBAVFORMAT AND FFMPEG_AVCODEC_INCLUDE_DIR)
     set(FFMPEG_FOUND TRUE)
@@ -69,17 +70,15 @@ else (FFMPEG_LIBRARIES AND FFMPEG_INCLUDE_DIR)
       ${FFMPEG_LIBAVUTIL}
       ${FFMPEG_LIBSWSCALE}
     )
+  endif ()
+endif ()
 
-  endif (FFMPEG_FOUND)
+include (FindPackageHandleStandardArgs)
+find_package_handle_standard_args (FFMPEG
+    REQUIRED_VARS   FFMPEG_INCLUDE_DIR
+                    FFMPEG_LIBRARIES
+    )
 
-  if (FFMPEG_FOUND)
-    if (NOT FFmpeg_FIND_QUIETLY)
-      message(STATUS "Found FFMPEG or Libav: ${FFMPEG_LIBRARIES}, ${FFMPEG_INCLUDE_DIR}")
-    endif (NOT FFmpeg_FIND_QUIETLY)
-  else (FFMPEG_FOUND)
-    if (FFMPEG_FIND_REQUIRED)
-      message(FATAL_ERROR "Could not find libavcodec or libavformat or libavutil or libswscale")
-    endif (FFMPEG_FIND_REQUIRED)
-  endif (FFMPEG_FOUND)
-
-endif (FFMPEG_LIBRARIES AND FFMPEG_INCLUDE_DIR)
+mark_as_advanced (
+    FFMPEG_INCLUDES FFMPEG_LIBRARIES
+    )

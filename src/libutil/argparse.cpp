@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cassert>
@@ -41,6 +15,7 @@
 
 #include <OpenImageIO/argparse.h>
 #include <OpenImageIO/dassert.h>
+#include <OpenImageIO/platform.h>
 #include <OpenImageIO/strutil.h>
 #include <OpenImageIO/sysutil.h>
 
@@ -59,6 +34,7 @@ public:
     const std::string& name() const { return m_flag; }
 
     const std::string& fmt() const { return m_format; }
+    const std::string& prettyformat() const { return m_prettyformat; }
 
     bool is_flag() const { return m_type == Flag; }
     bool is_reverse_flag() const { return m_type == ReverseFlag; }
@@ -91,9 +67,10 @@ public:
 private:
     enum OptionType { None, Regular, Flag, ReverseFlag, Sublist };
 
-    std::string m_format;  // original format string
-    std::string m_flag;    // just the -flag_foo part
-    std::string m_code;    // paramter types, eg "df"
+    std::string m_format;        // original format string
+    std::string m_prettyformat;  // human readable format
+    std::string m_flag;          // just the -flag_foo part
+    std::string m_code;          // paramter types, eg "df"
     std::string m_descript;
     OptionType m_type = None;
     int m_count       = 0;       // number of parameters
@@ -135,15 +112,43 @@ public:
     {
         m_errmessage = Strutil::sprintf(fmt, args...);
     }
+    template<typename... Args>
+    void errorf(const char* fmt, const Args&... args) const
+    {
+        m_errmessage = Strutil::sprintf(fmt, args...);
+    }
 };
 
 
 
 // Constructor.  Does not do any parsing or error checking.
 // Make sure to call initialize() right after construction.
+// The format may look like this: "%g:FOO", and in that case split
+// the formatting part (e.g. "%g") from the self-documenting
+// human-readable argument name ("FOO")
 ArgOption::ArgOption(const char* str)
-    : m_format(str)
 {
+    std::vector<string_view> prettyargs;
+    std::vector<string_view> uglyargs;
+    auto args = Strutil::splits(str, " ");
+    for (auto&& a : args) {
+        auto parts     = Strutil::splitsv(a, ":", 2);
+        string_view ug = a, pr = a;
+        if (parts.size() == 2) {
+            ug = parts[0];
+            pr = parts[1];
+        }
+        uglyargs.push_back(ug);
+        if (pr == "%L")
+            pr = "%s";
+        if (pr != "%!" && pr != "%@")
+            prettyargs.push_back(pr);
+    }
+    m_format       = Strutil::join(uglyargs, " ");
+    m_prettyformat = Strutil::join(prettyargs, " ");
+    // std::cout << "Arg str = " << str << "\n";
+    // std::cout << "   pretty = " << m_prettyformat << "\n";
+    // std::cout << "   ugly   = " << m_format << "\n";
 }
 
 
@@ -250,15 +255,6 @@ ArgOption::initialize()
         }
     }
 
-    // A few replacements to tidy up the format string for printing
-    size_t loc;
-    while ((loc = m_format.find("%L")) != std::string::npos)
-        m_format.replace(loc, 2, "%s");
-    while ((loc = m_format.find("%!")) != std::string::npos)
-        m_format.replace(loc, 2, "");
-    while ((loc = m_format.find("%@")) != std::string::npos)
-        m_format.replace(loc, 2, "");
-
     // Allocate space for the parameter pointers and initialize to NULL
     m_param.resize(m_count, NULL);
 
@@ -324,7 +320,7 @@ ArgOption::invoke_callback() const
         return 0;
 
     // Convert the argv's to char*[]
-    const char** myargv = (const char**)alloca(argc * sizeof(const char*));
+    const char** myargv = OIIO_ALLOCA(const char*, argc);
     for (int i = 0; i < argc; ++i)
         myargv[i] = m_argv[i].c_str();
     return invoke_callback(argc, myargv);
@@ -384,7 +380,7 @@ ArgParse::Impl::parse(int xargc, const char** xargv)
                 argname.erase(colon, std::string::npos);
             ArgOption* option = find_option(argname.c_str());
             if (option == NULL) {
-                error("Invalid option \"%s\"", m_argv[i]);
+                errorf("Invalid option \"%s\"", m_argv[i]);
                 return -1;
             }
 
@@ -395,12 +391,12 @@ ArgParse::Impl::parse(int xargc, const char** xargv)
                 if (option->has_callback())
                     option->invoke_callback(1, m_argv + i);
             } else {
-                ASSERT(option->is_regular());
+                assert(option->is_regular());
                 for (int j = 0; j < option->parameter_count(); j++) {
                     if (j + i + 1 >= m_argc) {
-                        error("Missing parameter %d from option "
-                              "\"%s\"",
-                              j + 1, option->name().c_str());
+                        errorf("Missing parameter %d from option "
+                               "\"%s\"",
+                               j + 1, option->name());
                         return -1;
                     }
                     option->set_parameter(j, m_argv[i + j + 1]);
@@ -419,9 +415,9 @@ ArgParse::Impl::parse(int xargc, const char** xargv)
             else if (m_global)
                 m_global->invoke_callback(1, m_argv + i);
             else {
-                error("Argument \"%s\" does not have an associated "
-                      "option",
-                      m_argv[i]);
+                errorf("Argument \"%s\" does not have an associated "
+                       "option",
+                       m_argv[i]);
                 return -1;
             }
         }
@@ -449,7 +445,7 @@ ArgParse::options(const char* intro, ...)
     m_impl->m_intro += intro;
     for (const char* cur = va_arg(ap, char*); cur; cur = va_arg(ap, char*)) {
         if (m_impl->find_option(cur) && strcmp(cur, "<SEPARATOR>")) {
-            m_impl->error("Option \"%s\" is multiply defined", cur);
+            m_impl->errorf("Option \"%s\" is multiply defined", cur);
             return -1;
         }
 
@@ -545,7 +541,7 @@ ArgParse::usage() const
     size_t maxlen = 0;
 
     for (auto&& opt : m_impl->m_option) {
-        size_t fmtlen = opt->fmt().length();
+        size_t fmtlen = opt->prettyformat().length();
         // Option lists > 40 chars will be split into multiple lines
         if (fmtlen < longline)
             maxlen = std::max(maxlen, fmtlen);
@@ -556,13 +552,13 @@ ArgParse::usage() const
 
     for (auto&& opt : m_impl->m_option) {
         if (opt->description().length()) {
-            size_t fmtlen = opt->fmt().length();
+            size_t fmtlen = opt->prettyformat().length();
             if (opt->is_separator()) {
                 std::cout << Strutil::wordwrap(opt->description(), columns - 2,
                                                0)
                           << '\n';
             } else {
-                std::cout << "    " << opt->fmt();
+                std::cout << "    " << opt->prettyformat();
                 if (fmtlen < longline)
                     std::cout << std::string(maxlen + 2 - fmtlen, ' ');
                 else

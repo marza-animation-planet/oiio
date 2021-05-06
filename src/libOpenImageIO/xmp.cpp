@@ -1,32 +1,6 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <iostream>
@@ -400,8 +374,8 @@ add_attrib(ImageSpec& spec, const char* xmlname, const char* xmlvalue)
 // If not found, return false.  If found, return true, store the
 // beginning and ending indices in startpos and endpos.
 static bool
-extract_middle(const std::string& str, size_t pos, const char* startmarker,
-               const char* endmarker, size_t& startpos, size_t& endpos)
+extract_middle(string_view str, size_t pos, string_view startmarker,
+               string_view endmarker, size_t& startpos, size_t& endpos)
 {
     startpos = str.find(startmarker, pos);
     if (startpos == std::string::npos)
@@ -409,7 +383,7 @@ extract_middle(const std::string& str, size_t pos, const char* startmarker,
     endpos = str.find(endmarker, startpos);
     if (endpos == std::string::npos)
         return false;  // end marker not found
-    endpos += strlen(endmarker);
+    endpos += endmarker.size();
     return true;
 }
 
@@ -475,8 +449,34 @@ decode_xmp_node(pugi::xml_node node, ImageSpec& spec, int level = 1,
 
 
 
+// DEPRECATED(2.1)
 bool
 decode_xmp(const std::string& xml, ImageSpec& spec)
+{
+    return decode_xmp(string_view(xml), spec);
+}
+
+
+
+// DEPRECATED(2.1)
+bool
+decode_xmp(const char* xml, ImageSpec& spec)
+{
+    return decode_xmp(string_view(xml), spec);
+}
+
+
+
+bool
+decode_xmp(cspan<uint8_t> xml, ImageSpec& spec)
+{
+    return decode_xmp(string_view((const char*)xml.data(), xml.size()), spec);
+}
+
+
+
+bool
+decode_xmp(string_view xml, ImageSpec& spec)
 {
 #if DEBUG_XMP_READ
     std::cerr << "XMP dump:\n---\n" << xml << "\n---\n";
@@ -487,13 +487,13 @@ decode_xmp(const std::string& xml, ImageSpec& spec)
          extract_middle(xml, endpos, "<rdf:Description", "</rdf:Description>",
                         startpos, endpos);) {
         // Turn that middle section into an XML document
-        std::string rdf(xml, startpos, endpos - startpos);  // scooch in
+        string_view rdf = xml.substr(startpos, endpos - startpos);  // scooch in
 #if DEBUG_XMP_READ
         std::cerr << "RDF is:\n---\n" << rdf << "\n---\n";
 #endif
         pugi::xml_document doc;
         pugi::xml_parse_result parse_result
-            = doc.load_buffer(&rdf[0], rdf.size(),
+            = doc.load_buffer(rdf.data(), rdf.size(),
                               pugi::parse_default | pugi::parse_fragment);
         if (!parse_result) {
 #if DEBUG_XMP_READ

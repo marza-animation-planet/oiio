@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <algorithm>
 #include <cassert>
@@ -151,7 +125,7 @@ JpgInput::jpegerror(my_error_ptr myerr, bool fatal)
     // Send the error message to the ImageInput
     char errbuf[JMSG_LENGTH_MAX];
     (*m_cinfo.err->format_message)((j_common_ptr)&m_cinfo, errbuf);
-    error("JPEG error: %s (\"%s\")", errbuf, filename().c_str());
+    errorf("JPEG error: %s (\"%s\")", errbuf, filename());
 
     // Shut it down and clean it up
     if (fatal) {
@@ -195,7 +169,9 @@ JpgInput::open(const std::string& name, ImageSpec& newspec,
     auto p = config.find_attribute("_jpeg:raw", TypeInt);
     m_raw  = p && *(int*)p->data();
     p      = config.find_attribute("oiio:ioproxy", TypeDesc::PTR);
-    m_io   = p ? p->get<Filesystem::IOProxy*>() : nullptr;
+    if (p)
+        m_io = p->get<Filesystem::IOProxy*>();
+    m_config.reset(new ImageSpec(config));  // save config spec
     return open(name, newspec);
 }
 
@@ -273,7 +249,7 @@ JpgInput::open(const std::string& name, ImageSpec& newspec)
 
     // read the file parameters
     if (jpeg_read_header(&m_cinfo, FALSE) != JPEG_HEADER_OK || m_fatalerr) {
-        error("Bad JPEG header for \"%s\"", filename().c_str());
+        errorf("Bad JPEG header for \"%s\"", filename());
         return false;
     }
 
@@ -466,12 +442,16 @@ JpgInput::read_native_scanline(int subimage, int miplevel, int y, int z,
     if (m_next_scanline > y) {
         // User is trying to read an earlier scanline than the one we're
         // up to.  Easy fix: close the file and re-open.
+        // Don't forget to save and restore any configuration settings.
+        ImageSpec configsave;
+        if (m_config)
+            configsave = *m_config;
         ImageSpec dummyspec;
         int subimage = current_subimage();
-        if (!close() || !open(m_filename, dummyspec)
+        if (!close() || !open(m_filename, dummyspec, configsave)
             || !seek_subimage(subimage, 0))
             return false;  // Somehow, the re-open failed
-        assert(m_next_scanline == 0 && current_subimage() == subimage);
+        OIIO_DASSERT(m_next_scanline == 0 && current_subimage() == subimage);
     }
 
     // Set up our custom error handler
@@ -486,14 +466,14 @@ JpgInput::read_native_scanline(int subimage, int miplevel, int y, int z,
         // we'll have to convert.
         m_cmyk_buf.resize(m_spec.width * 4);
         readdata = &m_cmyk_buf[0];
-        ASSERT(m_spec.nchannels == 3);
+        OIIO_DASSERT(m_spec.nchannels == 3);
     }
 
     for (; m_next_scanline <= y; ++m_next_scanline) {
         // Keep reading until we've read the scanline we really need
         if (jpeg_read_scanlines(&m_cinfo, (JSAMPLE**)&readdata, 1) != 1
             || m_fatalerr) {
-            error("JPEG failed scanline read (\"%s\")", filename().c_str());
+            errorf("JPEG failed scanline read (\"%s\")", filename());
             return false;
         }
     }

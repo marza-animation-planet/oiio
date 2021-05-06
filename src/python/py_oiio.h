@@ -1,32 +1,6 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #ifndef PYOPENIMAGEIO_PY_OIIO_H
 #define PYOPENIMAGEIO_PY_OIIO_H
@@ -37,11 +11,13 @@
 #    pragma GCC diagnostic ignored "-Wregister"
 #endif
 
+// clang-format off
 // Must include Python.h first to avoid certain warnings
 #ifdef _POSIX_C_SOURCE
 #  error "You must include Python.h (and therefore py_oiio.h) BEFORE anything that defines _POSIX_C_SOURCE"
 #endif 
 #include <Python.h>
+// clang-format on
 
 #include <memory>
 
@@ -99,7 +75,14 @@ void declare_global (py::module& m);
 // object C_array_to_Python_array (const char *data, TypeDesc type, size_t size);
 const char * python_array_code (TypeDesc format);
 TypeDesc typedesc_from_python_array_code (char code);
-std::string object_classname (const py::object& obj);
+
+
+inline std::string
+object_classname(const py::object& obj)
+{
+    return obj.attr("__class__").attr("__name__").cast<py::str>();
+}
+
 
 
 template<typename T> struct PyTypeForCType { };
@@ -116,6 +99,29 @@ template<> struct PyTypeForCType<std::string> { typedef PY_STR type; };
 // clang-format on
 
 
+// Struct that holds OIIO style buffer info, constructed from
+// py::buffer_info
+struct oiio_bufinfo {
+    TypeDesc format  = TypeUnknown;
+    void* data       = nullptr;
+    stride_t xstride = AutoStride, ystride = AutoStride, zstride = AutoStride;
+    size_t size = 0;
+    std::string error;
+
+    // Just raw buffer, no idea what to expect, treat like a flat array.
+    // Only works for "contiguous" buffers.
+    oiio_bufinfo(const py::buffer_info& pybuf);
+
+    // Expect a certain layout, figure out how to make sense of the buffer.
+    oiio_bufinfo(const py::buffer_info& pybuf, int nchans, int width,
+                 int height, int depth, int pixeldims);
+
+    // Retrieve presumed contiguous data value index i.
+    template<typename T> T dataval(size_t i) { return ((const T*)data)[i]; }
+};
+
+
+
 // Suck up a tuple of presumed T values into a vector<T>. Works for T any of
 // int, float, string, and works if the Python container is any of tuple,
 // list.
@@ -123,20 +129,21 @@ template<typename T, typename PYT>
 inline bool
 py_indexable_pod_to_stdvector(std::vector<T>& vals, const PYT& obj)
 {
-    ASSERT(py::isinstance<py::tuple>(obj) || py::isinstance<py::list>(obj));
+    OIIO_ASSERT(py::isinstance<py::tuple>(obj)
+                || py::isinstance<py::list>(obj));
     bool ok             = true;
     const size_t length = py::len(obj);
     vals.reserve(length);
     for (size_t i = 0; i < length; ++i) {
         auto elem = obj[i];
         if (std::is_same<T, float>::value && py::isinstance<py::float_>(elem)) {
-            vals.emplace_back(elem.template cast<float>());
+            vals.emplace_back(T(elem.template cast<float>()));
         } else if ((std::is_same<T, float>::value || std::is_same<T, int>::value)
                    && py::isinstance<py::int_>(elem)) {
-            vals.emplace_back(elem.template cast<int>());
+            vals.emplace_back(T(elem.template cast<int>()));
         } else if (std::is_same<T, unsigned int>::value
                    && py::isinstance<py::int_>(elem)) {
-            vals.emplace_back(elem.template cast<unsigned int>());
+            vals.emplace_back(T(elem.template cast<unsigned int>()));
         } else {
             // FIXME? Other cases?
             vals.emplace_back(T(42));
@@ -152,7 +159,8 @@ template<typename PYT>
 inline bool
 py_indexable_pod_to_stdvector(std::vector<std::string>& vals, const PYT& obj)
 {
-    ASSERT(py::isinstance<py::tuple>(obj) || py::isinstance<py::list>(obj));
+    OIIO_ASSERT(py::isinstance<py::tuple>(obj)
+                || py::isinstance<py::list>(obj));
     bool ok             = true;
     const size_t length = py::len(obj);
     vals.reserve(length);
@@ -175,7 +183,8 @@ template<typename PYT>
 inline bool
 py_indexable_pod_to_stdvector(std::vector<TypeDesc>& vals, const PYT& obj)
 {
-    ASSERT(py::isinstance<py::tuple>(obj) || py::isinstance<py::list>(obj));
+    OIIO_ASSERT(py::isinstance<py::tuple>(obj)
+                || py::isinstance<py::list>(obj));
     bool ok             = true;
     const size_t length = py::len(obj);
     vals.reserve(length);
@@ -253,6 +262,53 @@ py_scalar_pod_to_stdvector(std::vector<TypeDesc>& vals, const py::object& obj)
 
 
 
+template<typename T>
+inline bool
+py_buffer_to_stdvector(std::vector<T>& vals, const py::buffer& obj)
+{
+    OIIO_DASSERT(py::isinstance<py::buffer>(obj));
+    oiio_bufinfo binfo(obj.request());
+    bool ok = true;
+    vals.reserve(binfo.size);
+    for (size_t i = 0; i < binfo.size; ++i) {
+        if (std::is_same<T, float>::value
+            && binfo.format.basetype == TypeDesc::FLOAT) {
+            vals.emplace_back(binfo.dataval<float>(i));
+        } else if ((std::is_same<T, float>::value || std::is_same<T, int>::value)
+                   && binfo.format.basetype == TypeDesc::INT) {
+            vals.emplace_back(T(binfo.dataval<int>(i)));
+        } else if (std::is_same<T, unsigned int>::value
+                   && binfo.format.basetype == TypeDesc::UINT) {
+            vals.emplace_back(T(binfo.dataval<unsigned int>(i)));
+        } else {
+            // FIXME? Other cases?
+            vals.emplace_back(T(42));
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+
+// Specialization for reading strings
+template<>
+inline bool
+py_buffer_to_stdvector(std::vector<std::string>& vals, const py::buffer& obj)
+{
+    return false;  // not supported
+}
+
+
+// Specialization for reading TypeDesc
+template<>
+inline bool
+py_buffer_to_stdvector(std::vector<TypeDesc>& vals, const py::buffer& obj)
+{
+    return false;  // not supported
+}
+
+
+
 // Suck up a tuple (or list, or single instance) of presumed T values into a
 // vector<T>. Works for T any of int, float, string, and works if the Python
 // container is any of tuple, list.
@@ -266,6 +322,12 @@ py_to_stdvector(std::vector<T>& vals, const py::object& obj)
     if (py::isinstance<py::list>(obj)) {  // if it's a Python list
         return py_indexable_pod_to_stdvector(vals, obj.cast<py::list>());
     }
+    // Apparently a str can masquerade as a buffer object, so make sure to
+    // exclude that from teh buffer case.
+    if (py::isinstance<py::buffer>(obj) && !py::isinstance<py::str>(obj)) {
+        return py_buffer_to_stdvector(vals, obj.cast<py::buffer>());
+    }
+
     // handle scalar case or bust
     return py_scalar_pod_to_stdvector(vals, obj);
 }
@@ -303,7 +365,7 @@ C_to_tuple<TypeDesc>(cspan<TypeDesc> vals)
     size_t size = vals.size();
     py::tuple result(size);
     for (size_t i = 0; i < size; ++i)
-        result[i] = py::cast<TypeDesc>(vals[i]);
+        result[i] = py::cast(vals[i]);
     return result;
 }
 
@@ -314,9 +376,9 @@ C_to_tuple<TypeDesc>(cspan<TypeDesc> vals)
 // Python tuple.
 template<typename T>
 inline py::object
-C_to_val_or_tuple(const T* vals, TypeDesc type)
+C_to_val_or_tuple(const T* vals, TypeDesc type, int nvalues = 1)
 {
-    size_t n = type.numelements() * type.aggregate;
+    size_t n = type.numelements() * type.aggregate * nvalues;
     if (n == 1 && !type.arraylen)
         return typename PyTypeForCType<T>::type(vals[0]);
     else
@@ -326,41 +388,46 @@ C_to_val_or_tuple(const T* vals, TypeDesc type)
 
 
 template<typename T, typename POBJ>
-void
+bool
 attribute_typed(T& myobj, string_view name, TypeDesc type, const POBJ& dataobj)
 {
     if (type.basetype == TypeDesc::INT) {
         std::vector<int> vals;
-        py_to_stdvector(vals, dataobj);
-        if (vals.size() == type.numelements() * type.aggregate)
+        bool ok = py_to_stdvector(vals, dataobj);
+        ok &= (vals.size() == type.numelements() * type.aggregate);
+        if (ok)
             myobj.attribute(name, type, &vals[0]);
-        return;
+        return ok;
     }
     if (type.basetype == TypeDesc::UINT) {
         std::vector<unsigned int> vals;
-        py_to_stdvector(vals, dataobj);
-        if (vals.size() == type.numelements() * type.aggregate)
+        bool ok = py_to_stdvector(vals, dataobj);
+        ok &= (vals.size() == type.numelements() * type.aggregate);
+        if (ok)
             myobj.attribute(name, type, &vals[0]);
-        return;
+        return ok;
     }
     if (type.basetype == TypeDesc::FLOAT) {
         std::vector<float> vals;
-        py_to_stdvector(vals, dataobj);
-        if (vals.size() == type.numelements() * type.aggregate)
+        bool ok = py_to_stdvector(vals, dataobj);
+        ok &= (vals.size() == type.numelements() * type.aggregate);
+        if (ok)
             myobj.attribute(name, type, &vals[0]);
-        return;
+        return ok;
     }
     if (type.basetype == TypeDesc::STRING) {
         std::vector<std::string> vals;
-        py_to_stdvector(vals, dataobj);
-        if (vals.size() == type.numelements() * type.aggregate) {
+        bool ok = py_to_stdvector(vals, dataobj);
+        ok &= (vals.size() == type.numelements() * type.aggregate);
+        if (ok) {
             std::vector<ustring> u;
             for (auto& val : vals)
                 u.emplace_back(val);
             myobj.attribute(name, type, &u[0]);
         }
-        return;
+        return ok;
     }
+    return false;
 }
 
 
@@ -394,21 +461,6 @@ getattribute_typed(const T& obj, const std::string& name,
         return C_to_val_or_tuple((const char**)data, type);
     return py::none();
 }
-
-
-
-// Struct that holds OIIO style buffer info, constructed from
-// py::buffer_info
-struct oiio_bufinfo {
-    TypeDesc format  = TypeUnknown;
-    void* data       = nullptr;
-    stride_t xstride = AutoStride, ystride = AutoStride, zstride = AutoStride;
-    size_t size = 0;
-    std::string error;
-
-    oiio_bufinfo(const py::buffer_info& pybuf, int nchans, int width,
-                 int height, int depth, int pixeldims);
-};
 
 
 
@@ -483,6 +535,57 @@ make_numpy_array(TypeDesc format, void* data, int dims, size_t chans,
         return make_numpy_array((int*)data, dims, chans, width, height, depth);
     delete[](char*) data;
     return py::none();
+}
+
+
+
+inline py::object
+ParamValue_getitem(const ParamValue& self, bool allitems = false)
+{
+    TypeDesc t = self.type();
+    int nvals  = allitems ? self.nvalues() : 1;
+
+#define ParamValue_convert_dispatch(TYPE)                                      \
+case TypeDesc::TYPE:                                                           \
+    return C_to_val_or_tuple((CType<TypeDesc::TYPE>::type*)self.data(), t,     \
+                             nvals)
+
+    switch (t.basetype) {
+        // ParamValue_convert_dispatch(UCHAR);
+        // ParamValue_convert_dispatch(CHAR);
+        ParamValue_convert_dispatch(USHORT);
+        ParamValue_convert_dispatch(SHORT);
+        ParamValue_convert_dispatch(UINT);
+        ParamValue_convert_dispatch(INT);
+        // ParamValue_convert_dispatch(ULONGLONG);
+        // ParamValue_convert_dispatch(LONGLONG);
+#ifdef _HALF_H_
+        ParamValue_convert_dispatch(HALF);
+#endif
+        ParamValue_convert_dispatch(FLOAT);
+        ParamValue_convert_dispatch(DOUBLE);
+    case TypeDesc::STRING:
+        return C_to_val_or_tuple((const char**)self.data(), t, nvals);
+    default: return py::none();
+    }
+
+#undef ParamValue_convert_dispatch
+}
+
+
+
+template<typename C>
+inline void
+delegate_setitem(C& self, const std::string& key, py::object obj)
+{
+    if (py::isinstance<py::float_>(obj))
+        self[key] = float(obj.template cast<py::float_>());
+    else if (py::isinstance<py::int_>(obj))
+        self[key] = int(obj.template cast<py::int_>());
+    else if (py::isinstance<py::str>(obj))
+        self[key] = std::string(obj.template cast<py::str>());
+    else
+        throw std::invalid_argument("Bad type for __setitem__");
 }
 
 

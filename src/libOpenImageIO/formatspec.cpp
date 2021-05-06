@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cstdio>
 #include <cstdlib>
@@ -72,7 +46,7 @@ using namespace pvt;
 // type.
 template<class T>
 inline void
-get_default_quantize_(long long& quant_min, long long& quant_max)
+get_default_quantize_(long long& quant_min, long long& quant_max) noexcept
 {
     if (std::numeric_limits<T>::is_integer) {
         quant_min = (long long)std::numeric_limits<T>::min();
@@ -89,7 +63,7 @@ get_default_quantize_(long long& quant_min, long long& quant_max)
 // Rely on the template version to make life easy.
 void
 pvt::get_default_quantize(TypeDesc format, long long& quant_min,
-                          long long& quant_max)
+                          long long& quant_max) noexcept
 {
     switch (format.basetype) {
     case TypeDesc::UNKNOWN:
@@ -124,13 +98,13 @@ pvt::get_default_quantize(TypeDesc format, long long& quant_min,
     case TypeDesc::DOUBLE:
         get_default_quantize_<double>(quant_min, quant_max);
         break;
-    default: ASSERT_MSG(0, "Unknown data format %d", format.basetype);
+    default: OIIO_ASSERT_MSG(0, "Unknown data format %d", format.basetype);
     }
 }
 
 
 
-ImageSpec::ImageSpec(TypeDesc format)
+ImageSpec::ImageSpec(TypeDesc format) noexcept
     : x(0)
     , y(0)
     , z(0)
@@ -156,7 +130,7 @@ ImageSpec::ImageSpec(TypeDesc format)
 
 
 
-ImageSpec::ImageSpec(int xres, int yres, int nchans, TypeDesc format)
+ImageSpec::ImageSpec(int xres, int yres, int nchans, TypeDesc format) noexcept
     : x(0)
     , y(0)
     , z(0)
@@ -183,7 +157,7 @@ ImageSpec::ImageSpec(int xres, int yres, int nchans, TypeDesc format)
 
 
 
-ImageSpec::ImageSpec(const ROI& roi, TypeDesc format)
+ImageSpec::ImageSpec(const ROI& roi, TypeDesc format) noexcept
     : x(roi.xbegin)
     , y(roi.ybegin)
     , z(roi.zbegin)
@@ -211,7 +185,7 @@ ImageSpec::ImageSpec(const ROI& roi, TypeDesc format)
 
 
 void
-ImageSpec::set_format(TypeDesc fmt)
+ImageSpec::set_format(TypeDesc fmt) noexcept
 {
     format = fmt;
     channelformats.clear();
@@ -220,7 +194,7 @@ ImageSpec::set_format(TypeDesc fmt)
 
 
 void
-ImageSpec::default_channel_names()
+ImageSpec::default_channel_names() noexcept
 {
     channelnames.clear();
     channelnames.reserve(nchannels);
@@ -248,7 +222,7 @@ ImageSpec::default_channel_names()
 
 
 size_t
-ImageSpec::channel_bytes(int chan, bool native) const
+ImageSpec::channel_bytes(int chan, bool native) const noexcept
 {
     if (chan >= nchannels)
         return 0;
@@ -261,7 +235,7 @@ ImageSpec::channel_bytes(int chan, bool native) const
 
 
 size_t
-ImageSpec::pixel_bytes(bool native) const
+ImageSpec::pixel_bytes(bool native) const noexcept
 {
     if (nchannels < 0)
         return 0;
@@ -278,7 +252,7 @@ ImageSpec::pixel_bytes(bool native) const
 
 
 size_t
-ImageSpec::pixel_bytes(int chbegin, int chend, bool native) const
+ImageSpec::pixel_bytes(int chbegin, int chend, bool native) const noexcept
 {
     if (chbegin < 0)
         return 0;
@@ -296,7 +270,7 @@ ImageSpec::pixel_bytes(int chbegin, int chend, bool native) const
 
 
 imagesize_t
-ImageSpec::scanline_bytes(bool native) const
+ImageSpec::scanline_bytes(bool native) const noexcept
 {
     if (width < 0)
         return 0;
@@ -306,7 +280,7 @@ ImageSpec::scanline_bytes(bool native) const
 
 
 imagesize_t
-ImageSpec::tile_pixels() const
+ImageSpec::tile_pixels() const noexcept
 {
     if (tile_width <= 0 || tile_height <= 0 || tile_depth <= 0)
         return 0;
@@ -320,7 +294,7 @@ ImageSpec::tile_pixels() const
 
 
 imagesize_t
-ImageSpec::tile_bytes(bool native) const
+ImageSpec::tile_bytes(bool native) const noexcept
 {
     return clamped_mult64(tile_pixels(), (imagesize_t)pixel_bytes(native));
 }
@@ -328,7 +302,7 @@ ImageSpec::tile_bytes(bool native) const
 
 
 imagesize_t
-ImageSpec::image_pixels() const
+ImageSpec::image_pixels() const noexcept
 {
     if (width < 0 || height < 0 || depth < 0)
         return 0;
@@ -341,7 +315,7 @@ ImageSpec::image_pixels() const
 
 
 imagesize_t
-ImageSpec::image_bytes(bool native) const
+ImageSpec::image_bytes(bool native) const noexcept
 {
     return clamped_mult64(image_pixels(), (imagesize_t)pixel_bytes(native));
 }
@@ -400,7 +374,8 @@ ImageSpec::erase_attribute(string_view name, TypeDesc searchtype,
 #endif
         regex re     = regex(name.str(), flag);
         auto matcher = [&](const ParamValue& p) {
-            return regex_match(p.name().string(), re);
+            return regex_match(p.name().string(), re)
+                   && (searchtype == TypeUnknown || searchtype == p.type());
         };
         auto del = std::remove_if(extra_attribs.begin(), extra_attribs.end(),
                                   matcher);
@@ -525,6 +500,31 @@ ImageSpec::find_attribute(string_view name, ParamValue& tmpparam,
 
 
 
+TypeDesc
+ImageSpec::getattributetype(string_view name, bool casesensitive) const
+{
+    ParamValue pv;
+    auto p = find_attribute(name, pv, TypeUnknown, casesensitive);
+    return p ? p->type() : TypeUnknown;
+}
+
+
+
+bool
+ImageSpec::getattribute(string_view name, TypeDesc type, void* value,
+                        bool casesensitive) const
+{
+    ParamValue pv;
+    auto p = find_attribute(name, pv, TypeUnknown, casesensitive);
+    if (p) {
+        return convert_type(p->type(), p->data(), type, value);
+    } else {
+        return false;
+    }
+}
+
+
+
 int
 ImageSpec::get_int_attribute(string_view name, int defaultval) const
 {
@@ -561,7 +561,7 @@ ImageSpec::get_string_attribute(string_view name, string_view defaultval) const
 int
 ImageSpec::channelindex(string_view name) const
 {
-    ASSERT(nchannels == int(channelnames.size()));
+    OIIO_DASSERT(nchannels == int(channelnames.size()));
     for (int i = 0; i < nchannels; ++i)
         if (channelnames[i] == name)
             return i;
@@ -630,7 +630,7 @@ explain_ExifFlash(const ParamValue& p, const void* extradata)
                            (val & 6) == 4 ? ", no strobe return" : "",
                            (val & 6) == 6 ? ", strobe return" : "",
                            (val & 24) == 8 ? ", compulsary flash" : "",
-                           (val & 24) == 16 ? ", flash supression" : "",
+                           (val & 24) == 16 ? ", flash suppression" : "",
                            (val & 24) == 24 ? ", auto flash" : "",
                            (val & 32) ? ", no flash available" : "",
                            (val & 64) ? ", red-eye reduction" : "");
@@ -1037,7 +1037,7 @@ ImageSpec::serialize(SerialFormat fmt, SerialVerbose verbose) const
                    depth > 1 ? "volume " : "");
     if (channelformats.size()) {
         for (size_t c = 0; c < channelformats.size(); ++c)
-            out << sprintf("%s%s", c ? "/" : "", channelformats[c]);
+            out << sprintf("%s%s", c ? "/" : "", channelformats[c].c_str());
     } else {
         int bits = get_int_attribute("oiio:BitsPerSample", 0);
         out << extended_format_name(this->format, bits);
@@ -1052,7 +1052,7 @@ ImageSpec::serialize(SerialFormat fmt, SerialVerbose verbose) const
             else
                 out << "unknown";
             if (i < (int)channelformats.size())
-                out << sprintf(" (%s)", channelformats[i]);
+                out << " (" << channelformats[i] << ")";
             if (i < nchannels - 1)
                 out << ", ";
         }

@@ -1,32 +1,6 @@
-/*
-  Copyright 2012 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <memory>
@@ -45,13 +19,29 @@
 
 #include "imageio_pvt.h"
 
+#define MAKE_OCIO_VERSION_HEX(maj, min, patch)                                 \
+    (((maj) << 24) | ((min) << 16) | (patch))
+
 #ifdef USE_OCIO
 #    include <OpenColorIO/OpenColorIO.h>
+#    if OCIO_VERSION_HEX >= MAKE_OCIO_VERSION_HEX(2, 0, 0)
+#        define OCIO_v2 1
+#        include <OpenColorIO/apphelpers/ColorSpaceHelpers.h>
+#        include <OpenColorIO/apphelpers/DisplayViewHelpers.h>
+#        include <OpenColorIO/apphelpers/ViewingPipeline.h>
+#    endif
 namespace OCIO = OCIO_NAMESPACE;
 #endif
 
-
 OIIO_NAMESPACE_BEGIN
+
+
+static std::shared_ptr<ColorConfig> default_colorconfig;  // default color config
+static spin_mutex colorconfig_mutex;
+#ifdef USE_OCIO
+static OCIO::ConstConfigRcPtr ocio_current_config;
+#endif
+
 
 
 // Class used as the key to index color processors in the cache.
@@ -311,9 +301,11 @@ ColorConfig::reset(string_view filename)
     m_impl.reset(new ColorConfig::Impl);
 #ifdef USE_OCIO
     OCIO::SetLoggingLevel(OCIO::LOGGING_LEVEL_NONE);
+    if (!ocio_current_config)
+        ocio_current_config = OCIO::GetCurrentConfig();
     try {
         if (filename.empty()) {
-            getImpl()->config_  = OCIO::GetCurrentConfig();
+            getImpl()->config_  = ocio_current_config;
             string_view ocioenv = Sysutil::getenv("OCIO");
             if (ocioenv.size())
                 getImpl()->configname(ocioenv);
@@ -397,6 +389,36 @@ ColorConfig::getColorSpaceNames() const
     result.reserve(getImpl()->colorspaces.size());
     for (auto& c : getImpl()->colorspaces)
         result.push_back(c.first);
+    return result;
+}
+
+int
+ColorConfig::getNumRoles() const
+{
+#ifdef USE_OCIO
+    if (getImpl()->config_)
+        return getImpl()->config_->getNumRoles();
+#endif
+    return 0;
+}
+
+const char*
+ColorConfig::getRoleByIndex(int index) const
+{
+#ifdef USE_OCIO
+    if (getImpl()->config_)
+        return getImpl()->config_->getRoleName(index);
+#endif
+    return NULL;
+}
+
+
+std::vector<std::string>
+ColorConfig::getRoles() const
+{
+    std::vector<std::string> result;
+    for (int i = 0, e = getNumRoles(); i != e; ++i)
+        result.emplace_back(getRoleByIndex(i));
     return result;
 }
 
@@ -607,12 +629,39 @@ ColorConfig::configname() const
 
 
 #ifdef USE_OCIO
+
+#    if OCIO_VERSION_HEX >= 0x02000000
+inline OCIO::BitDepth
+ocio_bitdepth(TypeDesc type)
+{
+    if (type == TypeDesc::UINT8)
+        return OCIO::BIT_DEPTH_UINT8;
+    if (type == TypeDesc::UINT16)
+        return OCIO::BIT_DEPTH_UINT16;
+    if (type == TypeDesc::UINT32)
+        return OCIO::BIT_DEPTH_UINT32;
+    // N.B.: OCIOv2 also supports 10, 12, and 14 bit int, but we won't
+    // ever have data in that format at this stage.
+    if (type == TypeDesc::HALF)
+        return OCIO::BIT_DEPTH_F16;
+    if (type == TypeDesc::FLOAT)
+        return OCIO::BIT_DEPTH_F32;
+    return OCIO::BIT_DEPTH_UNKNOWN;
+}
+#    endif
+
+
 // Custom ColorProcessor that wraps an OpenColorIO Processor.
 class ColorProcessor_OCIO : public ColorProcessor {
 public:
     ColorProcessor_OCIO(OCIO::ConstProcessorRcPtr p)
-        : m_p(p) {};
-    virtual ~ColorProcessor_OCIO(void) {};
+        : m_p(p)
+#    if OCIO_VERSION_HEX >= 0x02000000
+        , m_cpuproc(p->getDefaultCPUProcessor())
+#    endif
+    {
+    }
+    virtual ~ColorProcessor_OCIO(void) {}
 
     virtual bool isNoOp() const { return m_p->isNoOp(); }
     virtual bool hasChannelCrosstalk() const
@@ -623,13 +672,23 @@ public:
                        stride_t chanstride, stride_t xstride,
                        stride_t ystride) const
     {
+#    if OCIO_VERSION_HEX >= 0x02000000
+        OCIO::PackedImageDesc pid(data, width, height, channels,
+                                  OCIO::BIT_DEPTH_F32,  // For now, only float
+                                  chanstride, xstride, ystride);
+        m_cpuproc->apply(pid);
+#    else
         OCIO::PackedImageDesc pid(data, width, height, channels, chanstride,
                                   xstride, ystride);
         m_p->apply(pid);
+#    endif
     }
 
 private:
     OCIO::ConstProcessorRcPtr m_p;
+#    if OCIO_VERSION_HEX >= 0x02000000
+    OCIO::ConstCPUProcessorRcPtr m_cpuproc;
+#    endif
 };
 #endif
 
@@ -1125,21 +1184,29 @@ ColorConfig::createDisplayTransform(ustring display, ustring view,
     // Ask OCIO to make a Processor that can handle the requested
     // transformation.
     if (getImpl()->config_) {
-        OCIO::ConstConfigRcPtr config         = getImpl()->config_;
-        OCIO::DisplayTransformRcPtr transform = OCIO::DisplayTransform::Create();
+        OCIO::ConstConfigRcPtr config = getImpl()->config_;
+#    ifdef OCIO_v2
+        auto transform = OCIO::DisplayViewTransform::Create();
+        transform->setSrc(inputColorSpace.c_str());
+        if (looks.size()) {
+            getImpl()->error(
+                "createDisplayTransform: looks overrides are not allowed in OpenColorIO v2");
+        }
+#    else
+        auto transform = OCIO::DisplayTransform::Create();
         transform->setInputColorSpaceName(inputColorSpace.c_str());
-        transform->setDisplay(display.c_str());
-        transform->setView(view.c_str());
         if (looks.size()) {
             transform->setLooksOverride(looks.c_str());
             transform->setLooksOverrideEnabled(true);
         } else {
             transform->setLooksOverrideEnabled(false);
         }
-        OCIO::ConstContextRcPtr context = config->getCurrentContext();
-        std::vector<string_view> keys, values;
-        Strutil::split(context_key, keys, ",");
-        Strutil::split(context_value, values, ",");
+#    endif
+        transform->setDisplay(display.c_str());
+        transform->setView(view.c_str());
+        auto context = config->getCurrentContext();
+        auto keys    = Strutil::splits(context_key, ",");
+        auto values  = Strutil::splits(context_value, ",");
         if (keys.size() && values.size() && keys.size() == values.size()) {
             OCIO::ContextRcPtr ctx = context->createEditableCopy();
             for (size_t i = 0; i < keys.size(); ++i)
@@ -1194,8 +1261,13 @@ ColorConfig::createFileTransform(ustring name, bool inverse) const
 #ifdef USE_OCIO
     // Ask OCIO to make a Processor that can handle the requested
     // transformation.
-    if (getImpl()->config_) {
-        OCIO::ConstConfigRcPtr config      = getImpl()->config_;
+    OCIO::ConstConfigRcPtr config = getImpl()->config_;
+    // If no config was found, config_ will be null. But that shouldn't
+    // stop us for a filetransform, which doesn't need color spaces anyway.
+    // Just use the default current config, it'll be freed when we exit.
+    if (!config)
+        config = ocio_current_config;
+    if (config) {
         OCIO::FileTransformRcPtr transform = OCIO::FileTransform::Create();
         transform->setSrc(name.c_str());
         transform->setInterpolation(OCIO::INTERP_BEST);
@@ -1248,11 +1320,6 @@ ColorConfig::parseColorSpaceFromString(string_view str) const
 // Image Processing Implementations
 
 
-static std::shared_ptr<ColorConfig> default_colorconfig;  // default color config
-static spin_mutex colorconfig_mutex;
-
-
-
 bool
 ImageBufAlgo::colorconvert(ImageBuf& dst, const ImageBuf& src, string_view from,
                            string_view to, bool unpremult,
@@ -1264,7 +1331,7 @@ ImageBufAlgo::colorconvert(ImageBuf& dst, const ImageBuf& src, string_view from,
         from = src.spec().get_string_attribute("oiio:Colorspace", "Linear");
     }
     if (from.empty() || to.empty()) {
-        dst.error("Unknown color space name");
+        dst.errorf("Unknown color space name");
         return false;
     }
     ColorProcessorHandle processor;
@@ -1278,10 +1345,10 @@ ImageBufAlgo::colorconvert(ImageBuf& dst, const ImageBuf& src, string_view from,
                                                       context_value);
         if (!processor) {
             if (colorconfig->error())
-                dst.error("%s", colorconfig->geterror());
+                dst.errorf("%s", colorconfig->geterror());
             else
-                dst.error("Could not construct the color transform %s -> %s",
-                          from, to);
+                dst.errorf("Could not construct the color transform %s -> %s",
+                           from, to);
             return false;
         }
     }
@@ -1305,7 +1372,7 @@ ImageBufAlgo::colorconvert(const ImageBuf& src, string_view from,
     bool ok = colorconvert(result, src, from, to, unpremult, context_key,
                            context_value, colorconfig, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::colorconvert() error");
+        result.errorf("ImageBufAlgo::colorconvert() error");
     return result;
 }
 
@@ -1340,7 +1407,7 @@ ImageBufAlgo::colormatrixtransform(const ImageBuf& src, const Imath::M44f& M,
     ImageBuf result;
     bool ok = colormatrixtransform(result, src, M, unpremult, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::colormatrixtransform() error");
+        result.errorf("ImageBufAlgo::colormatrixtransform() error");
     return result;
 }
 
@@ -1360,13 +1427,14 @@ colorconvert_impl(ImageBuf& R, const ImageBuf& A,
     int channelsToCopy = std::min(4, roi.nchannels());
     if (channelsToCopy < 4)
         unpremult = false;
+    // clang-format off
     parallel_image(
         roi, parallel_image_options(nthreads),
         [&, unpremult, channelsToCopy, processor](ROI roi) {
             int width = roi.width();
             // Temporary space to hold one RGBA scanline
             vfloat4* scanline  = OIIO_ALLOCA(vfloat4, width);
-            vfloat4* alpha     = OIIO_ALLOCA(vfloat4, width);
+            float* alpha       = OIIO_ALLOCA(float, width);
             const float fltmin = std::numeric_limits<float>::min();
             ImageBuf::ConstIterator<Atype> a(A, roi);
             ImageBuf::Iterator<Rtype> r(R, roi);
@@ -1386,11 +1454,10 @@ colorconvert_impl(ImageBuf& R, const ImageBuf& A,
                     // Optionally unpremult
                     if (unpremult) {
                         for (int i = 0; i < width; ++i) {
-                            // float alpha = scanline[i][3];
-                            vfloat4 a = shuffle<3>(scanline[i]);
-                            a         = select(a >= fltmin, a, vfloat4::One());
-                            alpha[i]  = a;
-                            scanline[i] *= rcp_fast(a);
+                            float a  = extract<3>(scanline[i]);
+                            a        = a >= fltmin ? a : 1.0f;
+                            alpha[i] = a;
+                            scanline[i] /= a;
                         }
                     }
 
@@ -1414,6 +1481,7 @@ colorconvert_impl(ImageBuf& R, const ImageBuf& A,
                 }
             }
         });
+    // clang-format on
     return true;
 }
 
@@ -1428,16 +1496,14 @@ colorconvert_impl_float_rgba(ImageBuf& R, const ImageBuf& A,
 {
     using namespace ImageBufAlgo;
     using namespace simd;
-    ASSERT(R.localpixels() && A.localpixels() && R.spec().format == TypeFloat
-           && A.spec().format == TypeFloat && R.nchannels() == 4
-           && A.nchannels() == 4);
+    OIIO_ASSERT(R.localpixels() && A.localpixels()
+                && R.spec().format == TypeFloat && A.spec().format == TypeFloat
+                && R.nchannels() == 4 && A.nchannels() == 4);
     parallel_image(roi, parallel_image_options(nthreads), [&](ROI roi) {
-        // int Rchans = R.nchannels();
-        // int Achans = A.nchannels();
         int width = roi.width();
         // Temporary space to hold one RGBA scanline
         vfloat4* scanline  = OIIO_ALLOCA(vfloat4, width);
-        vfloat4* alpha     = OIIO_ALLOCA(vfloat4, width);
+        float* alpha       = OIIO_ALLOCA(float, width);
         const float fltmin = std::numeric_limits<float>::min();
         for (int k = roi.zbegin; k < roi.zend; ++k) {
             for (int j = roi.ybegin; j < roi.yend; ++j) {
@@ -1448,10 +1514,13 @@ colorconvert_impl_float_rgba(ImageBuf& R, const ImageBuf& A,
                 if (unpremult) {
                     for (int i = 0; i < width; ++i) {
                         vfloat4 p(scanline[i]);
-                        vfloat4 a   = shuffle<3>(p);
-                        a           = select(a >= fltmin, a, vfloat4::One());
-                        alpha[i]    = a;
-                        scanline[i] = p * rcp_fast(a);
+                        float a  = extract<3>(p);
+                        a        = a >= fltmin ? a : 1.0f;
+                        alpha[i] = a;
+                        if (a == 1.0f)
+                            scanline[i] = p;
+                        else
+                            scanline[i] = p / a;
                     }
                 }
 
@@ -1534,7 +1603,7 @@ ImageBufAlgo::colorconvert(const ImageBuf& src, const ColorProcessor* processor,
     ImageBuf result;
     bool ok = colorconvert(result, src, processor, unpremult, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::colorconvert() error");
+        result.errorf("ImageBufAlgo::colorconvert() error");
     return result;
 }
 
@@ -1554,7 +1623,7 @@ ImageBufAlgo::ociolook(ImageBuf& dst, const ImageBuf& src, string_view looks,
         to = src.spec().get_string_attribute("oiio:Colorspace", "Linear");
     }
     if (from.empty() || to.empty()) {
-        dst.error("Unknown color space name");
+        dst.errorf("Unknown color space name");
         return false;
     }
     ColorProcessorHandle processor;
@@ -1568,9 +1637,9 @@ ImageBufAlgo::ociolook(ImageBuf& dst, const ImageBuf& src, string_view looks,
                                                      key, value);
         if (!processor) {
             if (colorconfig->error())
-                dst.error("%s", colorconfig->geterror());
+                dst.errorf("%s", colorconfig->geterror());
             else
-                dst.error("Could not construct the color transform");
+                dst.errorf("Could not construct the color transform");
             return false;
         }
     }
@@ -1594,7 +1663,7 @@ ImageBufAlgo::ociolook(const ImageBuf& src, string_view looks, string_view from,
     bool ok = ociolook(result, src, looks, from, to, inverse, unpremult, key,
                        value, colorconfig, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::ociolook() error");
+        result.errorf("ImageBufAlgo::ociolook() error");
     return result;
 }
 
@@ -1621,16 +1690,16 @@ ImageBufAlgo::ociodisplay(ImageBuf& dst, const ImageBuf& src,
                                                    linearspace);
         }
         if (from.empty()) {
-            dst.error("Unknown color space name");
+            dst.errorf("Unknown color space name");
             return false;
         }
         processor = colorconfig->createDisplayTransform(display, view, from,
                                                         looks, key, value);
         if (!processor) {
             if (colorconfig->error())
-                dst.error("%s", colorconfig->geterror());
+                dst.errorf("%s", colorconfig->geterror());
             else
-                dst.error("Could not construct the color transform");
+                dst.errorf("Could not construct the color transform");
             return false;
         }
     }
@@ -1652,7 +1721,7 @@ ImageBufAlgo::ociodisplay(const ImageBuf& src, string_view display,
     bool ok = ociodisplay(result, src, display, view, from, looks, unpremult,
                           key, value, colorconfig, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::ociodisplay() error");
+        result.errorf("ImageBufAlgo::ociodisplay() error");
     return result;
 }
 
@@ -1665,7 +1734,7 @@ ImageBufAlgo::ociofiletransform(ImageBuf& dst, const ImageBuf& src,
 {
     pvt::LoggedTimer logtime("IBA::ociofiletransform");
     if (name.empty()) {
-        dst.error("Unknown filetransform name");
+        dst.errorf("Unknown filetransform name");
         return false;
     }
     ColorProcessorHandle processor;
@@ -1678,9 +1747,9 @@ ImageBufAlgo::ociofiletransform(ImageBuf& dst, const ImageBuf& src,
         processor = colorconfig->createFileTransform(name, inverse);
         if (!processor) {
             if (colorconfig->error())
-                dst.error("%s", colorconfig->geterror());
+                dst.errorf("%s", colorconfig->geterror());
             else
-                dst.error("Could not construct the color transform");
+                dst.errorf("Could not construct the color transform");
             return false;
         }
     }
@@ -1703,7 +1772,7 @@ ImageBufAlgo::ociofiletransform(const ImageBuf& src, string_view name,
     bool ok = ociofiletransform(result, src, name, inverse, unpremult,
                                 colorconfig, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::ociofiletransform() error");
+        result.errorf("ImageBufAlgo::ociofiletransform() error");
     return result;
 }
 

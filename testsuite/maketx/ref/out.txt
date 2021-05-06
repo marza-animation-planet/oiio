@@ -180,8 +180,8 @@ checker-camera.tx    :  128 x  128, 4 channel, uint8 tiff
     Orientation: 1 (normal)
     planarconfig: "contig"
     textureformat: "Plain Texture"
-    worldtocamera: 1 0 0 0 0 2 0 0 0 0 1 0 0 0 0 1
-    worldtoscreen: 3 0 0 0 0 3 0 0 0 0 3 0 1 2 3 1
+    worldtocamera: 1, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1
+    worldtoscreen: 3, 0, 0, 0, 0, 3, 0, 0, 0, 0, 3, 0, 1, 2, 3, 1
     wrapmodes: "black,black"
     oiio:AverageColor: "0.5,0.5,0.5,1"
     oiio:BitsPerSample: 8
@@ -271,13 +271,14 @@ nan.exr              :   64 x   64, 3 channel, half openexr
     compression: "zip"
     fovcot: 1
     PixelAspectRatio: 1
-    screenWindowCenter: 0 0
+    screenWindowCenter: 0, 0
     screenWindowWidth: 1
     textureformat: "Plain Texture"
     wrapmodes: "black,black"
     oiio:AverageColor: "0.5,0.5,0.5"
     oiio:ColorSpace: "Linear"
     oiio:SHA-1: "44B96A7C3AFBF8D7621E7C6453266E5DD1962D36"
+    oiio:subimages: 1
     openexr:levelmode: 0
     Stats Min: 0.000000 0.000000 0.000000 (float)
     Stats Max: 1.000000 1.000000 1.000000 (float)
@@ -298,13 +299,14 @@ checker-exr.pdq      :  128 x  128, 4 channel, half openexr
     fovcot: 1
     Orientation: 1 (normal)
     PixelAspectRatio: 1
-    screenWindowCenter: 0 0
+    screenWindowCenter: 0, 0
     screenWindowWidth: 1
     textureformat: "Plain Texture"
     wrapmodes: "black,black"
     oiio:AverageColor: "0.5,0.5,0.5,1"
     oiio:ColorSpace: "Linear"
     oiio:SHA-1: "D924CA144A02479D1507F5910F5FC8F51EF78765"
+    oiio:subimages: 1
     openexr:roundingmode: 0
 Reading small.tif
 small.tif            :   64 x   64, 3 channel, uint8 tiff
@@ -388,11 +390,12 @@ bumpslope.exr        :   64 x   64, 6 channel, half openexr
     compression: "zip"
     fovcot: 1
     PixelAspectRatio: 1
-    screenWindowCenter: 0 0
+    screenWindowCenter: 0, 0
     screenWindowWidth: 1
     textureformat: "Plain Texture"
     wrapmodes: "black,black"
     oiio:AverageColor: "0.499779,-0.000457942,-4.17233e-05,0.00197116,0.00178894,3.45764e-05"
     oiio:ColorSpace: "Linear"
     oiio:SHA-1: "49B533110A914CE89BE0B14753A6A4CC037C964F"
+    oiio:subimages: 1
     openexr:roundingmode: 0

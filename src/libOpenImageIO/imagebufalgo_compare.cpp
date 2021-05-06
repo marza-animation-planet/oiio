@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 /// \file
 /// Implementation of ImageBufAlgo algorithms that analize or compare
@@ -72,7 +46,7 @@ ImageBufAlgo::PixelStats::reset(int nchannels)
 void
 ImageBufAlgo::PixelStats::merge(const ImageBufAlgo::PixelStats& p)
 {
-    ASSERT(min.size() == p.min.size());
+    OIIO_DASSERT(min.size() == p.min.size());
     for (size_t c = 0, e = min.size(); c < e; ++c) {
         min[c] = std::min(min[c], p.min[c]);
         max[c] = std::max(max[c], p.max[c]);
@@ -221,7 +195,7 @@ ImageBufAlgo::computePixelStats(const ImageBuf& src, ROI roi, int nthreads)
         roi.chend = std::min(roi.chend, src.nchannels());
     int nchannels = src.spec().nchannels;
     if (nchannels == 0) {
-        src.error("%d-channel images not supported", nchannels);
+        src.errorf("%d-channel images not supported", nchannels);
         return stats;
     }
 
@@ -369,7 +343,7 @@ ImageBufAlgo::compare(const ImageBuf& A, const ImageBuf& B, float failthresh,
 
     // Deep and non-deep images cannot be compared
     if (B.deep() != A.deep()) {
-        A.error("deep and non-deep images cannot be compared");
+        A.errorf("deep and non-deep images cannot be compared");
         return result;
     }
 
@@ -598,7 +572,7 @@ color_count_(const ImageBuf& src, atomic_ll* count, int ncolors,
 {
     ImageBufAlgo::parallel_image(roi, nthreads, [&](ROI roi) {
         int nchannels = src.nchannels();
-        long long* n  = ALLOCA(long long, ncolors);
+        long long* n  = OIIO_ALLOCA(long long, ncolors);
         for (int col = 0; col < ncolors; ++col)
             n[col] = 0;
         for (ImageBuf::ConstIterator<T> p(src, roi); !p.done(); ++p) {
@@ -634,7 +608,7 @@ ImageBufAlgo::color_count(const ImageBuf& src, imagesize_t* count, int ncolors,
     roi.chend = std::min(roi.chend, src.nchannels());
 
     if (color.size() < ncolors * src.nchannels()) {
-        src.error(
+        src.errorf(
             "ImageBufAlgo::color_count: not enough room in 'color' array");
         return false;
     }
@@ -722,7 +696,7 @@ ImageBufAlgo::color_range_check(const ImageBuf& src, imagesize_t* lowcount,
 static ROI
 deep_nonempty_region(const ImageBuf& src, ROI roi)
 {
-    DASSERT(src.deep());
+    OIIO_DASSERT(src.deep());
     ROI r;  // Initially undefined
     for (int z = roi.zbegin; z < roi.zend; ++z)
         for (int y = roi.ybegin; y < roi.yend; ++y)
@@ -818,7 +792,7 @@ simplePixelHashSHA1(const ImageBuf& src, string_view extrainfo, ROI roi)
 
     bool localpixels           = src.localpixels();
     imagesize_t scanline_bytes = roi.width() * src.spec().pixel_bytes();
-    ASSERT(scanline_bytes < std::numeric_limits<unsigned int>::max());
+    OIIO_ASSERT(scanline_bytes < std::numeric_limits<unsigned int>::max());
     // Do it a few scanlines at a time
     int chunk = std::max(1, int(16 * 1024 * 1024 / scanline_bytes));
 
@@ -872,7 +846,7 @@ ImageBufAlgo::computePixelHashSHA1(const ImageBuf& src, string_view extrainfo,
 
     // clang-format off
     int nblocks = (roi.height() + blocksize - 1) / blocksize;
-    ASSERT(nblocks > 1);
+    OIIO_ASSERT(nblocks > 1);
     std::vector<std::string> results(nblocks);
     parallel_for_chunked(roi.ybegin, roi.yend, blocksize,
                          [&](int64_t ybegin, int64_t yend) {
@@ -881,7 +855,7 @@ ImageBufAlgo::computePixelHashSHA1(const ImageBuf& src, string_view extrainfo,
         broi.ybegin = ybegin;
         broi.yend   = yend;
         results[b]  = simplePixelHashSHA1(src, "", broi);
-    });
+    }, nthreads);
     // clang-format on
 
     // If there are multiple blocks, hash the block digests to get a final
@@ -909,7 +883,7 @@ histogram_impl(const ImageBuf& src, int channel, std::vector<imagesize_t>& hist,
 {
     // Double check A's type.
     if (src.spec().format != BaseTypeFromC<Atype>::value) {
-        src.error("Unsupported pixel data format '%s'", src.spec().format);
+        src.errorf("Unsupported pixel data format '%s'", src.spec().format);
         return false;
     }
 
@@ -954,20 +928,20 @@ ImageBufAlgo::histogram(const ImageBuf& src, int channel, int bins, float min,
 
     // Sanity checks
     if (src.nchannels() == 0) {
-        src.error("Input image must have at least 1 channel");
+        src.errorf("Input image must have at least 1 channel");
         return h;
     }
     if (channel < 0 || channel >= src.nchannels()) {
-        src.error("Invalid channel %d for input image with channels 0 to %d",
-                  channel, src.nchannels() - 1);
+        src.errorf("Invalid channel %d for input image with channels 0 to %d",
+                   channel, src.nchannels() - 1);
         return h;
     }
     if (bins < 1) {
-        src.error("The number of bins must be at least 1");
+        src.errorf("The number of bins must be at least 1");
         return h;
     }
     if (max <= min) {
-        src.error("Invalid range, min must be strictly smaller than max");
+        src.errorf("Invalid range, min must be strictly smaller than max");
         return h;
     }
 
@@ -1006,7 +980,7 @@ histogram_impl_old(const ImageBuf& A, int channel,
 {
     // Double check A's type.
     if (A.spec().format != BaseTypeFromC<Atype>::value) {
-        A.error("Unsupported pixel data format '%s'", A.spec().format);
+        A.errorf("Unsupported pixel data format '%s'", A.spec().format);
         return false;
     }
 
@@ -1050,28 +1024,28 @@ ImageBufAlgo::histogram(const ImageBuf& A, int channel,
 {
     pvt::LoggedTimer logtimer("IBA::histogram");
     if (A.spec().format != TypeFloat) {
-        A.error("Unsupported pixel data format '%s'", A.spec().format);
+        A.errorf("Unsupported pixel data format '%s'", A.spec().format);
         return false;
     }
 
     if (A.nchannels() == 0) {
-        A.error("Input image must have at least 1 channel");
+        A.errorf("Input image must have at least 1 channel");
         return false;
     }
 
     if (channel < 0 || channel >= A.nchannels()) {
-        A.error("Invalid channel %d for input image with channels 0 to %d",
-                channel, A.nchannels() - 1);
+        A.errorf("Invalid channel %d for input image with channels 0 to %d",
+                 channel, A.nchannels() - 1);
         return false;
     }
 
     if (bins < 1) {
-        A.error("The number of bins must be at least 1");
+        A.errorf("The number of bins must be at least 1");
         return false;
     }
 
     if (max <= min) {
-        A.error("Invalid range, min must be strictly smaller than max");
+        A.errorf("Invalid range, min must be strictly smaller than max");
         return false;
     }
 
@@ -1095,7 +1069,7 @@ ImageBufAlgo::histogram_draw(ImageBuf& R,
     // Fail if there are no bins to draw.
     int bins = histogram.size();
     if (bins == 0) {
-        R.error("There are no bins to draw, the histogram is empty");
+        R.errorf("There are no bins to draw, the histogram is empty");
         return false;
     }
 

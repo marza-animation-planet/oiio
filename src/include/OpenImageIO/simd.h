@@ -1,30 +1,6 @@
-/*
-Copyright (c) 2014 Larry Gritz et al.
-All Rights Reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-* Redistributions of source code must retain the above copyright
-  notice, this list of conditions and the following disclaimer.
-* Redistributions in binary form must reproduce the above copyright
-  notice, this list of conditions and the following disclaimer in the
-  documentation and/or other materials provided with the distribution.
-* Neither the name of Sony Pictures Imageworks nor the names of its
-  contributors may be used to endorse or promote products derived from
-  this software without specific prior written permission.
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 /// @file  simd.h
 ///
@@ -49,13 +25,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
-#include <OpenImageIO/dassert.h>
-#include <OpenImageIO/missing_math.h>
-#include <OpenImageIO/platform.h>
-#include <OpenEXR/ImathVec.h>
-#include <OpenEXR/ImathMatrix.h>
 #include <algorithm>
 #include <cstring>
+
+#include <OpenEXR/ImathVec.h>
+#include <OpenEXR/ImathMatrix.h>
+
+#include <OpenImageIO/dassert.h>
+#include <OpenImageIO/platform.h>
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -89,7 +66,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if defined(_WIN32)
 #  include <intrin.h>
-#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) || defined(__e2k__)
 #  include <x86intrin.h>
 #elif defined(__GNUC__) && defined(__ARM_NEON__)
 #  include <arm_neon.h>
@@ -249,7 +226,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OIIO_SIMD_HAS_SIMD16 1   /* vfloat16, vint16, vbool16 defined */
 
 
-#include "missing_math.h"
+// Embarrassing hack: Xlib.h #define's True and False!
+#ifdef True
+#    undef True
+#endif
+#ifdef False
+#    undef False
+#endif
+
 
 
 // Embarrassing hack: Xlib.h #define's True and False!
@@ -489,11 +473,16 @@ public:
 
     explicit vbool4 (const bool *a);
 
-    /// Construct from 4 values
+    /// Construct from 4 bool values
     vbool4 (bool a, bool b, bool c, bool d) { load (a, b, c, d); }
 
     /// Copy construct from another vbool4
     vbool4 (const vbool4 &other) { m_simd = other.m_simd; }
+
+    /// Construct from 4 int values
+    vbool4 (int a, int b, int c, int d) {
+        load (bool(a), bool(b), bool(c), bool(d));
+    }
 
     /// Construct from a SIMD int (is each element nonzero?)
     vbool4 (const vint4 &i);
@@ -623,11 +612,14 @@ public:
 
     explicit vbool8 (const bool *values);
 
-    /// Construct from 8 values
+    /// Construct from 8 bool values
     vbool8 (bool a, bool b, bool c, bool d, bool e, bool f, bool g, bool h);
 
     /// Copy construct from another vbool8
     vbool8 (const vbool8 &other) { m_simd = other.m_simd; }
+
+    /// Construct from 8 int values
+    vbool8 (int a, int b, int c, int d, int e, int f, int g, int h);
 
     /// Construct from a SIMD int (is each element nonzero?)
     vbool8 (const vint8 &i);
@@ -769,12 +761,16 @@ public:
 
     explicit vbool16 (const bool *values);
 
-    /// Construct from 16 values
+    /// Construct from 16 bool values
     vbool16 (bool v0, bool v1, bool v2, bool v3, bool v4, bool v5, bool v6, bool v7,
             bool v8, bool v9, bool v10, bool v11, bool v12, bool v13, bool v14, bool v15);
 
     /// Copy construct from another vbool16
     vbool16 (const vbool16 &other) { m_simd = other.m_simd; }
+
+    /// Construct from 16 int values
+    vbool16 (int v0, int v1, int v2, int v3, int v4, int v5, int v6, int v7,
+             int v8, int v9, int v10, int v11, int v12, int v13, int v14, int v15);
 
     /// Construct from a SIMD int (is each element nonzero?)
     vbool16 (const vint16 &i);
@@ -1148,7 +1144,9 @@ vint4 abs (const vint4& a);
 vint4 min (const vint4& a, const vint4& b);
 vint4 max (const vint4& a, const vint4& b);
 
-// Circular bit rotate by k bits, for N values at once.
+/// Circular bit rotate by s bits, for N values at once.
+vint4 rotl (const vint4& x, const int s);
+// DEPRECATED(2.1)
 vint4 rotl32 (const vint4& x, const unsigned int k);
 
 /// andnot(a,b) returns ((~a) & b)
@@ -1446,7 +1444,9 @@ vint8 abs (const vint8& a);
 vint8 min (const vint8& a, const vint8& b);
 vint8 max (const vint8& a, const vint8& b);
 
-// Circular bit rotate by k bits, for N values at once.
+/// Circular bit rotate by s bits, for N values at once.
+vint8 rotl (const vint8& x, const int s);
+// DEPRECATED(2.1)
 vint8 rotl32 (const vint8& x, const unsigned int k);
 
 /// andnot(a,b) returns ((~a) & b)
@@ -1751,7 +1751,9 @@ vint16 abs (const vint16& a);
 vint16 min (const vint16& a, const vint16& b);
 vint16 max (const vint16& a, const vint16& b);
 
-// Circular bit rotate by k bits, for N values at once.
+/// Circular bit rotate by s bits, for N values at once.
+vint16 rotl (const vint16& x, const int s);
+// DEPRECATED(2.1)
 vint16 rotl32 (const vint16& x, const unsigned int k);
 
 /// andnot(a,b) returns ((~a) & b)
@@ -2230,8 +2232,17 @@ public:
     const vfloat3 & operator/= (const vfloat3& a);
     const vfloat3 & operator/= (float a);
 
+    /// Square of the length of the vector
+    float length2() const;
+    /// Length of the vector
+    float length() const;
+
+    /// Return a normalized version of the vector.
     vfloat3 normalized () const;
+    /// Return a fast, approximate normalized version of the vector.
     vfloat3 normalized_fast () const;
+    /// Normalize in place.
+    void normalize() { *this = normalized(); }
 
     /// Stream output
     friend inline std::ostream& operator<< (std::ostream& cout, const vfloat3& val);
@@ -3068,7 +3079,7 @@ inline bool get_denorms_zero_mode () {
 
 
 OIIO_FORCEINLINE int vbool4::operator[] (int i) const {
-    DASSERT(i >= 0 && i < elements);
+    OIIO_DASSERT(i >= 0 && i < elements);
 #if OIIO_SIMD_SSE
     return ((_mm_movemask_ps(m_simd) >> i) & 1) ? -1 : 0;
 #else
@@ -3077,13 +3088,13 @@ OIIO_FORCEINLINE int vbool4::operator[] (int i) const {
 }
 
 OIIO_FORCEINLINE int& vbool4::operator[] (int i) {
-    DASSERT(i >= 0 && i < elements);
+    OIIO_DASSERT(i >= 0 && i < elements);
     return m_val[i];
 }
 
 
 OIIO_FORCEINLINE void vbool4::setcomp (int i, bool value) {
-    DASSERT(i >= 0 && i < elements);
+    OIIO_DASSERT(i >= 0 && i < elements);
     m_val[i] = value ? -1 : 0;
 }
 
@@ -3185,7 +3196,7 @@ OIIO_FORCEINLINE void vbool4::store (bool *values) const {
 }
 
 OIIO_FORCEINLINE void vbool4::store (bool *values, int n) const {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
     for (int i = 0; i < n; ++i)
         values[i] = m_val[i] ? true : false;
 }
@@ -3379,7 +3390,7 @@ OIIO_FORCEINLINE bool none (const vbool4& v) { return reduce_or(v) == false; }
 
 
 OIIO_FORCEINLINE int vbool8::operator[] (int i) const {
-    DASSERT(i >= 0 && i < elements);
+    OIIO_DASSERT(i >= 0 && i < elements);
 #if OIIO_SIMD_AVX
     return ((_mm256_movemask_ps(m_simd) >> i) & 1) ? -1 : 0;
 #else
@@ -3388,12 +3399,12 @@ OIIO_FORCEINLINE int vbool8::operator[] (int i) const {
 }
 
 OIIO_FORCEINLINE void vbool8::setcomp (int i, bool value) {
-    DASSERT(i >= 0 && i < elements);
+    OIIO_DASSERT(i >= 0 && i < elements);
     m_val[i] = value ? -1 : 0;
 }
 
 OIIO_FORCEINLINE int& vbool8::operator[] (int i) {
-    DASSERT(i >= 0 && i < elements);
+    OIIO_DASSERT(i >= 0 && i < elements);
     return m_val[i];
 }
 
@@ -3438,6 +3449,12 @@ OIIO_FORCEINLINE void vbool8::load (bool a, bool b, bool c, bool d,
 OIIO_FORCEINLINE vbool8::vbool8 (bool a, bool b, bool c, bool d,
                                bool e, bool f, bool g, bool h) {
     load (a, b, c, d, e, f, g, h);
+}
+
+OIIO_FORCEINLINE vbool8::vbool8 (int a, int b, int c, int d,
+                                 int e, int f, int g, int h) {
+    load (bool(a), bool(b), bool(c), bool(d),
+          bool(e), bool(f), bool(g), bool(h));
 }
 
 OIIO_FORCEINLINE vbool8::vbool8 (const bool *a) {
@@ -3508,7 +3525,7 @@ OIIO_FORCEINLINE void vbool8::store (bool *values) const {
 }
 
 OIIO_FORCEINLINE void vbool8::store (bool *values, int n) const {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
     for (int i = 0; i < n; ++i)
         values[i] = m_val[i] ? true : false;
 }
@@ -3685,7 +3702,7 @@ OIIO_FORCEINLINE bool none (const vbool8& v) { return reduce_or(v) == false; }
 
 
 OIIO_FORCEINLINE int vbool16::operator[] (int i) const {
-    DASSERT(i >= 0 && i < elements);
+    OIIO_DASSERT(i >= 0 && i < elements);
 #if OIIO_SIMD_AVX >= 512
     return (int(m_simd) >> i) & 1;
 #else
@@ -3694,7 +3711,7 @@ OIIO_FORCEINLINE int vbool16::operator[] (int i) const {
 }
 
 OIIO_FORCEINLINE void vbool16::setcomp (int i, bool value) {
-    DASSERT(i >= 0 && i < elements);
+    OIIO_DASSERT(i >= 0 && i < elements);
     int bits = m_bits;
     bits &= (0xffff ^ (1<<i));
     bits |= (int(value)<<i);
@@ -3749,6 +3766,16 @@ OIIO_FORCEINLINE vbool16::vbool16 (bool v0, bool v1, bool v2, bool v3,
     load (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15);
 }
 
+OIIO_FORCEINLINE vbool16::vbool16 (int v0, int v1, int v2, int v3,
+                                   int v4, int v5, int v6, int v7,
+                                   int v8, int v9, int v10, int v11,
+                                   int v12, int v13, int v14, int v15) {
+    load (bool(v0), bool(v1), bool(v2), bool(v3),
+          bool(v4), bool(v5), bool(v6), bool(v7),
+          bool(v8), bool(v9), bool(v10), bool(v11),
+          bool(v12), bool(v13), bool(v14), bool(v15));
+}
+
 OIIO_FORCEINLINE vbool16::vbool16 (const vbool8& a, const vbool8& b) {
     load_bitmask (a.bitmask() | (b.bitmask() << 8));
 }
@@ -3798,7 +3825,7 @@ OIIO_FORCEINLINE void vbool16::store (bool *values) const {
 }
 
 OIIO_FORCEINLINE void vbool16::store (bool *values, int n) const {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
     for (int i = 0; i < n; ++i)
         values[i] = m_bits & (1<<i);
 }
@@ -3877,7 +3904,7 @@ OIIO_FORCEINLINE vbool16 operator== (const vbool16 & a, const vbool16 & b) {
 #if OIIO_SIMD_AVX >= 512
     return _mm512_kxnor (a.simd(), b.simd());
 #else
-    return vbool16 (!(a.m_bits ^ a.m_bits));
+    return vbool16 (!(a.m_bits ^ b.m_bits));
 #endif
 }
 
@@ -3885,7 +3912,7 @@ OIIO_FORCEINLINE vbool16 operator!= (const vbool16 & a, const vbool16 & b) {
 #if OIIO_SIMD_AVX >= 512
     return _mm512_kxor (a.simd(), b.simd());
 #else
-    return vbool16 (a.m_bits ^ a.m_bits);
+    return vbool16 (a.m_bits ^ b.m_bits);
 #endif
 }
 
@@ -3930,17 +3957,17 @@ OIIO_FORCEINLINE const vint4 & vint4::operator= (const vint4& other) {
 }
 
 OIIO_FORCEINLINE int vint4::operator[] (int i) const {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
 OIIO_FORCEINLINE int& vint4::operator[] (int i) {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
 OIIO_FORCEINLINE void vint4::setcomp (int i, int val) {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     m_val[i] = val;
 }
 
@@ -3985,7 +4012,7 @@ OIIO_FORCEINLINE void vint4::load (const int *values) {
 
 OIIO_FORCEINLINE void vint4::load (const int *values, int n)
 {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
 #if OIIO_SIMD_AVX >= 512 && OIIO_AVX512VL_ENABLED
     m_simd = _mm_maskz_loadu_epi32 (__mmask8(~(0xf << n)), values);
 #elif OIIO_SIMD_SSE
@@ -4458,7 +4485,7 @@ inline std::ostream& operator<< (std::ostream& cout, const vint4& val) {
 
 
 OIIO_FORCEINLINE void vint4::store (int *values, int n) const {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
 #if 0 && OIIO_SIMD_AVX >= 512 && OIIO_AVX512VL_ENABLED
     // This SHOULD be fast, but in my benchmarks, it is slower!
     // (At least on the AVX512 hardware I have, Xeon Silver 4110.)
@@ -4709,8 +4736,21 @@ OIIO_FORCEINLINE vint4 max (const vint4& a, const vint4& b) {
 }
 
 
+OIIO_FORCEINLINE vint4 rotl(const vint4& x, int s) {
+#if OIIO_SIMD_AVX >= 512 && OIIO_AVX512VL_ENABLED
+    // return _mm_rol_epi32 (x, s);
+    // We want to do this ^^^ but this intrinsic only takes an *immediate*
+    // argument for s, and there isn't a way to express in C++ that a
+    // parameter must be an immediate/literal value from the caller.
+    return (x<<s) | srl(x,32-s);
+#else
+    return (x<<s) | srl(x,32-s);
+#endif
+}
+
+// DEPRECATED (2.1)
 OIIO_FORCEINLINE vint4 rotl32 (const vint4& x, const unsigned int k) {
-    return (x<<k) | srl(x,32-k);
+    return rotl(x, k);
 }
 
 
@@ -4751,17 +4791,17 @@ OIIO_FORCEINLINE const vint8 & vint8::operator= (const vint8& other) {
 }
 
 OIIO_FORCEINLINE int vint8::operator[] (int i) const {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
 OIIO_FORCEINLINE int& vint8::operator[] (int i) {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
 OIIO_FORCEINLINE void vint8::setcomp (int i, int val) {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     m_val[i] = val;
 }
 
@@ -4803,7 +4843,7 @@ OIIO_FORCEINLINE void vint8::load (const int *values) {
 
 OIIO_FORCEINLINE void vint8::load (const int *values, int n)
 {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
 #if OIIO_SIMD_AVX >= 512 && OIIO_AVX512VL_ENABLED
     m_simd = _mm256_maskz_loadu_epi32 ((~(0xff << n)), values);
 #elif OIIO_SIMD_SSE
@@ -5263,7 +5303,7 @@ inline std::ostream& operator<< (std::ostream& cout, const vint8& val) {
 
 
 OIIO_FORCEINLINE void vint8::store (int *values, int n) const {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
 #if 0 && OIIO_SIMD_AVX >= 512 && OIIO_AVX512VL_ENABLED
     // This SHOULD be fast, but in my benchmarks, it is slower!
     // (At least on the AVX512 hardware I have, Xeon Silver 4110.)
@@ -5493,8 +5533,21 @@ OIIO_FORCEINLINE vint8 max (const vint8& a, const vint8& b) {
 }
 
 
+OIIO_FORCEINLINE vint8 rotl(const vint8& x, int s) {
+#if OIIO_SIMD_AVX >= 512 && OIIO_AVX512VL_ENABLED
+    // return _mm256_rol_epi32 (x, s);
+    // We want to do this ^^^ but this intrinsic only takes an *immediate*
+    // argument for s, and there isn't a way to express in C++ that a
+    // parameter must be an immediate/literal value from the caller.
+    return (x<<s) | srl(x,32-s);
+#else
+    return (x<<s) | srl(x,32-s);
+#endif
+}
+
+// DEPRECATED (2.1)
 OIIO_FORCEINLINE vint8 rotl32 (const vint8& x, const unsigned int k) {
-    return (x<<k) | srl(x,32-k);
+    return rotl(x, k);
 }
 
 
@@ -5537,17 +5590,17 @@ OIIO_FORCEINLINE const vint16 & vint16::operator= (const vint16& other) {
 }
 
 OIIO_FORCEINLINE int vint16::operator[] (int i) const {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
 OIIO_FORCEINLINE int& vint16::operator[] (int i) {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
 OIIO_FORCEINLINE void vint16::setcomp (int i, int val) {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     m_val[i] = val;
 }
 
@@ -6045,7 +6098,7 @@ inline std::ostream& operator<< (std::ostream& cout, const vint16& val) {
 
 
 OIIO_FORCEINLINE void vint16::store (int *values, int n) const {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
 #if 0 && OIIO_SIMD_AVX >= 512
     // This SHOULD be fast, but in my benchmarks, it is slower!
     // (At least on the AVX512 hardware I have, Xeon Silver 4110.)
@@ -6282,8 +6335,21 @@ OIIO_FORCEINLINE vint16 max (const vint16& a, const vint16& b) {
 }
 
 
+OIIO_FORCEINLINE vint16 rotl(const vint16& x, int s) {
+#if OIIO_SIMD_AVX >= 512 && OIIO_AVX512VL_ENABLED
+    // return _mm512_rol_epi32 (x, s);
+    // We want to do this ^^^ but this intrinsic only takes an *immediate*
+    // argument for s, and there isn't a way to express in C++ that a
+    // parameter must be an immediate/literal value from the caller.
+    return (x<<s) | srl(x,32-s);
+#else
+    return (x<<s) | srl(x,32-s);
+#endif
+}
+
+// DEPRECATED (2.1)
 OIIO_FORCEINLINE vint16 rotl32 (const vint16& x, const unsigned int k) {
-    return (x<<k) | srl(x,32-k);
+    return rotl(x, k);
 }
 
 
@@ -6359,12 +6425,12 @@ OIIO_FORCEINLINE const vfloat4 & vfloat4::operator= (const Imath::V3f &v) {
 }
 
 OIIO_FORCEINLINE float& vfloat4::operator[] (int i) {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
 OIIO_FORCEINLINE float vfloat4::operator[] (int i) const {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
@@ -6406,7 +6472,7 @@ OIIO_FORCEINLINE void vfloat4::load (const float *values) {
 
 
 OIIO_FORCEINLINE void vfloat4::load (const float *values, int n) {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
 #if OIIO_SIMD_AVX >= 512 && OIIO_AVX512VL_ENABLED
     m_simd = _mm_maskz_loadu_ps (__mmask8(~(0xf << n)), values);
 #elif OIIO_SIMD_SSE
@@ -6540,7 +6606,7 @@ OIIO_FORCEINLINE void vfloat4::store (float *values) const {
 }
 
 OIIO_FORCEINLINE void vfloat4::store (float *values, int n) const {
-    DASSERT (n >= 0 && n <= 4);
+    OIIO_DASSERT (n >= 0 && n <= 4);
 #if 0 && OIIO_SIMD_AVX >= 512 && OIIO_AVX512VL_ENABLED
     // This SHOULD be fast, but in my benchmarks, it is slower!
     // (At least on the AVX512 hardware I have, Xeon Silver 4110.)
@@ -7754,8 +7820,10 @@ OIIO_FORCEINLINE vfloat3 vdot (const vfloat3 &a, const vfloat3 &b) {
 OIIO_FORCEINLINE float dot (const vfloat3 &a, const vfloat3 &b) {
 #if OIIO_SIMD_SSE >= 4
     return _mm_cvtss_f32 (_mm_dp_ps (a.simd(), b.simd(), 0x77));
-#else
+#elif OIIO_SIMD
     return reduce_add (a*b);
+#else
+    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 #endif
 }
 
@@ -7767,6 +7835,19 @@ OIIO_FORCEINLINE vfloat3 vdot3 (const vfloat3 &a, const vfloat3 &b) {
     return vfloat3 (vreduce_add((a*b).xyz0()).xyz0());
 #endif
 }
+
+
+OIIO_FORCEINLINE float vfloat3::length2 () const
+{
+    return dot(*this, *this);
+}
+
+
+OIIO_FORCEINLINE float vfloat3::length () const
+{
+    return sqrtf(dot(*this, *this));
+}
+
 
 OIIO_FORCEINLINE vfloat3 vfloat3::normalized () const
 {
@@ -8078,12 +8159,12 @@ OIIO_FORCEINLINE vfloat3 transformvT (const Imath::M44f &M, const vfloat3 &V)
 // vfloat8 implementation
 
 OIIO_FORCEINLINE float& vfloat8::operator[] (int i) {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
 OIIO_FORCEINLINE float vfloat8::operator[] (int i) const {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
@@ -8201,7 +8282,7 @@ OIIO_FORCEINLINE void vfloat8::load (const float *values) {
 
 
 OIIO_FORCEINLINE void vfloat8::load (const float *values, int n) {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
 #if 0 && OIIO_AVX512VL_ENABLED
     // This SHOULD be fast, but in my benchmarks, it is slower!
     // (At least on the AVX512 hardware I have, Xeon Silver 4110.)
@@ -8296,7 +8377,7 @@ OIIO_FORCEINLINE void vfloat8::store (float *values) const {
 
 
 OIIO_FORCEINLINE void vfloat8::store (float *values, int n) const {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
 #if 0 && OIIO_AVX512VL_ENABLED
     // This SHOULD be fast, but in my benchmarks, it is slower!
     // (At least on the AVX512 hardware I have, Xeon Silver 4110.)
@@ -8904,12 +8985,12 @@ OIIO_FORCEINLINE vfloat8 nmsub (const simd::vfloat8& a, const simd::vfloat8& b,
 // vfloat16 implementation
 
 OIIO_FORCEINLINE float& vfloat16::operator[] (int i) {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
 OIIO_FORCEINLINE float vfloat16::operator[] (int i) const {
-    DASSERT(i<elements);
+    OIIO_DASSERT(i<elements);
     return m_val[i];
 }
 
@@ -9058,7 +9139,7 @@ OIIO_FORCEINLINE void vfloat16::load (const float *values) {
 
 OIIO_FORCEINLINE void vfloat16::load (const float *values, int n)
 {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
 #if OIIO_SIMD_AVX >= 512
     m_simd = _mm512_maskz_loadu_ps (__mmask16(~(0xffff << n)), values);
 #else
@@ -9144,7 +9225,7 @@ OIIO_FORCEINLINE void vfloat16::store (float *values) const {
 
 
 OIIO_FORCEINLINE void vfloat16::store (float *values, int n) const {
-    DASSERT (n >= 0 && n <= elements);
+    OIIO_DASSERT (n >= 0 && n <= elements);
     // FIXME: is this faster with AVX masked stores?
 #if 0 && OIIO_SIMD_AVX >= 512
     // This SHOULD be fast, but in my benchmarks, it is slower!

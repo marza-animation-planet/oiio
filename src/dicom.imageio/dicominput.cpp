@@ -1,32 +1,6 @@
-/*
-  Copyright 2016 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <OpenImageIO/fmath.h>
 #include <OpenImageIO/imageio.h>
@@ -180,7 +154,7 @@ DICOMInput::seek_subimage(int subimage, int miplevel)
         m_subimage = 0;
         if (m_img->getStatus() != EIS_Normal) {
             m_img.reset();
-            error("Unable to open DICOM file %s", m_filename);
+            errorf("Unable to open DICOM file %s", m_filename);
             return false;
         }
         m_framecount = m_img->getFrameCount();
@@ -188,7 +162,7 @@ DICOMInput::seek_subimage(int subimage, int miplevel)
     }
 
     if (subimage >= m_firstframe + m_framecount) {
-        error("Unable to seek to subimage %d", subimage);
+        errorf("Unable to seek to subimage %d", subimage);
         return false;
     }
 
@@ -197,7 +171,7 @@ DICOMInput::seek_subimage(int subimage, int miplevel)
         m_img->processNextFrames(1);
         if (m_img->getStatus() != EIS_Normal) {
             m_img.reset();
-            error("Unable to seek to subimage %d", subimage);
+            errorf("Unable to seek to subimage %d", subimage);
             return false;
         }
         ++m_subimage;
@@ -287,7 +261,7 @@ DICOMInput::read_metadata()
         DcmStack stack;
         while (dcm->nextObject(stack, OFTrue).good()) {
             DcmObject* object = stack.top();
-            ASSERT(object);
+            OIIO_ASSERT(object);
             DcmTag& tag         = const_cast<DcmTag&>(object->getTag());
             std::string tagname = tag.getTagName();
             if (ignore_tags.find(tagname) != ignore_tags.end())
@@ -355,7 +329,7 @@ DICOMInput::read_native_scanline(int subimage, int miplevel, int y, int z,
     if (y < 0 || y >= m_spec.height)  // out of range scanline
         return false;
 
-    ASSERT(m_internal_data);
+    OIIO_DASSERT(m_internal_data);
     size_t size = m_spec.scanline_bytes();
     memcpy(data, m_internal_data + y * size, size);
 

@@ -1,32 +1,6 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-  notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-  notice, this list of conditions and the following disclaimer in the
-  documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-  contributors may be used to endorse or promote products derived from
-  this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cstdio>
@@ -303,7 +277,7 @@ test_crop()
     OIIO_CHECK_EQUAL(B.spec().width, xend - xbegin);
     OIIO_CHECK_EQUAL(B.spec().y, ybegin);
     OIIO_CHECK_EQUAL(B.spec().height, yend - ybegin);
-    float* pixel = ALLOCA(float, CHANNELS);
+    float* pixel = OIIO_ALLOCA(float, CHANNELS);
     for (int j = 0; j < B.spec().height; ++j) {
         for (int i = 0; i < B.spec().width; ++i) {
             B.getpixel(i + B.xbegin(), j + B.ybegin(), pixel);
@@ -320,7 +294,7 @@ void
 test_paste()
 {
     std::cout << "test paste\n";
-    // Create the source image, make it a gradient
+    // Create the source image, make it a color gradient
     ImageSpec Aspec(4, 4, 3, TypeDesc::FLOAT);
     ImageBuf A(Aspec);
     for (ImageBuf::Iterator<float> it(A); !it.done(); ++it) {
@@ -329,14 +303,15 @@ test_paste()
         it[2] = 0.1f;
     }
 
-    // Create destination image -- black it out
+    // Create destination image -- fill with grey
     ImageSpec Bspec(8, 8, 3, TypeDesc::FLOAT);
     ImageBuf B(Bspec);
-    float gray[3] = { .1, .1, .1 };
+    float gray[3] = { 0.1f, 0.1f, 0.1f };
     ImageBufAlgo::fill(B, gray);
 
     // Paste a few pixels from A into B -- include offsets
-    ImageBufAlgo::paste(B, 2, 2, 0, 1 /* chan offset */, A, ROI(1, 4, 1, 4));
+    ImageBufAlgo::paste(B, 2, 2, 0, 1 /* chan offset */,
+                        ImageBufAlgo::cut(A, ROI(1, 4, 1, 4)));
 
     // Spot check
     float a[3], b[3];
@@ -393,10 +368,10 @@ test_add()
 
     // Create buffers
     ImageBuf A(spec);
-    const float Aval[CHANNELS] = { 0.1, 0.2, 0.3, 0.4 };
+    const float Aval[CHANNELS] = { 0.1f, 0.2f, 0.3f, 0.4f };
     ImageBufAlgo::fill(A, Aval);
     ImageBuf B(spec);
-    const float Bval[CHANNELS] = { 0.01, 0.02, 0.03, 0.04 };
+    const float Bval[CHANNELS] = { 0.01f, 0.02f, 0.03f, 0.04f };
     ImageBufAlgo::fill(B, Bval);
 
     // Test addition of images
@@ -411,8 +386,8 @@ test_add()
     ImageBuf D(spec);
     ImageBufAlgo::add(D, A, Bval);
     ImageBufAlgo::CompareResults comp;
-    ImageBufAlgo::compare(R, D, 1e-6, 1e-6, comp);
-    OIIO_CHECK_EQUAL(comp.maxerror, 0.0);
+    ImageBufAlgo::compare(R, D, 1e-6f, 1e-6f, comp);
+    OIIO_CHECK_EQUAL(comp.maxerror, 0.0f);
 }
 
 
@@ -427,10 +402,10 @@ test_sub()
 
     // Create buffers
     ImageBuf A(spec);
-    const float Aval[CHANNELS] = { 0.1, 0.2, 0.3, 0.4 };
+    const float Aval[CHANNELS] = { 0.1f, 0.2f, 0.3f, 0.4f };
     ImageBufAlgo::fill(A, Aval);
     ImageBuf B(spec);
-    const float Bval[CHANNELS] = { 0.01, 0.02, 0.03, 0.04 };
+    const float Bval[CHANNELS] = { 0.01f, 0.02f, 0.03f, 0.04f };
     ImageBufAlgo::fill(B, Bval);
 
     // Test subtraction of images
@@ -445,8 +420,8 @@ test_sub()
     ImageBuf D(spec);
     ImageBufAlgo::sub(D, A, Bval);
     ImageBufAlgo::CompareResults comp;
-    ImageBufAlgo::compare(R, D, 1e-6, 1e-6, comp);
-    OIIO_CHECK_EQUAL(comp.maxerror, 0.0);
+    ImageBufAlgo::compare(R, D, 1e-6f, 1e-6f, comp);
+    OIIO_CHECK_EQUAL(comp.maxerror, 0.0f);
 }
 
 
@@ -461,10 +436,10 @@ test_mul()
 
     // Create buffers
     ImageBuf A(spec);
-    const float Aval[CHANNELS] = { 0.1, 0.2, 0.3, 0.4 };
+    const float Aval[CHANNELS] = { 0.1f, 0.2f, 0.3f, 0.4f };
     ImageBufAlgo::fill(A, Aval);
     ImageBuf B(spec);
-    const float Bval[CHANNELS] = { 0.01, 0.02, 0.03, 0.04 };
+    const float Bval[CHANNELS] = { 0.01f, 0.02f, 0.03f, 0.04f };
     ImageBufAlgo::fill(B, Bval);
 
     // Test multiplication of images
@@ -479,8 +454,8 @@ test_mul()
     ImageBuf D(spec);
     ImageBufAlgo::mul(D, A, Bval);
     ImageBufAlgo::CompareResults comp;
-    ImageBufAlgo::compare(R, D, 1e-6, 1e-6, comp);
-    OIIO_CHECK_EQUAL(comp.maxerror, 0.0);
+    ImageBufAlgo::compare(R, D, 1e-6f, 1e-6f, comp);
+    OIIO_CHECK_EQUAL(comp.maxerror, 0.0f);
 }
 
 
@@ -495,13 +470,13 @@ test_mad()
 
     // Create buffers
     ImageBuf A(spec);
-    const float Aval[CHANNELS] = { 0.1, 0.2, 0.3, 0.4 };
+    const float Aval[CHANNELS] = { 0.1f, 0.2f, 0.3f, 0.4f };
     ImageBufAlgo::fill(A, Aval);
     ImageBuf B(spec);
     const float Bval[CHANNELS] = { 1, 2, 3, 4 };
     ImageBufAlgo::fill(B, Bval);
     ImageBuf C(spec);
-    const float Cval[CHANNELS] = { 0.01, 0.02, 0.03, 0.04 };
+    const float Cval[CHANNELS] = { 0.01f, 0.02f, 0.03f, 0.04f };
     ImageBufAlgo::fill(C, Cval);
 
     // Test multiplication of images
@@ -517,8 +492,8 @@ test_mad()
     ImageBuf D(spec);
     ImageBufAlgo::mad(D, A, Bval, Cval);
     ImageBufAlgo::CompareResults comp;
-    ImageBufAlgo::compare(R, D, 1e-6, 1e-6, comp);
-    OIIO_CHECK_EQUAL(comp.maxerror, 0.0);
+    ImageBufAlgo::compare(R, D, 1e-6f, 1e-6f, comp);
+    OIIO_CHECK_EQUAL(comp.maxerror, 0.0f);
 }
 
 
@@ -535,16 +510,16 @@ test_over()
 
     // Create buffers
     ImageBuf BG(spec);
-    const float BGval[CHANNELS] = { 0.5, 0, 0, 0.5 };
+    const float BGval[CHANNELS] = { 0.5f, 0.0f, 0.0f, 0.5f };
     ImageBufAlgo::fill(BG, BGval);
 
     ImageBuf FG(spec);
     ImageBufAlgo::zero(FG);
-    const float FGval[CHANNELS] = { 0, 0.5, 0, 0.5 };
+    const float FGval[CHANNELS] = { 0.0f, 0.5f, 0.0f, 0.5f };
     ImageBufAlgo::fill(FG, FGval, roi);
 
     // value it should be where composited
-    const float comp_val[CHANNELS] = { 0.25, 0.5, 0, 0.75 };
+    const float comp_val[CHANNELS] = { 0.25f, 0.5f, 0.0f, 0.75f };
 
     // Test over
     ImageBuf R(spec);
@@ -582,7 +557,7 @@ test_compare()
     ImageSpec spec(WIDTH, HEIGHT, CHANNELS, TypeDesc::FLOAT);
     ImageBuf A(spec);
     ImageBuf B(spec);
-    const float grey[CHANNELS] = { 0.5, 0.5, 0.5 };
+    const float grey[CHANNELS] = { 0.5f, 0.5f, 0.5f };
     ImageBufAlgo::fill(A, grey);
     ImageBufAlgo::fill(B, grey);
 
@@ -611,10 +586,10 @@ test_compare()
               << comp.rms_error << ", PSNR = " << comp.PSNR << "\n";
     OIIO_CHECK_EQUAL(comp.nfail, 5);
     OIIO_CHECK_EQUAL(comp.nwarn, 7);
-    OIIO_CHECK_EQUAL_THRESH(comp.maxerror, 0.09, 1e-6);
+    OIIO_CHECK_EQUAL_THRESH(comp.maxerror, 0.09f, 1e-6f);
     OIIO_CHECK_EQUAL(comp.maxx, 9);
     OIIO_CHECK_EQUAL(comp.maxy, 0);
-    OIIO_CHECK_EQUAL_THRESH(comp.meanerror, 0.0045, 1.0e-8);
+    OIIO_CHECK_EQUAL_THRESH(comp.meanerror, 0.0045f, 1.0e-8f);
 }
 
 
@@ -638,12 +613,12 @@ test_isConstantColor()
     OIIO_CHECK_EQUAL(col[2], thecolor[2]);
 
     // Now introduce a difference
-    const float another[CHANNELS] = { 0.25, 0.51, 0.75 };
+    const float another[CHANNELS] = { 0.25f, 0.51f, 0.75f };
     A.setpixel(2, 2, 0, another, 3);
     OIIO_CHECK_EQUAL(ImageBufAlgo::isConstantColor(A), false);
     OIIO_CHECK_EQUAL(ImageBufAlgo::isConstantColor(A, thecolor), false);
     // But not with lower threshold
-    OIIO_CHECK_EQUAL(ImageBufAlgo::isConstantColor(A, 0.015), true);
+    OIIO_CHECK_EQUAL(ImageBufAlgo::isConstantColor(A, 0.015f), true);
 
     // Make sure ROI works
     ROI roi(0, WIDTH, 0, 2, 0, 1, 0, CHANNELS);  // should match for this ROI
@@ -660,13 +635,13 @@ test_isConstantChannel()
     const int WIDTH = 10, HEIGHT = 10, CHANNELS = 3;
     ImageSpec spec(WIDTH, HEIGHT, CHANNELS, TypeDesc::FLOAT);
     ImageBuf A(spec);
-    const float col[CHANNELS] = { 0.25, 0.5, 0.75 };
+    const float col[CHANNELS] = { 0.25f, 0.5f, 0.75f };
     ImageBufAlgo::fill(A, col);
 
     OIIO_CHECK_EQUAL(ImageBufAlgo::isConstantChannel(A, 1, 0.5f), true);
 
     // Now introduce a difference
-    const float another[CHANNELS] = { 0.25, 0.51, 0.75 };
+    const float another[CHANNELS] = { 0.25f, 0.51f, 0.75f };
     A.setpixel(2, 2, 0, another, 3);
     // It should still pass if within the threshold
     OIIO_CHECK_EQUAL(ImageBufAlgo::isConstantChannel(A, 1, 0.5f, 0.015f), true);
@@ -691,13 +666,13 @@ test_isMonochrome()
     const int WIDTH = 10, HEIGHT = 10, CHANNELS = 3;
     ImageSpec spec(WIDTH, HEIGHT, CHANNELS, TypeDesc::FLOAT);
     ImageBuf A(spec);
-    const float col[CHANNELS] = { 0.25, 0.25, 0.25 };
+    const float col[CHANNELS] = { 0.25f, 0.25f, 0.25f };
     ImageBufAlgo::fill(A, col);
 
     OIIO_CHECK_EQUAL(ImageBufAlgo::isMonochrome(A), true);
 
     // Now introduce a tiny difference
-    const float another[CHANNELS] = { 0.25, 0.25, 0.26 };
+    const float another[CHANNELS] = { 0.25f, 0.25f, 0.26f };
     A.setpixel(2, 2, 0, another, 3);
     // It should still pass if within the threshold
     OIIO_CHECK_EQUAL(ImageBufAlgo::isMonochrome(A, 0.015f), true);

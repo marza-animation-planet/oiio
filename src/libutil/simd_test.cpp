@@ -1,30 +1,6 @@
-/*
-Copyright (c) 2014 Larry Gritz et al.
-All Rights Reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-* Redistributions of source code must retain the above copyright
-  notice, this list of conditions and the following disclaimer.
-* Redistributions in binary form must reproduce the above copyright
-  notice, this list of conditions and the following disclaimer in the
-  documentation and/or other materials provided with the distribution.
-* Neither the name of Sony Pictures Imageworks nor the names of its
-  contributors may be used to endorse or promote products derived from
-  this software without specific prior written permission.
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 // clang-format off
 
@@ -1198,6 +1174,7 @@ template<typename VEC>
 void
 test_shuffle4()
 {
+    typedef typename VEC::value_t ELEM;
     test_heading("shuffle ", VEC::type_name());
 
     VEC a(0, 1, 2, 3);
@@ -1205,7 +1182,7 @@ test_shuffle4()
     OIIO_CHECK_SIMD_EQUAL((shuffle<0, 0, 2, 2>(a)), VEC(0, 0, 2, 2));
     OIIO_CHECK_SIMD_EQUAL((shuffle<1, 1, 3, 3>(a)), VEC(1, 1, 3, 3));
     OIIO_CHECK_SIMD_EQUAL((shuffle<0, 1, 0, 1>(a)), VEC(0, 1, 0, 1));
-    OIIO_CHECK_SIMD_EQUAL((shuffle<2>(a)), VEC(2));
+    OIIO_CHECK_SIMD_EQUAL((shuffle<2>(a)), VEC(ELEM(2)));
 
     benchmark("shuffle<...> ",
               [&](const VEC& v) { return shuffle<3, 2, 1, 0>(v); }, a);
@@ -1220,13 +1197,14 @@ test_shuffle4()
 template<typename VEC>
 void test_shuffle8 ()
 {
+    typedef typename VEC::value_t ELEM;
     test_heading ("shuffle ", VEC::type_name());
     VEC a (0, 1, 2, 3, 4, 5, 6, 7);
     OIIO_CHECK_SIMD_EQUAL ((shuffle<3,2,1,0,3,2,1,0>(a)), VEC(3,2,1,0,3,2,1,0));
     OIIO_CHECK_SIMD_EQUAL ((shuffle<0,0,2,2,0,0,2,2>(a)), VEC(0,0,2,2,0,0,2,2));
     OIIO_CHECK_SIMD_EQUAL ((shuffle<1,1,3,3,1,1,3,3>(a)), VEC(1,1,3,3,1,1,3,3));
     OIIO_CHECK_SIMD_EQUAL ((shuffle<0,1,0,1,0,1,0,1>(a)), VEC(0,1,0,1,0,1,0,1));
-    OIIO_CHECK_SIMD_EQUAL ((shuffle<2>(a)), VEC(2));
+    OIIO_CHECK_SIMD_EQUAL ((shuffle<2>(a)), VEC(ELEM(2)));
 
     benchmark ("shuffle<...> ", [&](const VEC& v){ return shuffle<7,6,5,4,3,2,1,0>(v); }, a);
     benchmark ("shuffle<0> ", [&](const VEC& v){ return shuffle<0>(v); }, a);
@@ -1353,6 +1331,7 @@ test_transpose4()
 template<typename T> inline T do_shl (const T &a, int b) { return a<<b; }
 template<typename T> inline T do_shr (const T &a, int b) { return a>>b; }
 template<typename T> inline T do_srl (const T &a, int b) { return srl(a,b); }
+template<typename T> inline T do_rotl (const T &a, int b) { return rotl(a,b); }
 
 
 template<typename VEC>
@@ -1385,10 +1364,18 @@ test_shift()
     i = VEC::Iota (10, 10);   i >>= 1;
     OIIO_CHECK_SIMD_EQUAL (i, VEC::Iota(5, 5));
 
+    // Test rotl
+    {
+        vint4 v (0x12345678, 0xabcdef01, 0x98765432, 0x31415926);
+        vint4 r (0x23456781, 0xbcdef01a, 0x87654329, 0x14159263);
+        OIIO_CHECK_SIMD_EQUAL (rotl(v,4), r);
+    }
+
     // Benchmark
     benchmark2 ("operator<<", do_shl<VEC>, i, 2);
     benchmark2 ("operator>>", do_shr<VEC>, i, 2);
     benchmark2 ("srl       ", do_srl<VEC>, i, 2);
+    benchmark2 ("rotl      ", do_rotl<VEC>, i, 2);
 }
 
 

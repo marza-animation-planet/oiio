@@ -1,32 +1,6 @@
-/*
-  Copyright 2014 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 extern "C" {  // ffmpeg is a C api
 #include <cerrno>
@@ -149,6 +123,7 @@ public:
     {
         return "FFmpeg movie";
     }
+    virtual bool valid_file(const std::string& name) const override;
     virtual bool open(const std::string& name, ImageSpec& spec) override;
     virtual bool close(void) override;
     virtual int current_subimage(void) const override
@@ -177,7 +152,7 @@ private:
     AVCodec* m_codec;
     AVFrame* m_frame;
     AVFrame* m_rgb_frame;
-    size_t m_stride;
+    size_t m_stride;  // scanline width in bytes, a.k.a. scanline stride
     AVPixelFormat m_dst_pix_format;
     SwsContext* m_sws_rgb_context;
     AVRational m_frame_rate;
@@ -256,6 +231,19 @@ FFmpegInput::~FFmpegInput() { close(); }
 
 
 bool
+FFmpegInput::valid_file(const std::string& name) const
+{
+    // Quick/naive test -- just make sure the extension is valid for one of
+    // the supported file types supported by this reader.
+    for (int i = 0; ffmpeg_input_extensions[i]; ++i)
+        if (Strutil::ends_with(name, ffmpeg_input_extensions[i]))
+            return true;
+    return false;
+}
+
+
+
+bool
 FFmpegInput::open(const std::string& name, ImageSpec& spec)
 {
     // Temporary workaround: refuse to open a file whose name does not
@@ -273,7 +261,7 @@ FFmpegInput::open(const std::string& name, ImageSpec& spec)
             break;
         }
     if (!valid_extension) {
-        error("\"%s\" could not open input", name);
+        errorf("\"%s\" could not open input", name);
         return false;
     }
 
@@ -281,14 +269,13 @@ FFmpegInput::open(const std::string& name, ImageSpec& spec)
     std::call_once(init_flag, av_register_all);
     const char* file_name = name.c_str();
     av_log_set_level(AV_LOG_FATAL);
-    if (avformat_open_input(&m_format_context, file_name, NULL, NULL)
-        != 0)  // avformat_open_input allocs format_context
-    {
-        error("\"%s\" could not open input", file_name);
+    if (avformat_open_input(&m_format_context, file_name, NULL, NULL) != 0) {
+        // avformat_open_input allocs format_context
+        errorf("\"%s\" could not open input", file_name);
         return false;
     }
     if (avformat_find_stream_info(m_format_context, NULL) < 0) {
-        error("\"%s\" could not find stream info", file_name);
+        errorf("\"%s\" could not find stream info", file_name);
         return false;
     }
     m_video_stream = -1;
@@ -302,7 +289,7 @@ FFmpegInput::open(const std::string& name, ImageSpec& spec)
         }
     }
     if (m_video_stream == -1) {
-        error("\"%s\" could not find a valid videostream", file_name);
+        errorf("\"%s\" could not find a valid videostream", file_name);
         return false;
     }
 
@@ -312,13 +299,13 @@ FFmpegInput::open(const std::string& name, ImageSpec& spec)
 
     m_codec = avcodec_find_decoder(par->codec_id);
     if (!m_codec) {
-        error("\"%s\" can't find decoder", file_name);
+        errorf("\"%s\" can't find decoder", file_name);
         return false;
     }
 
     m_codec_context = avcodec_alloc_context3(m_codec);
     if (!m_codec_context) {
-        error("\"%s\" can't allocate decoder context", file_name);
+        errorf("\"%s\" can't allocate decoder context", file_name);
         return false;
     }
 
@@ -326,7 +313,7 @@ FFmpegInput::open(const std::string& name, ImageSpec& spec)
 
     ret = avcodec_parameters_to_context(m_codec_context, par);
     if (ret < 0) {
-        error("\"%s\" unsupported codec", file_name);
+        errorf("\"%s\" unsupported codec", file_name);
         return false;
     }
 #else
@@ -334,13 +321,13 @@ FFmpegInput::open(const std::string& name, ImageSpec& spec)
 
     m_codec = avcodec_find_decoder(m_codec_context->codec_id);
     if (!m_codec) {
-        error("\"%s\" unsupported codec", file_name);
+        errorf("\"%s\" unsupported codec", file_name);
         return false;
     }
 #endif
 
     if (avcodec_open2(m_codec_context, m_codec, NULL) < 0) {
-        error("\"%s\" could not open codec", file_name);
+        errorf("\"%s\" could not open codec", file_name);
         return false;
     }
     if (!strcmp(m_codec_context->codec->name, "mjpeg")
@@ -389,10 +376,24 @@ FFmpegInput::open(const std::string& name, ImageSpec& spec)
     default: src_pix_format = m_codec_context->pix_fmt; break;
     }
 
-    m_spec = ImageSpec(m_codec_context->width, m_codec_context->height, 3);
-
+    // Assume by default that we're delivering RGB UINT8
+    int nchannels     = 3;
+    TypeDesc datatype = TypeUInt8;
+    m_dst_pix_format  = AV_PIX_FMT_RGB24;
+    // Look for formats that indicate we should save some different number
+    // of channels or bit depth.
     switch (src_pix_format) {
     // support for 10-bit and 12-bit pix_fmts
+    case AV_PIX_FMT_RGB48BE:
+    case AV_PIX_FMT_RGB48LE:
+    case AV_PIX_FMT_BGR48BE:
+    case AV_PIX_FMT_BGR48LE:
+    case AV_PIX_FMT_YUV420P9BE:
+    case AV_PIX_FMT_YUV420P9LE:
+    case AV_PIX_FMT_YUV422P9BE:
+    case AV_PIX_FMT_YUV422P9LE:
+    case AV_PIX_FMT_YUV444P9BE:
+    case AV_PIX_FMT_YUV444P9LE:
     case AV_PIX_FMT_YUV420P10BE:
     case AV_PIX_FMT_YUV420P10LE:
     case AV_PIX_FMT_YUV422P10BE:
@@ -405,16 +406,120 @@ FFmpegInput::open(const std::string& name, ImageSpec& spec)
     case AV_PIX_FMT_YUV422P12LE:
     case AV_PIX_FMT_YUV444P12BE:
     case AV_PIX_FMT_YUV444P12LE:
-        m_spec.set_format(TypeDesc::UINT16);
+    case AV_PIX_FMT_YUV420P14BE:
+    case AV_PIX_FMT_YUV420P14LE:
+    case AV_PIX_FMT_YUV422P14BE:
+    case AV_PIX_FMT_YUV422P14LE:
+    case AV_PIX_FMT_YUV444P14BE:
+    case AV_PIX_FMT_YUV444P14LE:
+    case AV_PIX_FMT_GBRP9BE:
+    case AV_PIX_FMT_GBRP9LE:
+    case AV_PIX_FMT_GBRP10BE:
+    case AV_PIX_FMT_GBRP10LE:
+    case AV_PIX_FMT_GBRP16BE:
+    case AV_PIX_FMT_GBRP16LE:
+    case AV_PIX_FMT_GBRP12BE:
+    case AV_PIX_FMT_GBRP12LE:
+    case AV_PIX_FMT_GBRP14BE:
+    case AV_PIX_FMT_GBRP14LE:
+    case AV_PIX_FMT_BAYER_BGGR16LE:
+    case AV_PIX_FMT_BAYER_BGGR16BE:
+    case AV_PIX_FMT_BAYER_RGGB16LE:
+    case AV_PIX_FMT_BAYER_RGGB16BE:
+    case AV_PIX_FMT_BAYER_GBRG16LE:
+    case AV_PIX_FMT_BAYER_GBRG16BE:
+    case AV_PIX_FMT_BAYER_GRBG16LE:
+    case AV_PIX_FMT_BAYER_GRBG16BE:
+    case AV_PIX_FMT_GBRAP10BE:
+    case AV_PIX_FMT_GBRAP10LE:
+    case AV_PIX_FMT_GBRAP12BE:
+    case AV_PIX_FMT_GBRAP12LE:
+    case AV_PIX_FMT_P016LE:
+    case AV_PIX_FMT_P016BE:
+        datatype         = TypeUInt16;
         m_dst_pix_format = AV_PIX_FMT_RGB48;
-        m_stride         = (size_t)(m_spec.width * 3 * 2);
         break;
-    default:
-        m_spec.set_format(TypeDesc::UINT8);
-        m_dst_pix_format = AV_PIX_FMT_RGB24;
-        m_stride         = (size_t)(m_spec.width * 3);
+    // Grayscale 8 bit
+    case AV_PIX_FMT_GRAY8:
+    case AV_PIX_FMT_MONOWHITE:
+    case AV_PIX_FMT_MONOBLACK:
+        datatype         = TypeUInt8;
+        m_dst_pix_format = AV_PIX_FMT_GRAY8;
         break;
+    // Grayscale 16 bit
+    case AV_PIX_FMT_GRAY9BE:
+    case AV_PIX_FMT_GRAY9LE:
+    case AV_PIX_FMT_GRAY10BE:
+    case AV_PIX_FMT_GRAY10LE:
+    case AV_PIX_FMT_GRAY12BE:
+    case AV_PIX_FMT_GRAY12LE:
+    case AV_PIX_FMT_GRAY16BE:
+    case AV_PIX_FMT_GRAY16LE:
+        datatype         = TypeUInt16;
+        m_dst_pix_format = AV_PIX_FMT_GRAY16;
+        break;
+    // RGBA 8 bit
+    case AV_PIX_FMT_YA8:  // YA, but promote to RGBA because who cares
+    case AV_PIX_FMT_YUVA422P:
+    case AV_PIX_FMT_YUVA444P:
+    case AV_PIX_FMT_GBRAP:
+        nchannels        = 4;
+        datatype         = TypeUInt8;
+        m_dst_pix_format = AV_PIX_FMT_RGBA;
+        break;
+    // RGBA 16 bit
+    case AV_PIX_FMT_YA16:  // YA, but promote to RGBA
+    case AV_PIX_FMT_YUVA420P9BE:
+    case AV_PIX_FMT_YUVA420P9LE:
+    case AV_PIX_FMT_YUVA422P9BE:
+    case AV_PIX_FMT_YUVA422P9LE:
+    case AV_PIX_FMT_YUVA444P9BE:
+    case AV_PIX_FMT_YUVA444P9LE:
+    case AV_PIX_FMT_YUVA420P10BE:
+    case AV_PIX_FMT_YUVA420P10LE:
+    case AV_PIX_FMT_YUVA422P10BE:
+    case AV_PIX_FMT_YUVA422P10LE:
+    case AV_PIX_FMT_YUVA444P10BE:
+    case AV_PIX_FMT_YUVA444P10LE:
+    case AV_PIX_FMT_YUVA420P16BE:
+    case AV_PIX_FMT_YUVA420P16LE:
+    case AV_PIX_FMT_YUVA422P16BE:
+    case AV_PIX_FMT_YUVA422P16LE:
+    case AV_PIX_FMT_YUVA444P16BE:
+    case AV_PIX_FMT_YUVA444P16LE:
+    case AV_PIX_FMT_GBRAP16:
+        nchannels        = 4;
+        datatype         = TypeUInt16;
+        m_dst_pix_format = AV_PIX_FMT_RGBA64;
+        break;
+    // RGB float
+    case AV_PIX_FMT_GBRPF32BE:
+    case AV_PIX_FMT_GBRPF32LE:
+        nchannels        = 3;
+        datatype         = TypeFloat;
+        m_dst_pix_format = AV_PIX_FMT_RGB48;  // ? AV_PIX_FMT_GBRPF32
+        // FIXME: They don't have a type for RGB float, only GBR float.
+        // Yuck. Punt for now and save as uint16 RGB. If people care, we
+        // can return and ask for GBR float and swap order.
+        break;
+    // RGBA float
+    case AV_PIX_FMT_GBRAPF32BE:
+    case AV_PIX_FMT_GBRAPF32LE:
+        nchannels        = 4;
+        datatype         = TypeFloat;
+        m_dst_pix_format = AV_PIX_FMT_RGBA64;  // ? AV_PIX_FMT_GBRAPF32
+        // FIXME: They don't have a type for RGBA float, only GBRA float.
+        // Yuck. Punt for now and save as uint16 RGB. If people care, we
+        // can return and ask for GBRA float and swap order.
+        break;
+
+    // Everything else is regular 8 bit RGB
+    default: break;
     }
+
+    m_spec   = ImageSpec(m_codec_context->width, m_codec_context->height,
+                       nchannels, datatype);
+    m_stride = (size_t)(m_spec.scanline_bytes());
 
     m_rgb_buffer.resize(avpicture_get_size(m_dst_pix_format,
                                            m_codec_context->width,
@@ -435,10 +540,13 @@ FFmpegInput::open(const std::string& name, ImageSpec& spec)
     int rat[2] = { m_frame_rate.num, m_frame_rate.den };
     m_spec.attribute("FramesPerSecond", TypeRational, &rat);
     m_spec.attribute("oiio:Movie", true);
+    m_spec.attribute("oiio:subimages", int(m_frames));
     m_spec.attribute("oiio:BitsPerSample",
                      m_codec_context->bits_per_raw_sample);
+    m_spec.attribute("ffmpeg:codec_name", m_codec_context->codec->long_name);
     m_nsubimages = m_frames;
     spec         = m_spec;
+    m_filename   = name;
     return true;
 }
 
@@ -504,6 +612,9 @@ FFmpegInput::read_frame(int frame)
     int ret      = 0;
     while ((ret = av_read_frame(m_format_context, &pkt)) == 0
            || m_codec_cap_delay) {
+        if (ret == AVERROR_EOF) {
+            break;
+        }
         if (pkt.stream_index == m_video_stream) {
             if (ret < 0 && m_codec_cap_delay) {
                 pkt.data = NULL;

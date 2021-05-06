@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include "ivgl.h"
 #include "imageviewer.h"
@@ -349,7 +323,7 @@ IvGL::create_shaders(void)
     // extension-based shaders won't work.
     m_shader_program = glCreateProgram();
 
-    GLERRPRINT("create progam");
+    GLERRPRINT("create program");
 
     // This holds the compilation status
     GLint status;
@@ -778,8 +752,9 @@ IvGL::paint_pixelview()
                                      m_viewer.current_color_mode());
         }
 
-        void* zoombuffer = alloca((xend - xbegin) * (yend - ybegin) * nchannels
-                                  * spec.channel_bytes());
+        void* zoombuffer = OIIO_ALLOCA(char, (xend - xbegin) * (yend - ybegin)
+                                                 * nchannels
+                                                 * spec.channel_bytes());
         if (!m_use_shaders) {
             img->get_pixels(ROI(spec.x + xbegin, spec.x + xend, spec.y + ybegin,
                                 spec.y + yend),
@@ -844,7 +819,7 @@ IvGL::paint_pixelview()
         // values of the pixel that the mouse is over.
         QFont font;
         font.setFixedPitch(true);
-        float* fpixel = (float*)alloca(spec.nchannels * sizeof(float));
+        float* fpixel = OIIO_ALLOCA(float, spec.nchannels);
         int textx, texty;
         if (m_viewer.pixelviewFollowsMouse()) {
             textx = xw + 8;
@@ -963,7 +938,7 @@ IvGL::useshader(int tex_width, int tex_height, bool pixelview)
 
     loc = glGetUniformLocation(m_shader_program, "height");
     glUniform1i(loc, tex_height);
-    GLERRPRINT("After settting uniforms");
+    GLERRPRINT("After setting uniforms");
 }
 
 

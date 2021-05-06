@@ -1,32 +1,6 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include "py_oiio.h"
 
@@ -45,7 +19,7 @@ ImageBuf_getpixel(const ImageBuf& buf, int x, int y, int z = 0,
 {
     ImageBuf::WrapMode wrap = ImageBuf::WrapMode_from_string(wrapname);
     int nchans              = buf.nchannels();
-    float* pixel            = ALLOCA(float, nchans);
+    float* pixel            = OIIO_ALLOCA(float, nchans);
     buf.getpixel(x, y, z, pixel, nchans, wrap);
     return C_to_tuple(pixel, nchans);
 }
@@ -58,7 +32,7 @@ ImageBuf_interppixel(const ImageBuf& buf, float x, float y,
 {
     ImageBuf::WrapMode wrap = ImageBuf::WrapMode_from_string(wrapname);
     int nchans              = buf.nchannels();
-    float* pixel            = ALLOCA(float, nchans);
+    float* pixel            = OIIO_ALLOCA(float, nchans);
     buf.interppixel(x, y, pixel, wrap);
     return C_to_tuple(pixel, nchans);
 }
@@ -71,7 +45,7 @@ ImageBuf_interppixel_NDC(const ImageBuf& buf, float x, float y,
 {
     ImageBuf::WrapMode wrap = ImageBuf::WrapMode_from_string(wrapname);
     int nchans              = buf.nchannels();
-    float* pixel            = ALLOCA(float, nchans);
+    float* pixel            = OIIO_ALLOCA(float, nchans);
     buf.interppixel_NDC(x, y, pixel, wrap);
     return C_to_tuple(pixel, nchans);
 }
@@ -84,7 +58,7 @@ ImageBuf_interppixel_bicubic(const ImageBuf& buf, float x, float y,
 {
     ImageBuf::WrapMode wrap = ImageBuf::WrapMode_from_string(wrapname);
     int nchans              = buf.nchannels();
-    float* pixel            = ALLOCA(float, nchans);
+    float* pixel            = OIIO_ALLOCA(float, nchans);
     buf.interppixel_bicubic(x, y, pixel, wrap);
     return C_to_tuple(pixel, nchans);
 }
@@ -97,7 +71,7 @@ ImageBuf_interppixel_bicubic_NDC(const ImageBuf& buf, float x, float y,
 {
     ImageBuf::WrapMode wrap = ImageBuf::WrapMode_from_string(wrapname);
     int nchans              = buf.nchannels();
-    float* pixel            = ALLOCA(float, nchans);
+    float* pixel            = OIIO_ALLOCA(float, nchans);
     buf.interppixel_bicubic_NDC(x, y, pixel, wrap);
     return C_to_tuple(pixel, nchans);
 }
@@ -110,7 +84,7 @@ ImageBuf_setpixel(ImageBuf& buf, int x, int y, int z, py::object p)
     std::vector<float> pixel;
     py_to_stdvector(pixel, p);
     if (pixel.size())
-        buf.setpixel(x, y, z, &pixel[0], pixel.size());
+        buf.setpixel(x, y, z, pixel);
 }
 
 void
@@ -126,7 +100,7 @@ ImageBuf_setpixel1(ImageBuf& buf, int i, py::object p)
     std::vector<float> pixel;
     py_to_stdvector(pixel, p);
     if (pixel.size())
-        buf.setpixel(i, &pixel[0], pixel.size());
+        buf.setpixel(i, pixel);
 }
 
 
@@ -201,6 +175,16 @@ ImageBuf_set_pixels_buffer(ImageBuf& self, ROI roi, py::buffer& buffer)
 
 
 void
+ImageBuf_set_write_format(ImageBuf& self, const py::object& py_channelformats)
+{
+    std::vector<TypeDesc> formats;
+    py_to_stdvector(formats, py_channelformats);
+    self.set_write_format(formats);
+}
+
+
+
+void
 declare_imagebuf(py::module& m)
 {
     using namespace pybind11::literals;
@@ -210,6 +194,10 @@ declare_imagebuf(py::module& m)
         .def(py::init<const std::string&>())
         .def(py::init<const std::string&, int, int>())
         .def(py::init<const ImageSpec&>())
+        .def(py::init([](const ImageSpec& spec, bool zero) {
+            auto z = zero ? InitializePixels::Yes : InitializePixels::No;
+            return ImageBuf(spec, z);
+        }))
         .def(py::init([](const std::string& name, int subimage, int miplevel,
                          const ImageSpec& config) {
                  return ImageBuf(name, subimage, miplevel, nullptr, &config);
@@ -231,8 +219,11 @@ declare_imagebuf(py::module& m)
             "config"_a = ImageSpec())
         .def(
             "reset",
-            [](ImageBuf& self, const ImageSpec& spec) { self.reset(spec); },
-            "spec"_a)
+            [](ImageBuf& self, const ImageSpec& spec, bool zero) {
+                auto z = zero ? InitializePixels::Yes : InitializePixels::No;
+                self.reset(spec, z);
+            },
+            "spec"_a, "zero"_a = true)
         .def_property_readonly("initialized",
                                [](const ImageBuf& self) {
                                    return self.initialized();
@@ -273,15 +264,21 @@ declare_imagebuf(py::module& m)
                 return self.write(filename, dtype, fileformat);
             },
             "filename"_a, "dtype"_a = TypeUnknown, "fileformat"_a = "")
-        // deprecated version:
         .def(
             "write",
-            [](ImageBuf& self, const std::string& filename,
-               const std::string& fileformat) {
+            [](ImageBuf& self, ImageOutput& out) {
                 py::gil_scoped_release gil;
-                return self.write(filename, fileformat);
+                return self.write(&out);
             },
-            "filename"_a, "fileformat"_a)
+            "out"_a)
+        .def(
+            "make_writable",
+            [](ImageBuf& self, bool keep_cache_type) {
+                py::gil_scoped_release gil;
+                return self.make_writeable(keep_cache_type);
+            },
+            "keep_cache_type"_a = false)
+        // DEPRECATED(2.2): nonstandard spelling
         .def(
             "make_writeable",
             [](ImageBuf& self, bool keep_cache_type) {
@@ -289,7 +286,7 @@ declare_imagebuf(py::module& m)
                 return self.make_writeable(keep_cache_type);
             },
             "keep_cache_type"_a = false)
-        .def("set_write_format", &ImageBuf::set_write_format)
+        .def("set_write_format", &ImageBuf_set_write_format)
         // FIXME -- write(ImageOut&)
         .def("set_write_tiles", &ImageBuf::set_write_tiles, "width"_a = 0,
              "height"_a = 0, "depth"_a = 0)

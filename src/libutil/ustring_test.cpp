@@ -1,32 +1,6 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cstdio>
@@ -54,19 +28,22 @@ static int numthreads = 16;
 static int ntrials    = 1;
 static bool verbose   = false;
 static bool wedge     = false;
-
+static std::vector<std::array<char, 16>> strings;
 
 
 static void
 create_lotso_ustrings(int iterations)
 {
+    OIIO_DASSERT(size_t(iterations) <= strings.size());
     if (verbose)
         Strutil::printf("thread %d\n", std::this_thread::get_id());
+    size_t h = 0;
     for (int i = 0; i < iterations; ++i) {
-        char buf[20];
-        sprintf(buf, "%d", i);
-        ustring s(buf);
+        ustring s(strings[i].data());
+        h += s.hash();
     }
+    if (verbose)
+        Strutil::printf("checksum %08x\n", unsigned(h));
 }
 
 
@@ -113,8 +90,28 @@ main(int argc, char* argv[])
     OIIO_CHECK_ASSERT(ustring("bar") != ustring("foo"));
     ustring foo("foo");
     OIIO_CHECK_ASSERT(foo.string() == "foo");
+    ustring bar("bar");
+    OIIO_CHECK_EQUAL(ustring::concat(foo, bar), "foobar");
+    OIIO_CHECK_EQUAL(ustring::concat(foo, "bar"), "foobar");
+    OIIO_CHECK_EQUAL(ustring::concat(foo, ""), "foo");
+    OIIO_CHECK_EQUAL(ustring::concat("", foo), "foo");
+    ustring longstring(Strutil::repeat("01234567890", 100));
+    OIIO_CHECK_EQUAL(ustring::concat(longstring, longstring),
+                     ustring::sprintf("%s%s", longstring, longstring));
 
-    std::cout << "hw threads = " << Sysutil::hardware_concurrency() << "\n";
+    const int nhw_threads = Sysutil::hardware_concurrency();
+    std::cout << "hw threads = " << nhw_threads << "\n";
+
+    // user wants to max out the number of threads
+    if (numthreads <= 0)
+        numthreads = nhw_threads;
+
+    // prepare the strings we will turn into ustrings to avoid
+    // including snprintf in the benchmark
+    strings.resize(wedge ? iterations : iterations / numthreads);
+    int i = 0;
+    for (auto& s : strings)
+        snprintf(s.data(), s.size(), "%d", i++);
 
     if (wedge) {
         timed_thread_wedge(create_lotso_ustrings, numthreads, iterations,

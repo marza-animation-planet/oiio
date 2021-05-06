@@ -1,32 +1,6 @@
-/*
-  Copyright 2013 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <cstdio>
@@ -175,7 +149,8 @@ interppixel_NDC_clamped(const ImageBuf& buf, float x, float y, float* pixel,
     y      = static_cast<float>(fy) + y * static_cast<float>(fh);
 
     int n     = buf.spec().nchannels;
-    float *p0 = ALLOCA(float, 4 * n), *p1 = p0 + n, *p2 = p1 + n, *p3 = p2 + n;
+    float *p0 = OIIO_ALLOCA(float, 4 * n), *p1 = p0 + n, *p2 = p1 + n,
+          *p3 = p2 + n;
 
     x -= 0.5f;
     y -= 0.5f;
@@ -236,13 +211,13 @@ resize_block_(ImageBuf& dst, const ImageBuf& src, ROI roi, bool envlatlmode)
            || srcspec.z + srcspec.depth < srcspec.full_z + srcspec.full_depth);
 
     const ImageSpec& dstspec(dst.spec());
-    float* pel    = ALLOCA(float, dstspec.nchannels);
+    float* pel    = OIIO_ALLOCA(float, dstspec.nchannels);
     float xoffset = (float)dstspec.full_x;
     float yoffset = (float)dstspec.full_y;
     float xscale  = 1.0f / (float)dstspec.full_width;
     float yscale  = 1.0f / (float)dstspec.full_height;
     int nchannels = dst.nchannels();
-    ASSERT(dst.spec().format == TypeFloat);
+    OIIO_DASSERT(dst.spec().format == TypeFloat);
     ImageBuf::Iterator<float> d(dst, roi);
     for (int y = y0; y < y1; ++y) {
         float t = (y + 0.5f) * yscale + yoffset;
@@ -285,7 +260,7 @@ resize_block_2pass(ImageBuf& dst, const ImageBuf& src, ROI roi,
     if (!allow_shift && (src.spec().width % 2 || src.spec().height % 2))
         return resize_block_<SRCTYPE>(dst, src, roi, false);
 
-    DASSERT(roi.ybegin + roi.height() <= dst.spec().height);
+    OIIO_DASSERT(roi.ybegin + roi.height() <= dst.spec().height);
 
     // Allocate two scanline buffers to hold the result of the first pass
     const int nchannels   = dst.nchannels();
@@ -298,7 +273,7 @@ resize_block_2pass(ImageBuf& dst, const ImageBuf& src, ROI roi,
     // any NDC -> pixel math, and just directly traverse pixels.
     const SRCTYPE* s = (const SRCTYPE*)src.localpixels();
     SRCTYPE* d       = (SRCTYPE*)dst.localpixels();
-    ASSERT(s && d);                                       // Assume contig bufs
+    OIIO_DASSERT(s && d);                                 // Assume contig bufs
     d += roi.ybegin * dst.spec().width * nchannels;       // Top of dst ROI
     const size_t ystride = src.spec().width * nchannels;  // Scanline offset
     s += 2 * roi.ybegin * ystride;                        // Top of src ROI
@@ -329,8 +304,8 @@ resize_block(ImageBuf& dst, const ImageBuf& src, ROI roi, bool envlatlmode,
 {
     const ImageSpec& srcspec(src.spec());
     const ImageSpec& dstspec(dst.spec());
-    DASSERT(dstspec.nchannels == srcspec.nchannels);
-    DASSERT(dst.localpixels());
+    OIIO_DASSERT(dstspec.nchannels == srcspec.nchannels);
+    OIIO_DASSERT(dst.localpixels());
     bool ok;
     if (src.localpixels() &&                     // Not a cached image
         !envlatlmode &&                          // not latlong wrap mode
@@ -345,7 +320,7 @@ resize_block(ImageBuf& dst, const ImageBuf& src, ROI roi, bool envlatlmode,
         OIIO_DISPATCH_TYPES(ok, "resize_block_2pass", resize_block_2pass,
                             srcspec.format, dst, src, roi, allow_shift);
     } else {
-        ASSERT(dst.spec().format == TypeFloat);
+        OIIO_ASSERT(dst.spec().format == TypeFloat);
         OIIO_DISPATCH_TYPES(ok, "resize_block", resize_block_, srcspec.format,
                             dst, src, roi, envlatlmode);
     }
@@ -360,7 +335,7 @@ check_nan_block(const ImageBuf& src, ROI roi, int& found_nonfinite)
 {
     int x0 = roi.xbegin, x1 = roi.xend, y0 = roi.ybegin, y1 = roi.yend;
     const ImageSpec& spec(src.spec());
-    float* pel = ALLOCA(float, spec.nchannels);
+    float* pel = OIIO_ALLOCA(float, spec.nchannels);
     for (int y = y0; y < y1; ++y) {
         for (int x = x0; x < x1; ++x) {
             src.getpixel(x, y, pel);
@@ -399,17 +374,17 @@ static bool
 lightprobe_to_envlatl(ImageBuf& dst, const ImageBuf& src, bool y_is_up,
                       ROI roi = ROI::All(), int nthreads = 0)
 {
-    ASSERT(dst.initialized() && src.nchannels() == dst.nchannels());
+    OIIO_ASSERT(dst.initialized() && src.nchannels() == dst.nchannels());
     if (!roi.defined())
         roi = get_roi(dst.spec());
     roi.chend = std::min(roi.chend, dst.nchannels());
+    OIIO_ASSERT(dst.spec().format == TypeDesc::FLOAT);
 
     ImageBufAlgo::parallel_image(roi, nthreads, [&](ROI roi) {
         const ImageSpec& dstspec(dst.spec());
         int nchannels = dstspec.nchannels;
-        ASSERT(dstspec.format == TypeDesc::FLOAT);
 
-        float* pixel = ALLOCA(float, nchannels);
+        float* pixel = OIIO_ALLOCA(float, nchannels);
         float dw = dstspec.width, dh = dstspec.height;
         for (ImageBuf::Iterator<float> d(dst, roi); !d.done(); ++d) {
             Imath::V3f V = latlong_to_dir((d.x() + 0.5f) / dw,
@@ -483,8 +458,9 @@ bump_to_bumpslopes(ImageBuf& dst, const ImageBuf& src,
                    const std::string& bumpformat, std::ostream& outstream,
                    ROI roi = ROI::All(), int nthreads = 0)
 {
-    ASSERT(dst.initialized() && dst.nchannels() == 6);
-    ASSERT(dst.spec().format == TypeDesc::FLOAT);
+    if (!dst.initialized() || dst.nchannels() != 6
+        || dst.spec().format != TypeDesc::FLOAT)
+        return false;
 
     // detect bump input format according to channel count
     void (*bump_filter)(const ImageBuf&, const ImageBuf::Iterator<float>&,
@@ -509,7 +485,7 @@ bump_to_bumpslopes(ImageBuf& dst, const ImageBuf& src,
             && !ImageBufAlgo::isMonochrome(src))  // maybe it's a normal map?
             bump_filter = &normal_gradient;
     } else {
-        outstream << "maketx ERROR: Unknow input bump format " << bumpformat
+        outstream << "maketx ERROR: Unknown input bump format " << bumpformat
                   << ". Valid formats are height, normal or auto\n";
         return false;
     }
@@ -541,8 +517,8 @@ static void
 fix_latl_edges(ImageBuf& buf)
 {
     int n        = buf.nchannels();
-    float* left  = ALLOCA(float, n);
-    float* right = ALLOCA(float, n);
+    float* left  = OIIO_ALLOCA(float, n);
+    float* right = OIIO_ALLOCA(float, n);
 
     // Make the whole first and last row be solid, since they are exactly
     // on the pole
@@ -627,7 +603,8 @@ write_mipmap(ImageBufAlgo::MakeTextureMode mode, std::shared_ptr<ImageBuf>& img,
     bool envlatlmode       = (mode == ImageBufAlgo::MakeTxEnvLatl);
     bool orig_was_overscan = (img->spec().x || img->spec().y || img->spec().z
                               || img->spec().full_x || img->spec().full_y
-                              || img->spec().full_z);
+                              || img->spec().full_z
+                              || img->spec().roi() != img->spec().roi_full());
     ImageSpec outspec      = outspec_template;
     outspec.set_format(outputdatatype);
 
@@ -658,8 +635,7 @@ write_mipmap(ImageBufAlgo::MakeTextureMode mode, std::shared_ptr<ImageBuf>& img,
         // reliably when size > 16 and size is a power of two. Bug?
         // FIXME: watch future OpenEXR releases to see if this gets fixed.
         if (outspec.nchannels == 1
-            && Strutil::istarts_with(outspec.get_string_attribute("compression"),
-                                     "dwa")) {
+            && Strutil::istarts_with(outspec["compression"].get(), "dwa")) {
             outspec.attribute("compression", "zip");
             if (verbose)
                 outstream
@@ -965,7 +941,7 @@ make_texture_impl(ImageBufAlgo::MakeTextureMode mode, const ImageBuf* input,
                   std::string filename, std::string outputfilename,
                   const ImageSpec& _configspec, std::ostream* outstream_ptr)
 {
-    ASSERT(mode >= 0 && mode < ImageBufAlgo::_MakeTxLast);
+    OIIO_ASSERT(mode >= 0 && mode < ImageBufAlgo::_MakeTxLast);
     double stat_readtime         = 0;
     double stat_writetime        = 0;
     double stat_resizetime       = 0;
@@ -1010,7 +986,7 @@ make_texture_impl(ImageBufAlgo::MakeTextureMode mode, const ImageBuf* input,
         src.reset(new ImageBuf(input->name(), input->spec(),
                                (void*)input->localpixels()));
     }
-    ASSERT(src.get());
+    OIIO_DASSERT(src.get());
 
     if (!outputfilename.length()) {
         std::string fn = src->name();
@@ -1580,12 +1556,12 @@ make_texture_impl(ImageBufAlgo::MakeTextureMode mode, const ImageBuf* input,
             || Strutil::iends_with(outputfilename, ".exr")))
         do_resize = true;
 
-    if (do_resize && orig_was_overscan && out
-        && !out->supports("displaywindow")) {
-        outstream << "maketx ERROR: format " << out->format_name()
-                  << " does not support separate display windows,\n"
-                  << "              which is necessary when combining resizing"
-                  << " and an input image with overscan.";
+    if (orig_was_overscan && out && !out->supports("displaywindow")) {
+        outstream << Strutil::sprintf(
+            "maketx ERROR: format \"%s\" does not support separate display "
+            "windows, which is necessary for textures with overscan. OpenEXR "
+            " is a format that allows overscan textures.\n",
+            out->format_name());
         return false;
     }
     std::string filtername

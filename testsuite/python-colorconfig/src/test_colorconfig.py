@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
+from __future__ import absolute_import
 import os
 import OpenImageIO as oiio
 
@@ -20,6 +21,9 @@ try:
     print ("getNumViews =", config.getNumViews())
     print ("getViewNames =", config.getViewNames())
     print ("getDefaultViewName =", config.getDefaultViewName())
+
+    print ("getNumRoles =", config.getNumRoles())
+    print ("getRoles =", config.getRoles())
 
     print ("")
 

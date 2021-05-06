@@ -1,32 +1,6 @@
-/*
-  Copyright 2010 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cmath>
@@ -213,7 +187,10 @@ TextureSystemImpl::texture3d(TextureHandle* texture_handle_,
         // transforms procedurally, but we have to use a back door.
         auto input                   = texturefile->open(thread_info);
         Field3DInput_Interface* f3di = (Field3DInput_Interface*)input.get();
-        ASSERT(f3di);
+        if (!f3di) {
+            errorf("Unable to open texture \"%s\"", texturefile->filename());
+            return false;
+        }
         f3di->worldToLocal(P, Plocal, options.time);
     } else {
         // If no world-to-local matrix could be discerned, just use the
@@ -302,7 +279,7 @@ TextureSystemImpl::texture3d_lookup_nomip(
     for (int c = 0; c < nchannels_result; ++c)
         result[c] = 0;
     if (dresultds) {
-        DASSERT(dresultdt && dresultdr);
+        OIIO_DASSERT(dresultdt && dresultdr);
         for (int c = 0; c < nchannels_result; ++c)
             dresultds[c] = 0;
         for (int c = 0; c < nchannels_result; ++c)
@@ -392,7 +369,7 @@ TextureSystemImpl::accum3d_sample_closest(
     int tile_r = (rtex - spec.z) % spec.tile_depth;
     TileID id(texturefile, options.subimage, miplevel, stex - tile_s,
               ttex - tile_t, rtex - tile_r, tile_chbegin, tile_chend);
-    bool ok = find_tile(id, thread_info);
+    bool ok = find_tile(id, thread_info, true);
     if (!ok)
         errorf("%s", m_imagecache->geterror());
     TileRef& tile(thread_info->tile);
@@ -402,7 +379,7 @@ TextureSystemImpl::accum3d_sample_closest(
                   + tile_s;
     int startchan_in_tile = options.firstchannel - id.chbegin();
     int offset            = spec.nchannels * tilepel + startchan_in_tile;
-    DASSERT((size_t)offset < spec.nchannels * spec.tile_pixels());
+    OIIO_DASSERT((size_t)offset < spec.nchannels * spec.tile_pixels());
     if (pixeltype == TypeDesc::UINT8) {
         const unsigned char* texel = tile->bytedata() + offset;
         for (int c = 0; c < actualchannels; ++c)
@@ -416,7 +393,7 @@ TextureSystemImpl::accum3d_sample_closest(
         for (int c = 0; c < actualchannels; ++c)
             accum[c] += weight * half2float(texel[c]);
     } else {
-        DASSERT(pixeltype == TypeDesc::FLOAT);
+        OIIO_DASSERT(pixeltype == TypeDesc::FLOAT);
         const float* texel = tile->floatdata() + offset;
         for (int c = 0; c < actualchannels; ++c)
             accum[c] += weight * texel[c];
@@ -478,7 +455,7 @@ TextureSystemImpl::accum3d_sample_bilinear(
         unsigned long long ivalid;
     } valid_storage;
     valid_storage.ivalid = 0;
-    DASSERT(sizeof(valid_storage) == 8);
+    OIIO_DASSERT(sizeof(valid_storage) == 8);
     const unsigned long long none_valid = 0;
     const unsigned long long all_valid  = littleendian() ? 0x010101010101LL
                                                         : 0x01010101010100LL;
@@ -532,7 +509,7 @@ TextureSystemImpl::accum3d_sample_bilinear(
     if (onetile && valid_storage.ivalid == all_valid) {
         // Shortcut if all the texels we need are on the same tile
         id.xyz(stex[0] - tile_s, ttex[0] - tile_t, rtex[0] - tile_r);
-        bool ok = find_tile(id, thread_info);
+        bool ok = find_tile(id, thread_info, true);
         if (!ok)
             errorf("%s", m_imagecache->geterror());
         TileRef& tile(thread_info->tile);
@@ -542,8 +519,8 @@ TextureSystemImpl::accum3d_sample_bilinear(
                          + tile_s;
         size_t offset = (spec.nchannels * tilepel + startchan_in_tile)
                         * channelsize;
-        DASSERT((size_t)offset < spec.tile_width * spec.tile_height
-                                     * spec.tile_depth * pixelsize);
+        OIIO_DASSERT((size_t)offset < spec.tile_width * spec.tile_height
+                                          * spec.tile_depth * pixelsize);
 
         const unsigned char* b = tile->bytedata() + offset;
         texel[0][0][0]         = b;
@@ -556,6 +533,7 @@ TextureSystemImpl::accum3d_sample_bilinear(
         texel[1][1][0] = b + pixelsize * spec.tile_width;
         texel[1][1][1] = b + pixelsize * spec.tile_width + pixelsize;
     } else {
+        bool firstsample = true;
         for (int k = 0; k < 2; ++k) {
             for (int j = 0; j < 2; ++j) {
                 for (int i = 0; i < 2; ++i) {
@@ -568,9 +546,10 @@ TextureSystemImpl::accum3d_sample_bilinear(
                     tile_r = (rtex[k] - spec.z) % spec.tile_depth;
                     id.xyz(stex[i] - tile_s, ttex[j] - tile_t,
                            rtex[k] - tile_r);
-                    bool ok = find_tile(id, thread_info);
+                    bool ok = find_tile(id, thread_info, firstsample);
                     if (!ok)
                         errorf("%s", m_imagecache->geterror());
+                    firstsample = false;
                     TileRef& tile(thread_info->tile);
                     if (!tile->valid())
                         return false;
@@ -589,10 +568,11 @@ TextureSystemImpl::accum3d_sample_bilinear(
                                   << ' ' << spec.tile_depth << " pixsize "
                                   << pixelsize << "\n";
 #endif
-                    DASSERT((size_t)offset < spec.tile_width * spec.tile_height
-                                                 * spec.tile_depth * pixelsize);
+                    OIIO_DASSERT((size_t)offset
+                                 < spec.tile_width * spec.tile_height
+                                       * spec.tile_depth * pixelsize);
                     texel[k][j][i] = tile->bytedata() + offset;
-                    DASSERT(tile->id() == id);
+                    OIIO_DASSERT(tile->id() == id);
                 }
             }
         }

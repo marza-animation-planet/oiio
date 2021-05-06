@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cmath>
@@ -249,7 +223,7 @@ wrap_periodic_pow2_simd(simd::vint4& coord_, const simd::vint4& origin,
                         const simd::vint4& width)
 {
     simd::vint4 coord(coord_);
-    //    DASSERT (ispow2(width));
+    // OIIO_DASSERT (ispow2(width));
     coord = coord - origin;
     coord = coord
             & (width - 1);  // Shortcut periodic if we're sure it's a pow of 2
@@ -270,7 +244,7 @@ wrap_mirror_simd(simd::vint4& coord_, const simd::vint4& origin,
     coord -= iter * width;
     // Odd iterations -- flip the sense
     coord = blend(coord, (width - 1) - coord, (iter & 1) != 0);
-    // DASSERT_MSG (coord >= 0 && coord < width,
+    // OIIO_DASSERT_MSG (coord >= 0 && coord < width,
     //              "width=%d, origin=%d, result=%d", width, origin, coord);
     coord += origin;
     coord_ = coord;
@@ -396,7 +370,8 @@ TextureSystemImpl::getstats(int level, bool icstats) const
     std::ostringstream out;
     out.imbue(std::locale::classic());  // Force "C" locale with '.' decimal
     bool anytexture = (stats.texture_queries + stats.texture3d_queries
-                       + stats.shadow_queries + stats.environment_queries);
+                       + stats.shadow_queries + stats.environment_queries
+                       + stats.imageinfo_queries);
     if (level > 0 && anytexture) {
         out << "OpenImageIO Texture statistics\n";
 
@@ -425,6 +400,8 @@ TextureSystemImpl::getstats(int level, bool icstats) const
             << stats.shadow_batches << " batches\n";
         out << "    environment :  " << stats.environment_queries
             << " queries in " << stats.environment_batches << " batches\n";
+        out << "    gettextureinfo :  " << stats.imageinfo_queries
+            << " queries\n";
         out << "  Interpolations :\n";
         out << "    closest  : " << stats.closest_interps << "\n";
         out << "    bilinear : " << stats.bilinear_interps << "\n";
@@ -460,7 +437,7 @@ TextureSystemImpl::printstats() const
 void
 TextureSystemImpl::reset_stats()
 {
-    ASSERT(m_imagecache);
+    OIIO_DASSERT(m_imagecache);
     m_imagecache->reset_stats();
 }
 
@@ -700,13 +677,13 @@ TextureSystemImpl::get_texels(TextureHandle* texture_handle_,
     }
     int subimage = options.subimage;
     if (subimage < 0 || subimage >= texfile->subimages()) {
-        errorf("get_texel asked for nonexistant subimage %d of \"%s\"",
+        errorf("get_texel asked for nonexistent subimage %d of \"%s\"",
                subimage, texfile->filename());
         return false;
     }
     if (miplevel < 0 || miplevel >= texfile->miplevels(subimage)) {
         if (texfile->errors_should_issue())
-            errorf("get_texel asked for nonexistant MIP level %d of \"%s\"",
+            errorf("get_texel asked for nonexistent MIP level %d of \"%s\"",
                    miplevel, texfile->filename());
         return false;
     }
@@ -731,10 +708,11 @@ TextureSystemImpl::get_texels(TextureHandle* texture_handle_,
     size_t formatpixelsize   = nchannels * formatchannelsize;
     size_t scanlinesize      = (xend - xbegin) * formatpixelsize;
     size_t zplanesize        = (yend - ybegin) * scanlinesize;
+    imagesize_t npixelsread  = 0;
     bool ok                  = true;
     for (int z = zbegin; z < zend; ++z) {
         if (z < spec.z || z >= (spec.z + std::max(spec.depth, 1))) {
-            // nonexistant planes
+            // nonexistent planes
             memset(result, 0, zplanesize);
             result = (void*)((char*)result + zplanesize);
             continue;
@@ -742,21 +720,21 @@ TextureSystemImpl::get_texels(TextureHandle* texture_handle_,
         tileid.z(z - ((z - spec.z) % std::max(1, spec.tile_depth)));
         for (int y = ybegin; y < yend; ++y) {
             if (y < spec.y || y >= (spec.y + spec.height)) {
-                // nonexistant scanlines
+                // nonexistent scanlines
                 memset(result, 0, scanlinesize);
                 result = (void*)((char*)result + scanlinesize);
                 continue;
             }
             tileid.y(y - ((y - spec.y) % spec.tile_height));
-            for (int x = xbegin; x < xend; ++x) {
+            for (int x = xbegin; x < xend; ++x, ++npixelsread) {
                 if (x < spec.x || x >= (spec.x + spec.width)) {
-                    // nonexistant columns
+                    // nonexistent columns
                     memset(result, 0, formatpixelsize);
                     result = (void*)((char*)result + formatpixelsize);
                     continue;
                 }
                 tileid.x(x - ((x - spec.x) % spec.tile_width));
-                ok &= find_tile(tileid, thread_info);
+                ok &= find_tile(tileid, thread_info, npixelsread == 0);
                 TileRef& tile(thread_info->tile);
                 const char* data;
                 if (tile
@@ -805,9 +783,9 @@ TextureSystemImpl::append_error(const std::string& message) const
         errptr = new std::string;
         m_errormessage.reset(errptr);
     }
-    ASSERT(errptr != NULL);
-    ASSERT(errptr->size() < 1024 * 1024 * 16
-           && "Accumulated error messages > 16MB. Try checking return codes!");
+    OIIO_DASSERT(
+        errptr->size() < 1024 * 1024 * 16
+        && "Accumulated error messages > 16MB. Try checking return codes!");
     if (errptr->size())
         *errptr += '\n';
     *errptr += message;
@@ -817,9 +795,9 @@ TextureSystemImpl::append_error(const std::string& message) const
 
 // Implementation of invalidate -- just invalidate the image cache.
 void
-TextureSystemImpl::invalidate(ustring filename)
+TextureSystemImpl::invalidate(ustring filename, bool force)
 {
-    m_imagecache->invalidate(filename);
+    m_imagecache->invalidate(filename, force);
 }
 
 
@@ -1028,7 +1006,8 @@ TextureSystemImpl::texture(TextureHandle* texture_handle_,
         (PerThreadInfo*)thread_info_);
     TextureFile* texturefile = (TextureFile*)texture_handle_;
     if (texturefile->is_udim())
-        texturefile = m_imagecache->resolve_udim(texturefile, s, t);
+        texturefile = m_imagecache->resolve_udim(texturefile, thread_info, s,
+                                                 t);
 
     texturefile = verify_texturefile(texturefile, thread_info);
 
@@ -1235,7 +1214,7 @@ TextureSystemImpl::texture_lookup_nomip(
     float* dresultdt)
 {
     // Initialize results to 0.  We'll add from here on as we sample.
-    DASSERT((dresultds == NULL) == (dresultdt == NULL));
+    OIIO_DASSERT((dresultds == NULL) == (dresultdt == NULL));
     ((simd::vfloat4*)result)->clear();
     if (dresultds) {
         ((simd::vfloat4*)dresultds)->clear();
@@ -1253,7 +1232,10 @@ TextureSystemImpl::texture_lookup_nomip(
     OIIO_SIMD4_ALIGN float sval[4] = { s, 0.0f, 0.0f, 0.0f };
     OIIO_SIMD4_ALIGN float tval[4] = { t, 0.0f, 0.0f, 0.0f };
     static OIIO_SIMD4_ALIGN float weight[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
-    bool ok = (this->*sampler)(1, sval, tval, 0 /*miplevel*/, texturefile,
+    ImageCacheFile::SubimageInfo& subinfo(
+        texturefile.subimageinfo(options.subimage));
+    int min_mip_level = subinfo.min_mip_level;
+    bool ok = (this->*sampler)(1, sval, tval, min_mip_level, texturefile,
                                thread_info, options, nchannels_result,
                                actualchannels, weight, (vfloat4*)result,
                                (vfloat4*)dresultds, (vfloat4*)dresultdt);
@@ -1347,7 +1329,7 @@ adjust_blur(float& majorlength, float& minorlength, float& theta, float sblur,
         // Carefully add blur to the right derivative components in the
         // right proportions -- merely adding the same amount of blur
         // to all four derivatives blurs too much at some angles.
-        DASSERT(majorlength > 0.0f && minorlength > 0.0f);
+        OIIO_DASSERT(majorlength > 0.0f && minorlength > 0.0f);
         float sintheta, costheta;
 #ifdef TEX_FAST_MATH
         fast_sincos(theta, &sintheta, &costheta);
@@ -1398,9 +1380,10 @@ compute_miplevels(TextureSystemImpl::TextureFile& texturefile,
 {
     ImageCacheFile::SubimageInfo& subinfo(
         texturefile.subimageinfo(options.subimage));
-    float levelblend = 0.0f;
-    int nmiplevels   = (int)subinfo.levels.size();
-    for (int m = 0; m < nmiplevels; ++m) {
+    float levelblend  = 0.0f;
+    int nmiplevels    = (int)subinfo.levels.size();
+    int min_mip_level = subinfo.min_mip_level;
+    for (int m = min_mip_level; m < nmiplevels; ++m) {
         // Compute the filter size (minor axis) in raster space at this
         // MIP level.  We use the smaller of the two texture resolutions,
         // which is better than just using one, but a more principled
@@ -1426,11 +1409,11 @@ compute_miplevels(TextureSystemImpl::TextureFile& texturefile,
         miplevel[0] = nmiplevels - 1;
         miplevel[1] = miplevel[0];
         levelblend  = 0;
-    } else if (miplevel[0] < 0) {
+    } else if (miplevel[0] < min_mip_level) {
         // We wish we had even more resolution than the finest MIP level,
         // but tough for us.
-        miplevel[0] = 0;
-        miplevel[1] = 0;
+        miplevel[0] = min_mip_level;
+        miplevel[1] = min_mip_level;
         levelblend  = 0;
         // It's possible that minorlength is degenerate, giving an aspect
         // ratio that implies a huge nsamples, which is pointless if those
@@ -1461,7 +1444,7 @@ TextureSystemImpl::texture_lookup_trilinear_mipmap(
     float* dresultdt)
 {
     // Initialize results to 0.  We'll add from here on as we sample.
-    DASSERT((dresultds == NULL) == (dresultdt == NULL));
+    OIIO_DASSERT((dresultds == NULL) == (dresultdt == NULL));
     ((simd::vfloat4*)result)->clear();
     if (dresultds) {
         ((simd::vfloat4*)dresultds)->clear();
@@ -1667,7 +1650,7 @@ TextureSystemImpl::texture_lookup(TextureFile& texturefile,
                                   float dtdy, float* result, float* dresultds,
                                   float* dresultdt)
 {
-    DASSERT((dresultds == NULL) == (dresultdt == NULL));
+    OIIO_DASSERT((dresultds == NULL) == (dresultdt == NULL));
 
     // Compute the natural resolution we want for the bare derivs, this
     // will be the threshold for knowing we're maxifying (and therefore
@@ -1704,7 +1687,8 @@ TextureSystemImpl::texture_lookup(TextureFile& texturefile,
                       miplevel, levelweight);
 
     float* lineweight
-        = ALLOCA(float, round_to_multiple_of_pow2(2 * options.anisotropic, 4));
+        = OIIO_ALLOCA(float,
+                      round_to_multiple_of_pow2(2 * options.anisotropic, 4));
     float invsamples;
     int nsamples = compute_ellipse_sampling(aspect, theta, majorlength,
                                             minorlength, smajor, tmajor,
@@ -1846,10 +1830,10 @@ TextureSystemImpl::pole_color(TextureFile& texturefile,
         static spin_mutex mutex;  // Protect everybody's polecolor
         spin_lock lock(mutex);
         if (!levelinfo.polecolorcomputed) {
-            DASSERT(levelinfo.polecolor.size() == 0);
+            OIIO_DASSERT(levelinfo.polecolor.size() == 0);
             levelinfo.polecolor.resize(2 * spec.nchannels);
-            ASSERT(tile->id().nchannels() == spec.nchannels
-                   && "pole_color doesn't work for channel subsets");
+            OIIO_DASSERT(tile->id().nchannels() == spec.nchannels
+                         && "pole_color doesn't work for channel subsets");
             int pixelsize                = tile->pixelsize();
             TypeDesc::BASETYPE pixeltype = texturefile.pixeltype(subimage);
             // We store north and south poles adjacently in polecolor
@@ -1872,7 +1856,7 @@ TextureSystemImpl::pole_color(TextureFile& texturefile,
                         else if (pixeltype == TypeDesc::HALF)
                             p[c] += ((const half*)texel)[c];
                         else {
-                            DASSERT(pixeltype == TypeDesc::FLOAT);
+                            OIIO_DASSERT(pixeltype == TypeDesc::FLOAT);
                             p[c] += ((const float*)texel)[c];
                         }
                     }
@@ -1979,7 +1963,7 @@ TextureSystemImpl::sample_closest(
         int tile_s = (stex - spec.x) % spec.tile_width;
         int tile_t = (ttex - spec.y) % spec.tile_height;
         id.xy(stex - tile_s, ttex - tile_t);
-        bool ok = find_tile(id, thread_info);
+        bool ok = find_tile(id, thread_info, sample == 0);
         if (!ok)
             errorf("%s", m_imagecache->geterror());
         TileRef& tile(thread_info->tile);
@@ -1989,7 +1973,7 @@ TextureSystemImpl::sample_closest(
         }
         int offset = id.nchannels() * (tile_t * spec.tile_width + tile_s)
                      + (firstchannel - id.chbegin());
-        DASSERT((size_t)offset < spec.nchannels * spec.tile_pixels());
+        OIIO_DASSERT((size_t)offset < spec.nchannels * spec.tile_pixels());
         simd::vfloat4 texel_simd;
         if (pixeltype == TypeDesc::UINT8) {
             // special case for 8-bit tiles
@@ -1999,7 +1983,7 @@ TextureSystemImpl::sample_closest(
         } else if (pixeltype == TypeDesc::HALF) {
             texel_simd = half2float4(tile->halfdata() + offset);
         } else {
-            DASSERT(pixeltype == TypeDesc::FLOAT);
+            OIIO_DASSERT(pixeltype == TypeDesc::FLOAT);
             texel_simd.load(tile->floatdata() + offset);
         }
 
@@ -2164,7 +2148,7 @@ TextureSystemImpl::sample_bilinear(
         if (onetile && all(stvalid)) {
             // Shortcut if all the texels we need are on the same tile
             id.xy(sttex[S0] - tile_st[S0], sttex[T0] - tile_st[T0]);
-            bool ok = find_tile(id, thread_info);
+            bool ok = find_tile(id, thread_info, sample == 0);
             if (!ok)
                 errorf("%s", m_imagecache->geterror());
             TileRef& tile(thread_info->tile);
@@ -2195,7 +2179,7 @@ TextureSystemImpl::sample_bilinear(
                 texel_simd[1][0] = half2float4((half*)p);
                 texel_simd[1][1] = half2float4((half*)(p + pixelsize));
             } else {
-                DASSERT(pixeltype == TypeDesc::FLOAT);
+                OIIO_DASSERT(pixeltype == TypeDesc::FLOAT);
                 texel_simd[0][0].load((const float*)p);
                 texel_simd[0][1].load((const float*)(p + pixelsize));
                 p += pixelsize * spec.tile_width;
@@ -2225,21 +2209,21 @@ TextureSystemImpl::sample_bilinear(
                     // iteration, as long as we aren't using mirror wrap mode!
                     if (i == 0 || tile_s == 0 || noreusetile) {
                         id.xy(tile_edge[S0 + i], tile_edge[T0 + j]);
-                        bool ok = find_tile(id, thread_info);
+                        bool ok = find_tile(id, thread_info, sample == 0);
                         if (!ok)
                             errorf("%s", m_imagecache->geterror());
                         if (!thread_info->tile->valid()) {
                             return false;
                         }
-                        DASSERT(thread_info->tile->id() == id);
+                        OIIO_DASSERT(thread_info->tile->id() == id);
                     }
                     TileRef& tile(thread_info->tile);
                     int pixelsize = tile->pixelsize();
                     int offset    = pixelsize
                                  * (tile_t * spec.tile_width + tile_s);
                     offset += (firstchannel - id.chbegin()) * channelsize;
-                    DASSERT(offset < spec.tile_width * spec.tile_height
-                                         * spec.tile_depth * pixelsize);
+                    OIIO_DASSERT(offset < spec.tile_width * spec.tile_height
+                                              * spec.tile_depth * pixelsize);
                     if (pixeltype == TypeDesc::UINT8)
                         texel_simd[j][i] = uchar2float4(
                             (const unsigned char*)(tile->bytedata() + offset));
@@ -2250,7 +2234,7 @@ TextureSystemImpl::sample_bilinear(
                         texel_simd[j][i] = half2float4(
                             (const half*)(tile->bytedata() + offset));
                     else {
-                        DASSERT(pixeltype == TypeDesc::FLOAT);
+                        OIIO_DASSERT(pixeltype == TypeDesc::FLOAT);
                         texel_simd[j][i].load(
                             (const float*)(tile->bytedata() + offset));
                     }
@@ -2529,7 +2513,7 @@ TextureSystemImpl::sample_bicubic(
         if (onetile & allvalid) {
             // Shortcut if all the texels we need are on the same tile
             id.xy(stex[0] - tile_s, ttex[0] - tile_t);
-            bool ok = find_tile(id, thread_info);
+            bool ok = find_tile(id, thread_info, sample == 0);
             if (!ok)
                 errorf("%s", m_imagecache->geterror());
             TileRef& tile(thread_info->tile);
@@ -2541,7 +2525,7 @@ TextureSystemImpl::sample_bicubic(
             int offset = pixelsize * (tile_t * spec.tile_width + tile_s);
             const unsigned char* base = tile->bytedata() + offset
                                         + firstchannel_offset_bytes;
-            DASSERT(tile->data());
+            OIIO_DASSERT(tile->data());
             if (pixeltype == TypeDesc::UINT8) {
                 for (int j = 0, j_offset = 0; j < 4;
                      ++j, j_offset += pixelsize * spec.tile_width)
@@ -2599,15 +2583,15 @@ TextureSystemImpl::sample_bicubic(
                     if (i == 0 || tile_s[i] == 0
                         || options.swrap == TextureOpt::WrapMirror) {
                         id.xy(tile_s_edge[i], tile_t_edge[j]);
-                        bool ok = find_tile(id, thread_info);
+                        bool ok = find_tile(id, thread_info, sample == 0);
                         if (!ok)
                             errorf("%s", m_imagecache->geterror());
-                        DASSERT(thread_info->tile->id() == id);
+                        OIIO_DASSERT(thread_info->tile->id() == id);
                         if (!thread_info->tile->valid())
                             return false;
                     }
                     TileRef& tile(thread_info->tile);
-                    DASSERT(tile->data());
+                    OIIO_DASSERT(tile->data());
                     int offset = row_offset_bytes + column_offset_bytes[i];
                     // const unsigned char *pixelptr = tile->bytedata() + offset[i];
                     if (pixeltype == TypeDesc::UINT8)
@@ -2814,7 +2798,7 @@ TextureSystemImpl::visualize_ellipse(const std::string& name, float dsdx,
     float aspect      = TextureSystemImpl::anisotropic_aspect(majorlength,
                                                          minorlength, options,
                                                          trueaspect);
-    float* lineweight = ALLOCA(float, 2 * options.anisotropic);
+    float* lineweight = OIIO_ALLOCA(float, 2 * options.anisotropic);
     float smajor, tmajor, invsamples;
     int nsamples = compute_ellipse_sampling(aspect, theta, majorlength,
                                             minorlength, smajor, tmajor,

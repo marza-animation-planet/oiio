@@ -250,12 +250,10 @@ The total number of pixels in the region described by the \ROI.
 \apiend
 
 \apiitem{int ROI.{\ce contains} (x, y, z=0, ch=0)}
-\NEW % 1.9
 Returns {\cf True} if the ROI contains the coordinate.
 \apiend
 
 \apiitem{int ROI.{\ce contains} (other)}
-\NEW % 1.9
 Returns {\cf True} if the ROI {\cf other} is entirel contained within
 this ROI.
 \apiend
@@ -420,12 +418,10 @@ The value of the indexed attribute.
 \apiend
 
 \apiitem{Imagespec.{\ce roi}}
-\NEW % 1.9
 The ROI describing the pixel data window.
 \apiend
 
 \apiitem{ImageSpec.{\ce roi_full}}
-\NEW % 1.9
 The ROI describing the ``display window'' (or ``full size'').
 \apiend
 
@@ -539,63 +535,68 @@ value) if not found.
 \end{code}
 \apiend
 
+\apiitem{ImageSpec{\ce [name]}}
+\NEW % 2.1
+Retrieve or set metadata using a dictionary-like syntax, rather than
+{\cf attribute()} and {\cf getattribute()}. This is best illustrated by
+example:
+
+\begin{code}
+    comp = spec["Compression"]
+    # Same as:  comp = spec.getattribute("Compression")
+
+    spec["Compression"] = comp
+    # Same as: spec.attribute("Compression", comp)
+\end{code}
+\apiend
+
 %\apiitem{static ImageSpec.{\ce metadata_val} (paramval, human=False)}
 %For a \ParamValue, format its value as a string.
 %\apiend
 
 \apiitem{ImageSpec.{\ce serialize} (format="text", verbose="Detailed")}
-\NEW % 1.9
 Return a string containing the serialization of the \ImageSpec. The {\cf format}
 may be either \qkw{text} or \qkw{XML}. The {\cf verbose} may be one of
 \qkw{brief}, \qkw{detailed}, or \qkw{detailedhuman}.
 \apiend
 
 \apiitem{ImageSpec.{\ce to_xml} ()}
-\NEW % 1.9
 Equivalent to {\cf serialize ("xml", "detailedhuman")}.
 \apiend
 
 \apiitem{ImageSpec.{\ce from_xml} (xml)}
-\NEW % 1.9
 Initializes the \ImageSpec from the information in the string {\cf xml}
 containing an XML-serialized \ImageSpec.
 \apiend
 
 \apiitem{ImageSpec.{\ce channel_name} (chan)}
-\NEW % 1.9
 Returns a string containing the name of the channel with index {\cf chan}.
 \apiend
 
 \apiitem{ImageSpec.{\ce channelindex} (name)}
-\NEW % 1.9
 Return the integer index of the channel with the given {\cf name}, or
 -1 if the name is not a name of one of the channels.
 \apiend
 
 \apiitem{ImageSpec.{\ce channelformat} (chan)}
-\NEW % 1.9
 Returns a \TypeDesc of the channel with index {\cf chan}.
 \apiend
 
 \apiitem{ImageSpec.{\ce get_channelformats} ()}
-\NEW % 1.9
 Returns a tuple containing all the channel formats.
 \apiend
 
 \apiitem{ImageSpec.{\ce valid_tile_range} (xbegin, xend, ybegin, yend, zbegin, zend)}
-\NEW % 1.9
 Returns {\cf True} if the given tile range exactly covers a set of tiles, or
 {\cf False} if it isn't (or if the image is not tiled).
 \apiend
 
 \apiitem{ImageSpec.{\ce copy_dimensions} (other)}
-\NEW % 1.9
 Copies from \ImageSpec {\cf other} only the fields describing the size
 and data types, but not the arbitrary named metadata or channel names.
 \apiend
 
 \apiitem{ImageSpec.{\ce undefined}()}
-\NEW % 1.9
 Returns {\cf True} for a newly initialized (undefined) \ImageSpec.
 \apiend
 
@@ -872,7 +873,6 @@ MIP level of the file.
 
 \apiitem{ImageSpec ImageInput.{\ce spec} (subimage, miplevel=0) \\
 ImageSpec ImageInput.{\ce spec_dimensions} (subimage, miplevel=0)}
-\NEW % 1.9
 Returns a copy of the \ImageSpec corresponding to the designated subimage
 and MIP level. Note that {\cf spec()} copies the entire \ImageSpec including
 all metadata, whereas {\cf spec_dimensions()} only copies the dimension
@@ -1025,7 +1025,6 @@ array indexed as {\cf [z][y][x][channel]},
 DeepData ImageInput.{\ce read_native_deep_tiles} (subimage, miplevel, \\
 \bigspc\bigspc xbegin, xend, ybegin, yend, zbegin, zend, chbegin, chend) \\
 DeepData ImageInput.{\ce read_native_deep_image} (subimage=0, miplevel=0)}
-\NEW % 1.9
 Read a collection of scanlines, tiles, or an entire image of ``deep'' pixel
 data from the specified subimage and MIP level. The begin/end coordinates
 are all integer values. The value returned will be a \DeepData if the read
@@ -1097,7 +1096,7 @@ def find_min_max (filename) :
 See Chapter~\ref{chap:imageoutput} for detailed explanations of the
 C++ \ImageOutput class APIs. The Python APIs are very similar.
 
-\apiitem{ImageOutput ImageOutput.{\ce create} (fileformat, plugin_searchpath="")}
+\apiitem{ImageOutput ImageOutput.{\ce create} (filename, plugin_searchpath="")}
 
 Create a new \ImageOutput capable of writing the named file format (which may
 also be a file name, with the type deduced from the extension).  There
@@ -1366,10 +1365,11 @@ Optionally, a specific subimage or MIP level may be specified (defaulting to
 \end{code}
 \apiend
 
-\apiitem{ImageBuf {\ce ImageBuf} (imagespec)}
+\apiitem{ImageBuf {\ce ImageBuf} (imagespec, zero = True)}
 
 Construct a writeable \ImageBuf of the dimensions and data format specified
-by an \ImageSpec.
+by an \ImageSpec. The pixels will be initialized to black/empty values if
+{\cf zero} is True, otherwise the pixel values will remain uninitialized.
 
 \noindent Example:
 \begin{code}
@@ -1379,7 +1379,8 @@ by an \ImageSpec.
 \apiend
 
 \apiitem{ImageBuf.{\ce clear} ()}
-Return the \ImageBuf to its pristine, uninitialized state.
+Resets the \ImageBuf to a pristine state identical to that of a freshly
+constructed \ImageBuf using the default constructor.
 
 \noindent Example:
 \begin{code}
@@ -1397,9 +1398,11 @@ a filename (optionally specifying a subimage, MIP level, and/or
 a ``configuration'' \ImageSpec).
 \apiend
 
-\apiitem{ImageBuf.{\ce reset} (imagespec)}
-Restore the \ImageBuf to the newly-constructed state of a blank, writeable
+\apiitem{ImageBuf.{\ce reset} (imagespec, zero = True)}
+Restore the \ImageBuf to the newly-constructed state of a writeable
 \ImageBuf specified by an \ImageSpec.
+The pixels will be iniialized to black/empty if {\cf zero} is True,
+otherwise the pixel values will remain uninitialized.
 \apiend
 
 \apiitem{bool ImageBuf.{\ce read} (subimage=0, miplevel=0, force=False, convert=oiio.UNKNOWN) \\
@@ -1471,6 +1474,9 @@ full read so that the whole image is in local memory.
 \apiitem{bool ImageBuf.{\ce set_write_format} (format=oiio.UNKNOWN) \\
 bool ImageBuf.{\ce set_write_tiles} (width=0, height=0, depth=0)}
 Override the data format or tile size in a subsequent call to {\cf write()}.
+The {\cf format}argument to {\cf set_write_format} may be either a single
+data type description for all channels, or a tuple giving the data type for
+each channel in order.
 
 \noindent Example:
 \begin{code}
@@ -1578,7 +1584,6 @@ These fields return an \ROI description of the pixel data window
 \apiend
 
 \apiitem{ImageBuf.{\ce set_origin} (x, y, z=0)}
-\NEW % 1.9
 Changes the ``origin'' of the data pixel data window to the specified
 coordinates.
 
@@ -2381,7 +2386,6 @@ interpolate}).
 bool ImageBufAlgo.{\ce fit} (dst, src, filtername="", filtersize=0.0, \\
         \bigspc\bigspc  exact=false, roi=ROI.All, nthreads=0)}
 \index{ImageBufAlgo!fit} \indexapi{fit}
-\NEW % 1.9
 Fit {\cf src} into the {\cf roi} while preserving the
 original aspect ratio, without stretching.  If the filter and size are not
 specified, an appropriate default will be chosen.
@@ -2588,7 +2592,6 @@ bool ImageBufAlgo.{\ce contrast_remap} (ImageBuf \&dst, src,\\
         \bigspc\spc sthresh=0.0, scontrast=1.0, \\
         \bigspc\spc ROI roi=\{\}, int nthreads=0)}
 \index{ImageBufAlgo!contrast_remap} \indexapi{contrast_remap}
-\NEW % 1.9
 
 Return (or copy into {\cf dst}) pixel values that are a contrast-remap
 of the corresponding values of the {\cf src} image, transforming pixel
@@ -3370,7 +3373,7 @@ Section~\ref{sec:iba:importexport}.
     config = ImageSpec()
     config.attribute ("maketx:highlightcomp", 1)
     config.attribute ("maketx:filtername", "lanczos3")
-    config.attribute ("maketx:opaquedetect", 1)
+    config.attribute ("maketx:opaque_detect", 1)
     ImageBufAlgo.make_texture (oiio.MakeTxTexture, Input,
                                "texture.exr", config)
 \end{code}

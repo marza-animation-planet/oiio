@@ -1,36 +1,11 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cmath>
 #include <cstdarg>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -56,13 +31,34 @@
 #endif
 
 
+// We use the public domain stb implementation of vsnprintf because
+// not all platforms support a locale-independent version of vsnprintf.
+// See: https://github.com/nothings/stb/blob/master/stb_sprintf.h
+#define STB_SPRINTF_DECORATE(name) oiio_stbsp_##name
+#define STB_SPRINTF_IMPLEMENTATION 1
+#if defined(__GNUG__) && !defined(__clang__)
+#    pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#    define STBI__ASAN OIIO_NO_SANITIZE_ADDRESS
+#endif
+#define stbsp__uintptr std::uintptr_t
+#include "stb_sprintf.h"
+
 
 OIIO_NAMESPACE_BEGIN
 
 
 namespace {
 static std::mutex output_mutex;
-};
+
+// On systems that support it, get a location independent locale.
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)           \
+    || defined(__FreeBSD_kernel__) || defined(__GLIBC__)
+static locale_t c_loc = newlocale(LC_ALL_MASK, "C", nullptr);
+#elif defined(_WIN32)
+static _locale_t c_loc = _create_locale(LC_ALL, "C");
+#endif
+
+};  // namespace
 
 
 
@@ -172,7 +168,8 @@ Strutil::vsprintf(const char* fmt, va_list ap)
 #else
         apsave = ap;
 #endif
-        int needed = vsnprintf(buf, size, fmt, ap);
+
+        int needed = oiio_stbsp_vsnprintf(buf, size, fmt, ap);
         va_end(ap);
 
         // NB. C99 says vsnprintf returns -1 on an encoding error. Otherwise
@@ -267,7 +264,13 @@ bool
 Strutil::get_rest_arguments(const std::string& str, std::string& base,
                             std::map<std::string, std::string>& result)
 {
-    std::string::size_type mark_pos = str.find_first_of("?");
+    // Disregard the Windows long path question style prefix "\\?\"
+    static const std::string longPathQPrefix("\\\\?\\");
+    auto find_start_pos = starts_with(str, longPathQPrefix)
+                              ? longPathQPrefix.size()
+                              : size_t(0);
+
+    std::string::size_type mark_pos = str.find_first_of("?", find_start_pos);
     if (mark_pos == std::string::npos) {
         base = str;
         return true;
@@ -478,14 +481,14 @@ Strutil::to_upper(std::string& a)
 
 
 bool
-Strutil::StringIEqual::operator()(const char* a, const char* b) const
+Strutil::StringIEqual::operator()(const char* a, const char* b) const noexcept
 {
     return boost::algorithm::iequals(a, b, std::locale::classic());
 }
 
 
 bool
-Strutil::StringILess::operator()(const char* a, const char* b) const
+Strutil::StringILess::operator()(const char* a, const char* b) const noexcept
 {
     return boost::algorithm::ilexicographical_compare(a, b,
                                                       std::locale::classic());
@@ -524,7 +527,7 @@ Strutil::strip(string_view str, string_view chars)
     if (b == std::string::npos)
         return string_view();
     size_t e = str.find_last_not_of(chars);
-    DASSERT(e != std::string::npos);
+    OIIO_DASSERT(e != std::string::npos);
     return str.substr(b, e - b + 1);
 }
 
@@ -563,8 +566,8 @@ Strutil::splits(string_view str, string_view sep, int maxsplit)
     auto sr_result = splitsv(str, sep, maxsplit);
     std::vector<std::string> result;
     result.reserve(sr_result.size());
-    for (size_t i = 0, e = sr_result.size(); i != e; ++i)
-        result.push_back(sr_result[i]);
+    for (auto& s : sr_result)
+        result.push_back(s);
     return result;
 }
 
@@ -583,6 +586,8 @@ std::vector<string_view>
 Strutil::splitsv(string_view str, string_view sep, int maxsplit)
 {
     std::vector<string_view> result;
+    if (str.size() == 0)
+        return result;  // No source string --> no pieces
 
     // Implementation inspired by Pystring
     if (maxsplit < 0)
@@ -618,12 +623,40 @@ Strutil::split(string_view str, std::vector<string_view>& result,
 
 
 std::string
+Strutil::concat(string_view s, string_view t)
+{
+    size_t sl  = s.size();
+    size_t tl  = t.size();
+    size_t len = sl + tl;
+    std::unique_ptr<char[]> heap_buf;
+    char local_buf[256];
+    char* buf = local_buf;
+    if (len > sizeof(local_buf)) {
+        heap_buf.reset(new char[len]);
+        buf = heap_buf.get();
+    }
+    memcpy(buf, s.data(), sl);
+    memcpy(buf + sl, t.data(), tl);
+    return std::string(buf, len);
+}
+
+
+
+std::string
 Strutil::repeat(string_view str, int n)
 {
-    std::ostringstream out;
-    while (n-- > 0)
-        out << str;
-    return out.str();
+    size_t sl  = str.size();
+    size_t len = sl * std::max(0, n);
+    std::unique_ptr<char[]> heap_buf;
+    char local_buf[256];
+    char* buf = local_buf;
+    if (len > sizeof(local_buf)) {
+        heap_buf.reset(new char[len]);
+        buf = heap_buf.get();
+    }
+    for (int i = 0; i < n; ++i)
+        memcpy(buf + i * sl, str.data(), sl);
+    return std::string(buf, len);
 }
 
 
@@ -656,7 +689,7 @@ Strutil::replace(string_view str, string_view pattern, string_view replacement,
 
 #ifdef _WIN32
 std::wstring
-Strutil::utf8_to_utf16(string_view str)
+Strutil::utf8_to_utf16(string_view str) noexcept
 {
     std::wstring native;
 
@@ -671,7 +704,7 @@ Strutil::utf8_to_utf16(string_view str)
 
 
 std::string
-Strutil::utf16_to_utf8(const std::wstring& str)
+Strutil::utf16_to_utf8(const std::wstring& str) noexcept
 {
     std::string utf8;
 
@@ -687,7 +720,7 @@ Strutil::utf16_to_utf8(const std::wstring& str)
 
 
 char*
-Strutil::safe_strcpy(char* dst, string_view src, size_t size)
+Strutil::safe_strcpy(char* dst, string_view src, size_t size) noexcept
 {
     if (src.size()) {
         size_t end = std::min(size - 1, src.size());
@@ -705,16 +738,26 @@ Strutil::safe_strcpy(char* dst, string_view src, size_t size)
 
 
 void
-Strutil::skip_whitespace(string_view& str)
+Strutil::skip_whitespace(string_view& str) noexcept
 {
-    while (str.size() && isspace(str[0]))
+    while (str.size() && isspace(str.front()))
         str.remove_prefix(1);
 }
 
 
 
+void
+Strutil::remove_trailing_whitespace(string_view& str) noexcept
+{
+    while (str.size() && isspace(str.back()))
+        str.remove_suffix(1);
+}
+
+
+
 bool
-Strutil::parse_char(string_view& str, char c, bool skip_whitespace, bool eat)
+Strutil::parse_char(string_view& str, char c, bool skip_whitespace,
+                    bool eat) noexcept
 {
     string_view p = str;
     if (skip_whitespace)
@@ -732,7 +775,7 @@ Strutil::parse_char(string_view& str, char c, bool skip_whitespace, bool eat)
 
 
 bool
-Strutil::parse_until_char(string_view& str, char c, bool eat)
+Strutil::parse_until_char(string_view& str, char c, bool eat) noexcept
 {
     string_view p = str;
     while (p.size() && p[0] != c)
@@ -745,7 +788,7 @@ Strutil::parse_until_char(string_view& str, char c, bool eat)
 
 
 bool
-Strutil::parse_prefix(string_view& str, string_view prefix, bool eat)
+Strutil::parse_prefix(string_view& str, string_view prefix, bool eat) noexcept
 {
     string_view p = str;
     skip_whitespace(p);
@@ -761,7 +804,7 @@ Strutil::parse_prefix(string_view& str, string_view prefix, bool eat)
 
 
 bool
-Strutil::parse_int(string_view& str, int& val, bool eat)
+Strutil::parse_int(string_view& str, int& val, bool eat) noexcept
 {
     string_view p = str;
     skip_whitespace(p);
@@ -780,7 +823,7 @@ Strutil::parse_int(string_view& str, int& val, bool eat)
 
 
 bool
-Strutil::parse_float(string_view& str, float& val, bool eat)
+Strutil::parse_float(string_view& str, float& val, bool eat) noexcept
 {
     string_view p = str;
     skip_whitespace(p);
@@ -800,7 +843,7 @@ Strutil::parse_float(string_view& str, float& val, bool eat)
 
 bool
 Strutil::parse_string(string_view& str, string_view& val, bool eat,
-                      QuoteBehavior keep_quotes)
+                      QuoteBehavior keep_quotes) noexcept
 {
     string_view p = str;
     skip_whitespace(p);
@@ -837,7 +880,7 @@ Strutil::parse_string(string_view& str, string_view& val, bool eat,
 
 
 string_view
-Strutil::parse_word(string_view& str, bool eat)
+Strutil::parse_word(string_view& str, bool eat) noexcept
 {
     string_view p = str;
     skip_whitespace(p);
@@ -855,7 +898,7 @@ Strutil::parse_word(string_view& str, bool eat)
 
 
 string_view
-Strutil::parse_identifier(string_view& str, bool eat)
+Strutil::parse_identifier(string_view& str, bool eat) noexcept
 {
     string_view p = str;
     skip_whitespace(p);
@@ -876,7 +919,8 @@ Strutil::parse_identifier(string_view& str, bool eat)
 
 
 string_view
-Strutil::parse_identifier(string_view& str, string_view allowed, bool eat)
+Strutil::parse_identifier(string_view& str, string_view allowed,
+                          bool eat) noexcept
 {
     string_view p = str;
     skip_whitespace(p);
@@ -901,7 +945,8 @@ Strutil::parse_identifier(string_view& str, string_view allowed, bool eat)
 
 
 bool
-Strutil::parse_identifier_if(string_view& str, string_view id, bool eat)
+Strutil::parse_identifier_if(string_view& str, string_view id,
+                             bool eat) noexcept
 {
     string_view head = parse_identifier(str, false /* don't eat */);
     if (head == id) {
@@ -915,7 +960,7 @@ Strutil::parse_identifier_if(string_view& str, string_view id, bool eat)
 
 
 string_view
-Strutil::parse_until(string_view& str, string_view sep, bool eat)
+Strutil::parse_until(string_view& str, string_view sep, bool eat) noexcept
 {
     string_view p     = str;
     const char *begin = p.begin(), *end = p.begin();
@@ -932,7 +977,7 @@ Strutil::parse_until(string_view& str, string_view sep, bool eat)
 
 
 string_view
-Strutil::parse_while(string_view& str, string_view set, bool eat)
+Strutil::parse_while(string_view& str, string_view set, bool eat) noexcept
 {
     string_view p     = str;
     const char *begin = p.begin(), *end = p.begin();
@@ -949,7 +994,7 @@ Strutil::parse_while(string_view& str, string_view set, bool eat)
 
 
 string_view
-Strutil::parse_nested(string_view& str, bool eat)
+Strutil::parse_nested(string_view& str, bool eat) noexcept
 {
     // Make sure we have a valid string and ascertain the characters that
     // nest and unnest.
@@ -981,7 +1026,7 @@ Strutil::parse_nested(string_view& str, bool eat)
     if (nesting)
         return string_view();  // No proper closing
 
-    ASSERT(p[len - 1] == closing);
+    OIIO_ASSERT(p[len - 1] == closing);
 
     // The result is the first len characters
     string_view result = str.substr(0, len);
@@ -1236,22 +1281,17 @@ Strutil::stoi(string_view str, size_t* pos, int base)
 
 
 float
-Strutil::strtof(const char* nptr, char** endptr)
+Strutil::strtof(const char* nptr, char** endptr) noexcept
 {
     // Can use strtod_l on platforms that support it
-#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)           \
-    || defined(__FreeBSD_kernel__) || defined(__GLIBC__)
-    // static initialization inside function is thread-safe by C++11 rules!
-    static locale_t c_loc = newlocale(LC_ALL_MASK, "C", nullptr);
-#    ifdef __APPLE__
+#ifdef __APPLE__
     // On OSX, strtod_l is for some reason drastically faster than strtof_l.
     return static_cast<float>(strtod_l(nptr, endptr, c_loc));
-#    else
+#elif defined(__linux__) || defined(__FreeBSD__)                               \
+    || defined(__FreeBSD_kernel__) || defined(__GLIBC__)
     return strtof_l(nptr, endptr, c_loc);
-#    endif
 #elif defined(_WIN32)
     // Windows has _strtod_l
-    static _locale_t c_loc = _create_locale(LC_ALL, "C");
     return static_cast<float>(_strtod_l(nptr, endptr, c_loc));
 #else
     // On platforms without strtof_l...
@@ -1260,7 +1300,7 @@ Strutil::strtof(const char* nptr, char** endptr)
         = std::use_facet<std::numpunct<char>>(native).decimal_point();
     // If the native locale uses decimal, just directly use strtof.
     if (nativepoint == '.')
-        return strtof(nptr, endptr);
+        return ::strtof(nptr, endptr);
     // Complex case -- CHEAT by making a copy of the string and replacing
     // the decimal, then use system strtof!
     std::string s(nptr);
@@ -1273,23 +1313,21 @@ Strutil::strtof(const char* nptr, char** endptr)
         return d;
     }
     // No decimal point at all -- use regular strtof
-    return strtof(s.c_str(), endptr);
+    return ::strtof(s.c_str(), endptr);
 #endif
 }
 
 
 double
-Strutil::strtod(const char* nptr, char** endptr)
+Strutil::strtod(const char* nptr, char** endptr) noexcept
 {
     // Can use strtod_l on platforms that support it
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)           \
     || defined(__FreeBSD_kernel__) || defined(__GLIBC__)
     // static initialization inside function is thread-safe by C++11 rules!
-    static locale_t c_loc = newlocale(LC_ALL_MASK, "C", nullptr);
     return strtod_l(nptr, endptr, c_loc);
 #elif defined(_WIN32)
     // Windows has _strtod_l
-    static _locale_t c_loc = _create_locale(LC_ALL, "C");
     return _strtod_l(nptr, endptr, c_loc);
 #else
     // On platforms without strtod_l...
@@ -1298,7 +1336,7 @@ Strutil::strtod(const char* nptr, char** endptr)
         = std::use_facet<std::numpunct<char>>(native).decimal_point();
     // If the native locale uses decimal, just directly use strtod.
     if (nativepoint == '.')
-        return strtod(nptr, endptr);
+        return ::strtod(nptr, endptr);
     // Complex case -- CHEAT by making a copy of the string and replacing
     // the decimal, then use system strtod!
     std::string s(nptr);
@@ -1311,7 +1349,7 @@ Strutil::strtod(const char* nptr, char** endptr)
         return d;
     }
     // No decimal point at all -- use regular strtod
-    return strtod(s.c_str(), endptr);
+    return ::strtod(s.c_str(), endptr);
 #endif
 }
 

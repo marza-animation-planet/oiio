@@ -1,32 +1,6 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include "py_oiio.h"
 
@@ -252,8 +226,13 @@ declare_imagespec(py::module& m)
             "name"_a, "defaultval"_a = "")
         .def("getattribute", &ImageSpec_getattribute_typed, "name"_a,
              "type"_a = TypeUnknown)
-        .def("erase_attribute", &ImageSpec::erase_attribute, "name"_a = "",
-             "type"_a = TypeUnknown, "casesensitive"_a = false)
+        .def(
+            "erase_attribute",
+            [](ImageSpec& spec, const std::string& name, TypeDesc type,
+               bool casesensitive = false) {
+                return spec.erase_attribute(name, type, casesensitive);
+            },
+            "name"_a = "", "type"_a = TypeUnknown, "casesensitive"_a = false)
 
         .def_static(
             "metadata_val",
@@ -283,7 +262,19 @@ declare_imagespec(py::module& m)
         .def("from_xml", &ImageSpec::from_xml)
         .def("valid_tile_range", &ImageSpec::valid_tile_range, "xbegin"_a,
              "xend"_a, "ybegin"_a, "yend"_a, "zbegin"_a, "zend"_a)
-        .def("copy_dimensions", &ImageSpec::copy_dimensions, "other"_a);
+        .def("copy_dimensions", &ImageSpec::copy_dimensions, "other"_a)
+        .def("__getitem__",
+             [](const ImageSpec& self, const std::string& key) {
+                 ParamValue tmpparam;
+                 auto p = self.find_attribute(key, tmpparam);
+                 if (p == nullptr)
+                     throw py::key_error("key '" + key + "' does not exist");
+                 return ParamValue_getitem(*p);
+             })
+        .def("__setitem__",
+             [](ImageSpec& self, const std::string& key, py::object val) {
+                 delegate_setitem(self, key, val);
+             });
 }
 
 }  // namespace PyOpenImageIO

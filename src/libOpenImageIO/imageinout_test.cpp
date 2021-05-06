@@ -1,32 +1,6 @@
-/*
-  Copyright 2019 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-  notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-  notice, this list of conditions and the following disclaimer in the
-  documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-  contributors may be used to endorse or promote products derived from
-  this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 /////////////////////////////////////////////////////////////////////////
 // Tests related to ImageInput and ImageOutput
@@ -51,14 +25,25 @@ make_test_image(string_view formatname)
 {
     ImageBuf buf;
     auto out = ImageOutput::create(formatname);
-    ASSERT(out);
+    OIIO_DASSERT(out);
+    ImageSpec spec(64, 64, 4, TypeFloat);
+    float pval = 1.0f;
+    // Fill with 0 for lossy HEIF
+    if (formatname == "heif")
+        pval = 0.0f;
+
+    // Accommodate limited numbers of channels
     if (formatname == "zfile" || formatname == "fits")
-        buf.reset(ImageSpec(64, 64, 1, TypeFloat));
+        spec.nchannels = 1;  // these formats are single channel
     else if (!out->supports("alpha"))
-        buf.reset(ImageSpec(64, 64, 3, TypeFloat));
-    else
-        buf.reset(ImageSpec(64, 64, 4, TypeFloat));
-    ImageBufAlgo::fill(buf, { 1.0f, 1.0f, 1.0f, 1.0f });
+        spec.nchannels = std::min(spec.nchannels, 3);
+
+    // Force a fixed datetime metadata so it can't differ between writes
+    // and make different file patterns for these tests.
+    spec.attribute("DateTime", "01/01/2000 00:00:00");
+
+    buf.reset(spec);
+    ImageBufAlgo::fill(buf, { pval, pval, pval, 1.0f });
     return buf;
 }
 
@@ -197,7 +182,7 @@ test_read_proxy(string_view formatname, string_view extension,
 
 
 // Test writer's ability to detect and recover from errors when asked to
-// write an unwriteable file (such as in a nonexistant directory).
+// write an unwriteable file (such as in a nonexistent directory).
 static bool
 test_write_unwriteable(string_view formatname, string_view extension,
                        const ImageBuf& buf)
@@ -300,7 +285,7 @@ test_all_formats()
             test_read_proxy(formatname, extensions[0], filename, buf);
 
         //
-        // Test what happens when we write to an unwriteable or nonexistant
+        // Test what happens when we write to an unwriteable or nonexistent
         // directory. It should not crash! But appropriately return some
         // error.
         //

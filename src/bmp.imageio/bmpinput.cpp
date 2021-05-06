@@ -1,32 +1,6 @@
-/*
-  Copyright 2008-2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 #include "bmp_pvt.h"
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
@@ -77,24 +51,24 @@ BmpInput::open(const std::string& name, ImageSpec& spec)
 
     m_fd = Filesystem::fopen(m_filename, "rb");
     if (!m_fd) {
-        error("Could not open file \"%s\"", name.c_str());
+        errorf("Could not open file \"%s\"", name);
         return false;
     }
 
     // we read header of the file that we think is BMP file
     if (!m_bmp_header.read_header(m_fd)) {
-        error("\"%s\": wrong bmp header size", m_filename.c_str());
+        errorf("\"%s\": wrong bmp header size", m_filename);
         close();
         return false;
     }
     if (!m_bmp_header.isBmp()) {
-        error("\"%s\" is not a BMP file, magic number doesn't match",
-              m_filename.c_str());
+        errorf("\"%s\" is not a BMP file, magic number doesn't match",
+               m_filename);
         close();
         return false;
     }
     if (!m_dib_header.read_header(m_fd)) {
-        error("\"%s\": wrong bitmap header size", m_filename.c_str());
+        errorf("\"%s\": wrong bitmap header size", m_filename);
         close();
         return false;
     }
@@ -140,7 +114,7 @@ BmpInput::open(const std::string& name, ImageSpec& spec)
 
     // file pointer is set to the beginning of image data
     // we save this position - it will be helpfull in read_native_scanline
-    fgetpos(m_fd, &m_image_start);
+    m_image_start = Filesystem::ftell(m_fd);
 
     spec = m_spec;
     return true;
@@ -162,17 +136,17 @@ BmpInput::read_native_scanline(int subimage, int miplevel, int y, int z,
     // if the height is positive scanlines are stored bottom-up
     if (m_dib_header.width >= 0)
         y = m_spec.height - y - 1;
-    const int scanline_off = y * m_padded_scanline_size;
+    const int64_t scanline_off = y * m_padded_scanline_size;
 
-    std::vector<unsigned char> fscanline(m_padded_scanline_size);
-    fsetpos(m_fd, &m_image_start);
-    fseek(m_fd, scanline_off, SEEK_CUR);
-    size_t n = fread(&fscanline[0], 1, m_padded_scanline_size, m_fd);
+    std::unique_ptr<unsigned char[]> fscanline(
+        new unsigned char[m_padded_scanline_size]);
+    Filesystem::fseek(m_fd, m_image_start + scanline_off, SEEK_SET);
+    size_t n = fread(fscanline.get(), 1, m_padded_scanline_size, m_fd);
     if (n != (size_t)m_padded_scanline_size) {
         if (feof(m_fd))
-            error("Hit end of file unexpectedly");
+            errorf("Hit end of file unexpectedly");
         else
-            error("read error");
+            errorf("read error");
         return false;  // Read failed
     }
 
@@ -183,17 +157,18 @@ BmpInput::read_native_scanline(int subimage, int miplevel, int y, int z,
         for (unsigned int i = 0; i < m_spec.scanline_bytes();
              i += m_spec.nchannels)
             std::swap(fscanline[i], fscanline[i + 2]);
-        memcpy(data, &fscanline[0], m_spec.scanline_bytes());
+        memcpy(data, fscanline.get(), m_spec.scanline_bytes());
         return true;
     }
 
-    std::vector<unsigned char> mscanline(m_spec.scanline_bytes());
+    size_t scanline_bytes = m_spec.scanline_bytes();
+    std::unique_ptr<unsigned char[]> mscanline(
+        new unsigned char[scanline_bytes]);
     if (m_dib_header.bpp == 16) {
         const uint16_t RED   = 0x7C00;
         const uint16_t GREEN = 0x03E0;
         const uint16_t BLUE  = 0x001F;
-        for (unsigned int i = 0, j = 0; j < m_spec.scanline_bytes();
-             i += 2, j += 3) {
+        for (unsigned int i = 0, j = 0; j < scanline_bytes; i += 2, j += 3) {
             uint16_t pixel   = (uint16_t) * (&fscanline[i]);
             mscanline[j]     = (uint8_t)((pixel & RED) >> 8);
             mscanline[j + 1] = (uint8_t)((pixel & GREEN) >> 4);
@@ -201,16 +176,14 @@ BmpInput::read_native_scanline(int subimage, int miplevel, int y, int z,
         }
     }
     if (m_dib_header.bpp == 8) {
-        for (unsigned int i = 0, j = 0; j < m_spec.scanline_bytes();
-             ++i, j += 3) {
+        for (unsigned int i = 0, j = 0; j < scanline_bytes; ++i, j += 3) {
             mscanline[j]     = m_colortable[fscanline[i]].r;
             mscanline[j + 1] = m_colortable[fscanline[i]].g;
             mscanline[j + 2] = m_colortable[fscanline[i]].b;
         }
     }
     if (m_dib_header.bpp == 4) {
-        for (unsigned int i = 0, j = 0; j + 6 < m_spec.scanline_bytes();
-             ++i, j += 6) {
+        for (unsigned int i = 0, j = 0; j + 6 < scanline_bytes; ++i, j += 6) {
             uint8_t mask     = 0xF0;
             mscanline[j]     = m_colortable[(fscanline[i] & mask) >> 4].r;
             mscanline[j + 1] = m_colortable[(fscanline[i] & mask) >> 4].g;
@@ -222,9 +195,9 @@ BmpInput::read_native_scanline(int subimage, int miplevel, int y, int z,
         }
     }
     if (m_dib_header.bpp == 1) {
-        for (unsigned int i = 0, k = 0; i < fscanline.size(); ++i) {
+        for (int64_t i = 0, k = 0; i < m_padded_scanline_size; ++i) {
             for (int j = 7; j >= 0; --j, k += 3) {
-                if (k + 2 >= mscanline.size())
+                if (size_t(k + 2) >= scanline_bytes)
                     break;
                 int index = 0;
                 if (fscanline[i] & (1 << j))
@@ -235,7 +208,7 @@ BmpInput::read_native_scanline(int subimage, int miplevel, int y, int z,
             }
         }
     }
-    memcpy(data, &mscanline[0], m_spec.scanline_bytes());
+    memcpy(data, &mscanline[0], scanline_bytes);
     return true;
 }
 
@@ -271,9 +244,10 @@ BmpInput::read_color_table(void)
         size_t n = fread(&m_colortable[i], 1, entry_size, m_fd);
         if (n != entry_size) {
             if (feof(m_fd))
-                error("Hit end of file unexpectedly while reading color table");
+                errorf(
+                    "Hit end of file unexpectedly while reading color table");
             else
-                error("read error while reading color table");
+                errorf("read error while reading color table");
             return false;  // Read failed
         }
     }

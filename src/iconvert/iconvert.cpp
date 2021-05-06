@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cmath>
@@ -98,22 +72,22 @@ getargs(int argc, char* argv[])
                 "%*", parse_files, "",
                 "--help", &help, "Print help message",
                 "-v", &verbose, "Verbose status messages",
-                "--threads %d", &nthreads, "Number of threads (default 0 = #cores)",
-                "-d %s", &dataformatname, "Set the output data format to one of:"
+                "--threads %d:NTHREADS", &nthreads, "Number of threads (default 0 = #cores)",
+                "-d %s:TYPE", &dataformatname, "Set the output data format to one of:"
                         "uint8, sint8, uint10, uint12, uint16, sint16, half, float, double",
-                "-g %f", &gammaval, "Set gamma correction (default = 1)",
-                "--tile %d %d", &tile[0], &tile[1], "Output as a tiled image",
+                "-g %f:GAMMA", &gammaval, "Set gamma correction (default = 1.0)",
+                "--tile %d:WIDTH %d:HEIGHT", &tile[0], &tile[1], "Output as a tiled image",
                 "--scanline", &scanline, "Output as a scanline image",
-                "--compression %s", &compression, "Set the compression method (default = same as input)."
+                "--compression %s:METHOD", &compression, "Set the compression method (default = same as input)."
                                     " Note: may be in the form \"name:quality\"",
                 "--quality %d", &quality, "", // DEPRECATED(2.1)
                 "--no-copy-image", &no_copy_image, "Do not use ImageOutput copy_image functionality (dbg)",
                 "--adjust-time", &adjust_time, "Adjust file times to match DateTime metadata",
-                "--caption %s", &caption, "Set caption (ImageDescription)",
-                "--keyword %L", &keywords, "Add a keyword",
+                "--caption %s:TEXT", &caption, "Set caption (ImageDescription)",
+                "--keyword %L:NAME", &keywords, "Add a keyword",
                 "--clear-keywords", &clear_keywords, "Clear keywords",
-                "--attrib %L %L", &attribnames, &attribvals, "Set a string attribute (name, value)",
-                "--orientation %d", &orientation, "Set the orientation",
+                "--attrib %L:NAME %L:VALUE", &attribnames, &attribvals, "Set a string attribute",
+                "--orientation %d:ORIENT", &orientation, "Set the orientation",
                 "--rotcw", &rotcw, "Rotate 90 deg clockwise",
                 "--rotccw", &rotccw, "Rotate 90 deg counter-clockwise",
                 "--rot180", &rot180, "Rotate 180 deg",
@@ -133,7 +107,7 @@ getargs(int argc, char* argv[])
     }
     if (help) {
         ap.usage();
-        exit(EXIT_FAILURE);
+        exit(EXIT_SUCCESS);
     }
 
     if (filenames.size() != 2 && !inplace) {

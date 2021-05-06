@@ -1,32 +1,6 @@
-/*
-  Copyright 2013 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <OpenEXR/half.h>
@@ -67,7 +41,7 @@ flatten_(ImageBuf& dst, const ImageBuf& src, ROI roi, int nthreads)
         int R_channel      = srcspec.channelindex("R");
         int G_channel      = srcspec.channelindex("G");
         int B_channel      = srcspec.channelindex("B");
-        float* val         = ALLOCA(float, nc);
+        float* val         = OIIO_ALLOCA(float, nc);
         float& ARval(val[AR_channel]);
         float& AGval(val[AG_channel]);
         float& ABval(val[AB_channel]);
@@ -130,13 +104,13 @@ ImageBufAlgo::flatten(ImageBuf& dst, const ImageBuf& src, ROI roi, int nthreads)
                  IBAprep_SUPPORT_DEEP | IBAprep_DEEP_MIXED))
         return false;
     if (dst.spec().deep) {
-        dst.error("Cannot flatten to a deep image");
+        dst.errorf("Cannot flatten to a deep image");
         return false;
     }
 
     const DeepData* dd = src.deepdata();
     if (dd->AR_channel() < 0 || dd->AG_channel() < 0 || dd->AB_channel() < 0) {
-        dst.error("No alpha channel could be identified");
+        dst.errorf("No alpha channel could be identified");
         return false;
     }
 
@@ -154,7 +128,7 @@ ImageBufAlgo::flatten(const ImageBuf& src, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = flatten(result, src, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::flatten error");
+        result.errorf("ImageBufAlgo::flatten error");
     return result;
 }
 
@@ -199,7 +173,7 @@ ImageBufAlgo::deepen(ImageBuf& dst, const ImageBuf& src, float zvalue, ROI roi,
                  IBAprep_SUPPORT_DEEP | IBAprep_DEEP_MIXED))
         return false;
     if (!dst.deep()) {
-        dst.error("Cannot deepen to a flat image");
+        dst.errorf("Cannot deepen to a flat image");
         return false;
     }
 
@@ -258,7 +232,7 @@ ImageBufAlgo::deepen(const ImageBuf& src, float zvalue, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = deepen(result, src, zvalue, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::deepen error");
+        result.errorf("ImageBufAlgo::deepen error");
     return result;
 }
 
@@ -271,14 +245,14 @@ ImageBufAlgo::deep_merge(ImageBuf& dst, const ImageBuf& A, const ImageBuf& B,
     pvt::LoggedTimer logtime("IBA::deep_merge");
     if (!A.deep() || !B.deep()) {
         // For some reason, we were asked to merge a flat image.
-        dst.error("deep_merge can only be performed on deep images");
+        dst.errorf("deep_merge can only be performed on deep images");
         return false;
     }
     if (!IBAprep(roi, &dst, &A, &B, NULL,
                  IBAprep_SUPPORT_DEEP | IBAprep_REQUIRE_MATCHING_CHANNELS))
         return false;
     if (!dst.deep()) {
-        dst.error("Cannot deep_merge to a flat image");
+        dst.errorf("Cannot deep_merge to a flat image");
         return false;
     }
 
@@ -362,10 +336,10 @@ ImageBufAlgo::deep_merge(ImageBuf& dst, const ImageBuf& A, const ImageBuf& B,
             for (int x = roi.xbegin; x < roi.xend; ++x) {
                 int dstpixel = dst.pixelindex(x, y, z, true);
                 int Bpixel   = B.pixelindex(x, y, z, true);
-                DASSERT(dstpixel >= 0);
+                OIIO_DASSERT(dstpixel >= 0);
                 // OIIO_UNUSED_OK int oldcap = dstdd.capacity (dstpixel);
                 dstdd.merge_deep_pixels(dstpixel, Bdd, Bpixel);
-                // DASSERT (oldcap == dstdd.capacity(dstpixel) &&
+                // OIIO_DASSERT (oldcap == dstdd.capacity(dstpixel) &&
                 //          "Broken: we did not preallocate enough capacity");
                 if (occlusion_cull)
                     dstdd.occlusion_cull(dstpixel);
@@ -382,7 +356,7 @@ ImageBufAlgo::deep_merge(const ImageBuf& A, const ImageBuf& B,
     ImageBuf result;
     bool ok = deep_merge(result, A, B, occlusion_cull, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::deep_merge error");
+        result.errorf("ImageBufAlgo::deep_merge error");
     return result;
 }
 
@@ -394,13 +368,13 @@ ImageBufAlgo::deep_holdout(ImageBuf& dst, const ImageBuf& src,
 {
     pvt::LoggedTimer logtime("IBA::deep_holdout");
     if (!src.deep() || !thresh.deep()) {
-        dst.error("deep_holdout can only be performed on deep images");
+        dst.errorf("deep_holdout can only be performed on deep images");
         return false;
     }
     if (!IBAprep(roi, &dst, &src, &thresh, NULL, IBAprep_SUPPORT_DEEP))
         return false;
     if (!dst.deep()) {
-        dst.error("Cannot deep_holdout into a flat image");
+        dst.errorf("Cannot deep_holdout into a flat image");
         return false;
     }
 
@@ -425,7 +399,7 @@ ImageBufAlgo::deep_holdout(ImageBuf& dst, const ImageBuf& src,
     for (ImageBuf::Iterator<float> r(dst, roi); !r.done(); ++r) {
         int x = r.x(), y = r.y(), z = r.z();
         int srcpixel = src.pixelindex(x, y, z, true);
-        if (srcpixel < 1)
+        if (srcpixel < 0)
             continue;  // Nothing in this pixel
         int dstpixel = dst.pixelindex(x, y, z, true);
         dstdd.copy_deep_pixel(dstpixel, srcdd, srcpixel);
@@ -465,7 +439,7 @@ ImageBufAlgo::deep_holdout(const ImageBuf& src, const ImageBuf& thresh, ROI roi,
     ImageBuf result;
     bool ok = deep_holdout(result, src, thresh, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::deep_holdout error");
+        result.errorf("ImageBufAlgo::deep_holdout error");
     return result;
 }
 

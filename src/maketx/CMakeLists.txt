@@ -1,5 +1,5 @@
-set (maketx_srcs maketx.cpp)
-add_executable (maketx ${maketx_srcs})
-set_target_properties (maketx PROPERTIES FOLDER "Tools")
-target_link_libraries (maketx OpenImageIO ${SANITIZE_LIBRARIES} ${Boost_LIBRARIES} ${CMAKE_DL_LIBS})
-oiio_install_targets (maketx)
+# Copyright 2008-present Contributors to the OpenImageIO project.
+# SPDX-License-Identifier: BSD-3-Clause
+# https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
+
+fancy_add_executable (LINK_LIBRARIES OpenImageIO)

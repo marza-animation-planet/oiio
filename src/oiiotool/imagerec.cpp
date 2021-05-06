@@ -1,32 +1,6 @@
-/*
-  Copyright 2011 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cmath>
@@ -110,7 +84,7 @@ ImageRec::ImageRec(ImageRec& img, int subimage_to_copy, int miplevel_to_copy,
                 ib      = new ImageBuf(img.name(), srcib.imagecache());
                 bool ok = ib->read(srcsub, srcmip, false /*force*/,
                                    img.m_input_dataformat /*convert*/);
-                ASSERT(ok);
+                OIIO_ASSERT(ok);
             }
             m_subimages[s].m_miplevels[m].reset(ib);
             m_subimages[s].m_specs[m] = srcspec;
@@ -218,6 +192,49 @@ ImageRec::ImageRec(const std::string& name, const ImageSpec& spec,
 
 
 bool
+ImageRec::read_nativespec()
+{
+    if (elaborated())
+        return true;
+    // If m_subimages has already been resized, we've been here before.
+    if (m_subimages.size())
+        return true;
+
+    static ustring u_subimages("subimages"), u_miplevels("miplevels");
+    int subimages = 0;
+    ustring uname(name());
+    if (!m_imagecache->get_image_info(uname, 0, 0, u_subimages, TypeInt,
+                                      &subimages)) {
+        errorf("file not found: \"%s\"", name());
+        return false;  // Image not found
+    }
+    m_subimages.resize(subimages);
+    bool allok = true;
+    for (int s = 0; s < subimages; ++s) {
+        int miplevels = 0;
+        m_imagecache->get_image_info(uname, s, 0, u_miplevels, TypeInt,
+                                     &miplevels);
+        m_subimages[s].m_miplevels.resize(miplevels);
+        m_subimages[s].m_specs.resize(miplevels);
+        m_subimages[s].m_was_direct_read = true;
+        for (int m = 0; m < miplevels; ++m) {
+            ImageBufRef ib(
+                new ImageBuf(name(), s, m, m_imagecache, m_configspec.get()));
+            bool ok = ib->init_spec(name(), s, m);
+            if (!ok)
+                errorf("%s", ib->geterror());
+            allok &= ok;
+            m_subimages[s].m_miplevels[m] = ib;
+            m_subimages[s].m_specs[m]     = ib->spec();
+        }
+    }
+
+    return allok;
+}
+
+
+
+bool
 ImageRec::read(ReadPolicy readpolicy, string_view channel_set)
 {
     if (elaborated())
@@ -240,19 +257,23 @@ ImageRec::read(ReadPolicy readpolicy, string_view channel_set)
         m_subimages[s].m_specs.resize(miplevels);
         m_subimages[s].m_was_direct_read = true;
         for (int m = 0; m < miplevels; ++m) {
-            // Force a read now for reasonable-sized first images in the
+            // Force a read now for reasonable-sized images in the
             // file. This can greatly speed up the multithread case for
             // tiled images by not having multiple threads working on the
             // same image lock against each other on the file handle.
             // We guess that "reasonable size" is 50 MB, that's enough to
             // hold a 2048x1536 RGBA float image.  Larger things will
-            // simply fall back on ImageCache.
-            bool forceread
-                = (s == 0 && m == 0
-                   && m_imagecache->imagespec(uname, s, m)->image_bytes()
-                          < 50 * 1024 * 1024);
+            // simply fall back on ImageCache. By multiplying by the number
+            // of subimages (a.k.a. frames in a movie), we also push movies
+            // relying on the cache to read their frames on demand rather
+            // than reading the whole movie up front, even though each frame
+            // individually would be well below the threshold.
+            imagesize_t imgbytes
+                = m_imagecache->imagespec(uname, s, m)->image_bytes();
+            bool forceread = (s == 0 && m == 0
+                              && imgbytes * subimages < 50 * 1024 * 1024);
             ImageBufRef ib(
-                new ImageBuf(name(), 0, 0, m_imagecache, &m_configspec));
+                new ImageBuf(name(), s, m, m_imagecache, configspec()));
 
             bool post_channel_set_action = false;
             std::vector<std::string> newchannelnames;
@@ -374,8 +395,9 @@ void
 ImageRec::append_error(string_view message) const
 {
     spin_lock lock(err_mutex);
-    ASSERT(m_err.size() < 1024 * 1024 * 16
-           && "Accumulated error messages > 16MB. Try checking return codes!");
+    OIIO_ASSERT(
+        m_err.size() < 1024 * 1024 * 16
+        && "Accumulated error messages > 16MB. Try checking return codes!");
     if (m_err.size() && m_err[m_err.size() - 1] != '\n')
         m_err += '\n';
     m_err += message;

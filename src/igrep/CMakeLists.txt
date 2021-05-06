@@ -1,12 +1,7 @@
-set (igrep_srcs igrep.cpp)
-add_executable (igrep ${igrep_srcs})
-set_target_properties (igrep PROPERTIES FOLDER "Tools")
-if (UNIX)
-    if (APPLE)
-        set_target_properties(igrep PROPERTIES INSTALL_RPATH "@loader_path/../lib")
-    else ()
-        set_target_properties(igrep PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
-    endif ()
-endif()
-target_link_libraries (igrep OpenImageIO ${Boost_LIBRARIES} ${CMAKE_DL_LIBS})
-oiio_install_targets (igrep)
+# Copyright 2008-present Contributors to the OpenImageIO project.
+# SPDX-License-Identifier: BSD-3-Clause
+# https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
+
+fancy_add_executable (LINK_LIBRARIES OpenImageIO
+                                     ${Boost_LIBRARIES} # because regex
+                      )

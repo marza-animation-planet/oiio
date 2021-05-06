@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <cstdio>
@@ -210,7 +184,7 @@ bool
 ImageOutput::write_deep_image(const DeepData& deepdata)
 {
     if (m_spec.depth > 1) {
-        error("write_deep_image is not supported for volume (3D) images.");
+        errorf("write_deep_image is not supported for volume (3D) images.");
         return false;
         // FIXME? - not implementing 3D deep images for now.  The only
         // format that supports deep images at this time is OpenEXR, and
@@ -251,8 +225,9 @@ ImageOutput::send_to_client(const char* format, ...)
 void
 ImageOutput::append_error(const std::string& message) const
 {
-    ASSERT(m_errmessage.size() < 1024 * 1024 * 16
-           && "Accumulated error messages > 16MB. Try checking return codes!");
+    OIIO_ASSERT(
+        m_errmessage.size() < 1024 * 1024 * 16
+        && "Accumulated error messages > 16MB. Try checking return codes!");
     if (m_errmessage.size())
         m_errmessage += '\n';
     m_errmessage += message;
@@ -350,8 +325,8 @@ ImageOutput::to_native_rectangle(int xbegin, int xend, int ybegin, int yend,
         return data;
     }
 
-    imagesize_t rectangle_pixels       = width * height * depth;
-    imagesize_t rectangle_values       = rectangle_pixels * m_spec.nchannels;
+    imagesize_t rectangle_pixels = stride_t(width) * stride_t(height) * depth;
+    imagesize_t rectangle_values = rectangle_pixels * m_spec.nchannels;
     imagesize_t native_rectangle_bytes = rectangle_pixels * native_pixel_bytes;
 
     // Cases to handle:
@@ -365,12 +340,11 @@ ImageOutput::to_native_rectangle(int xbegin, int xend, int ybegin, int yend,
     // Handle the per-channel format case (#2) where the user is passing
     // a non-native buffer.
     if (perchanfile) {
-        if (native_data) {
-            ASSERT(contiguous
-                   && "Per-channel native output requires contiguous strides");
-        }
-        ASSERT(format != TypeDesc::UNKNOWN);
-        ASSERT(m_spec.channelformats.size() == (size_t)m_spec.nchannels);
+        OIIO_DASSERT(
+            (contiguous || !native_data)
+            && "Per-channel native output requires contiguous strides");
+        OIIO_DASSERT(format != TypeDesc::UNKNOWN);
+        OIIO_DASSERT(m_spec.channelformats.size() == (size_t)m_spec.nchannels);
         scratch.resize(native_rectangle_bytes);
         size_t offset = 0;
         for (int c = 0; c < m_spec.nchannels; ++c) {
@@ -392,7 +366,7 @@ ImageOutput::to_native_rectangle(int xbegin, int xend, int ybegin, int yend,
                                      : rectangle_values * input_pixel_bytes;
     contiguoussize = (contiguoussize + 3)
                      & (~3);  // Round up to 4-byte boundary
-    DASSERT((contiguoussize & 3) == 0);
+    OIIO_DASSERT((contiguoussize & 3) == 0);
     imagesize_t floatsize = rectangle_values * sizeof(float);
     bool do_dither        = (dither && format.is_floating_point()
                       && m_spec.format.basetype == TypeDesc::UINT8);
@@ -435,10 +409,10 @@ ImageOutput::to_native_rectangle(int xbegin, int xend, int ybegin, int yend,
     if (do_dither) {
         stride_t pixelsize = m_spec.nchannels * sizeof(float);
         OIIO::add_dither(m_spec.nchannels, width, height, depth, (float*)buf,
-                         pixelsize, pixelsize * width,
-                         pixelsize * width * height, 1.0f / 255.0f,
-                         m_spec.alpha_channel, m_spec.z_channel, dither, 0,
-                         xorigin, yorigin, zorigin);
+                         pixelsize, pixelsize * stride_t(width),
+                         pixelsize * stride_t(width) * stride_t(height),
+                         1.0f / 255.0f, m_spec.alpha_channel, m_spec.z_channel,
+                         dither, 0, xorigin, yorigin, zorigin);
     }
 
     // Convert from float to native format.
@@ -527,7 +501,7 @@ bool
 ImageOutput::copy_image(ImageInput* in)
 {
     if (!in) {
-        error("copy_image: no input supplied");
+        errorf("copy_image: no input supplied");
         return false;
     }
 
@@ -536,9 +510,9 @@ ImageOutput::copy_image(ImageInput* in)
     if (inspec.width != spec().width || inspec.height != spec().height
         || inspec.depth != spec().depth
         || inspec.nchannels != spec().nchannels) {
-        error("Could not copy %d x %d x %d channels to %d x %d x %d channels",
-              inspec.width, inspec.height, inspec.nchannels, spec().width,
-              spec().height, spec().nchannels);
+        errorf("Could not copy %d x %d x %d channels to %d x %d x %d channels",
+               inspec.width, inspec.height, inspec.nchannels, spec().width,
+               spec().height, spec().nchannels);
         return false;
     }
 
@@ -558,7 +532,7 @@ ImageOutput::copy_image(ImageInput* in)
         if (ok)
             ok = write_deep_image(deepdata);
         else
-            error("%s", in->geterror());  // copy err from in to out
+            errorf("%s", in->geterror());  // copy err from in to out
         return ok;
     }
 
@@ -572,7 +546,7 @@ ImageOutput::copy_image(ImageInput* in)
     if (ok)
         ok = write_image(format, &pixels[0]);
     else
-        error("%s", in->geterror());  // copy err from in to out
+        errorf("%s", in->geterror());  // copy err from in to out
     return ok;
 }
 
@@ -610,7 +584,7 @@ ImageOutput::copy_to_image_buffer(int xbegin, int xend, int ybegin, int yend,
         OIIO::convert_image(spec.nchannels, width, height, depth, data, format,
                             xstride, ystride, zstride, ditherarea.get(),
                             TypeDesc::FLOAT, pixelsize, pixelsize * width,
-                            pixelsize * width * height);
+                            pixelsize * stride_t(width) * stride_t(height));
         data            = ditherarea.get();
         format          = TypeDesc::FLOAT;
         xstride         = pixelsize;
@@ -619,10 +593,10 @@ ImageOutput::copy_to_image_buffer(int xbegin, int xend, int ybegin, int yend,
         float ditheramp = spec.get_float_attribute("oiio:ditheramplitude",
                                                    1.0f / 255.0f);
         OIIO::add_dither(spec.nchannels, width, height, depth, (float*)data,
-                         pixelsize, pixelsize * width,
-                         pixelsize * width * height, ditheramp,
-                         spec.alpha_channel, spec.z_channel, dither, 0, xbegin,
-                         ybegin, zbegin);
+                         pixelsize, pixelsize * stride_t(width),
+                         pixelsize * stride_t(width) * stride_t(height),
+                         ditheramp, spec.alpha_channel, spec.z_channel, dither,
+                         0, xbegin, ybegin, zbegin);
     }
 
     return OIIO::convert_image(spec.nchannels, width, height, depth, data,
@@ -640,7 +614,7 @@ ImageOutput::copy_tile_to_image_buffer(int x, int y, int z, TypeDesc format,
                                        void* image_buffer, TypeDesc buf_format)
 {
     if (!m_spec.tile_width || !m_spec.tile_height) {
-        error("Called write_tile for non-tiled image.");
+        errorf("Called write_tile for non-tiled image.");
         return false;
     }
     const ImageSpec& spec(this->spec());

@@ -1,32 +1,6 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include "py_oiio.h"
 
@@ -139,6 +113,7 @@ declare_typedesc(py::module& m)
              })
         .def("equivalent", &TypeDesc::equivalent)
         .def("unarray", &TypeDesc::unarray)
+        .def("is_vec2", &TypeDesc::is_vec2)
         .def("is_vec3", &TypeDesc::is_vec3)
         .def("is_vec4", &TypeDesc::is_vec4)
 
@@ -169,7 +144,11 @@ declare_typedesc(py::module& m)
         .def_readonly_static("TypeTimeCode", &TypeTimeCode)
         .def_readonly_static("TypeKeyCode", &TypeKeyCode)
         .def_readonly_static("TypeRational", &TypeRational)
-        .def_readonly_static("TypeFloat4", &TypeFloat4);
+        .def_readonly_static("TypeFloat2", &TypeFloat2)
+        .def_readonly_static("TypeVector2", &TypeVector2)
+        .def_readonly_static("TypeVector2i", &TypeVector2i)
+        .def_readonly_static("TypeFloat4", &TypeFloat4)
+        .def_readonly_static("TypeVector4", &TypeVector4);
 
     // Declare that a BASETYPE is implicitly convertible to a TypeDesc.
     // This keeps us from having to separately declare func(TypeDesc)
@@ -181,7 +160,6 @@ declare_typedesc(py::module& m)
     // foo(TypeUInt8).
     py::implicitly_convertible<py::str, TypeDesc>();
 
-#if 1
     // Global constants of common TypeDescs
     m.attr("TypeUnknown")  = TypeUnknown;
     m.attr("TypeFloat")    = TypeFloat;
@@ -204,9 +182,13 @@ declare_typedesc(py::module& m)
     m.attr("TypeMatrix44") = TypeMatrix44;
     m.attr("TypeTimeCode") = TypeTimeCode;
     m.attr("TypeKeyCode")  = TypeKeyCode;
+    m.attr("TypeFloat2")   = TypeFloat2;
+    m.attr("TypeVector2")  = TypeVector2;
     m.attr("TypeFloat4")   = TypeFloat4;
+    m.attr("TypeVector4")  = TypeVector4;
+    m.attr("TypeVector2i") = TypeVector2i;
     m.attr("TypeRational") = TypeRational;
-#endif
+    m.attr("TypePointer")  = TypePointer;
 }
 
 }  // namespace PyOpenImageIO

@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 /// \file
 /// Implementation of ImageBufAlgo algorithms that merely move pixels
@@ -54,26 +28,79 @@ template<class D, class S>
 static bool
 paste_(ImageBuf& dst, const ImageBuf& src, ROI dstroi, ROI srcroi, int nthreads)
 {
-    // N.B. Punt on parallelizing because of the subtle interplay
-    // between srcroi and dstroi, the parallel_image idiom doesn't
-    // handle that especially well. And it's not worth customizing for
-    // this function which is inexpensive and not commonly used, and so
-    // would benefit little from parallelizing. We can always revisit
-    // this later. But in the mean time, we maintain the 'nthreads'
-    // parameter for uniformity with the rest of IBA.
-    int src_nchans = src.nchannels();
-    int dst_nchans = dst.nchannels();
-    ImageBuf::ConstIterator<S, D> s(src, srcroi);
-    ImageBuf::Iterator<D, D> d(dst, dstroi);
-    for (; !s.done(); ++s, ++d) {
-        if (!d.exists())
-            continue;  // Skip paste-into pixels that don't overlap dst's data
-        for (int c = srcroi.chbegin, c_dst = dstroi.chbegin; c < srcroi.chend;
-             ++c, ++c_dst) {
-            if (c_dst >= 0 && c_dst < dst_nchans)
-                d[c_dst] = c < src_nchans ? s[c] : D(0);
+    int relative_x = dstroi.xbegin - srcroi.xbegin;
+    int relative_y = dstroi.ybegin - srcroi.ybegin;
+    int relative_z = dstroi.zbegin - srcroi.zbegin;
+
+    using namespace ImageBufAlgo;
+    parallel_image(srcroi, nthreads, [&](ROI roi) {
+        ROI droi(roi.xbegin + relative_x, roi.xend + relative_x,
+                 roi.ybegin + relative_y, roi.yend + relative_y,
+                 roi.zbegin + relative_z, roi.zend + relative_z, dstroi.chbegin,
+                 dstroi.chend);
+        int src_nchans = src.nchannels();
+        int dst_nchans = dst.nchannels();
+        ImageBuf::ConstIterator<S, D> s(src, roi);
+        ImageBuf::Iterator<D, D> d(dst, droi);
+        for (; !s.done(); ++s, ++d) {
+            if (!d.exists())
+                continue;  // Skip paste-into pixels that don't overlap dst's data
+            for (int c = roi.chbegin, c_dst = droi.chbegin; c < roi.chend;
+                 ++c, ++c_dst) {
+                if (c_dst >= 0 && c_dst < dst_nchans)
+                    d[c_dst] = c < src_nchans ? s[c] : D(0);
+            }
+        }
+    });
+    return true;
+}
+
+
+
+static bool
+deep_paste_(ImageBuf& dst, const ImageBuf& src, ROI dstroi, ROI srcroi,
+            int nthreads)
+{
+    OIIO_ASSERT(dst.deep() && src.deep());
+    int relative_x = dstroi.xbegin - srcroi.xbegin;
+    int relative_y = dstroi.ybegin - srcroi.ybegin;
+    int relative_z = dstroi.zbegin - srcroi.zbegin;
+
+    // Timer t;
+
+    // First, make sure dst is allocated with enough samples for both. Note:
+    // this should be fast if dst is uninitialized or already has the right
+    // number of samples in the overlap regions. If not, this will probably
+    // be a slow series of allocations and copies. If this is a problem, we
+    // can return to optimize it somehow.
+    if (!dst.initialized()) {
+        dst.reset(src.spec());
+    }
+    // std::cout << "Reset: " << t.lap() << "\n";
+    for (int z = srcroi.zbegin; z < srcroi.zend; ++z) {
+        for (int y = srcroi.ybegin; y < srcroi.yend; ++y) {
+            // std::cout << "y=" << y << "\n";
+            for (int x = srcroi.xbegin; x < srcroi.xend; ++x) {
+                dst.set_deep_samples(x + relative_x, y + relative_y,
+                                     z + relative_z, src.deep_samples(x, y, z));
+            }
         }
     }
+    // std::cout << "set samples: " << t.lap() << "\n";
+
+    // Now we can do the deep pixel copies in parallel.
+    using namespace ImageBufAlgo;
+    parallel_image(srcroi, nthreads, [&](ROI roi) {
+        for (int z = roi.zbegin; z < roi.zend; ++z) {
+            for (int y = roi.ybegin; y < roi.yend; ++y) {
+                for (int x = roi.xbegin; x < roi.xend; ++x) {
+                    dst.copy_deep_pixel(x + relative_x, y + relative_y,
+                                        z + relative_z, src, x, y, z);
+                }
+            }
+        }
+    });
+    // std::cout << "copy: " << t.lap() << "\n";
     return true;
 }
 
@@ -87,10 +114,17 @@ ImageBufAlgo::paste(ImageBuf& dst, int xbegin, int ybegin, int zbegin,
     if (!srcroi.defined())
         srcroi = get_roi(src.spec());
 
-    ROI dstroi(xbegin, xbegin + srcroi.width(), ybegin,
-               ybegin + srcroi.height(), zbegin, zbegin + srcroi.depth(),
-               chbegin, chbegin + srcroi.nchannels());
+    ROI dstroi(srcroi.xbegin + xbegin, srcroi.xbegin + xbegin + srcroi.width(),
+               srcroi.ybegin + ybegin, srcroi.ybegin + ybegin + srcroi.height(),
+               srcroi.zbegin + zbegin, srcroi.zbegin + zbegin + srcroi.depth(),
+               srcroi.chbegin + chbegin,
+               srcroi.chbegin + chbegin + srcroi.nchannels());
     ROI dstroi_save = dstroi;  // save the original
+
+    // Special case for deep
+    if ((dst.deep() || !dst.initialized()) && src.deep())
+        return deep_paste_(dst, src, dstroi, srcroi, nthreads);
+
     if (!IBAprep(dstroi, &dst))
         return false;
 
@@ -125,7 +159,7 @@ copy_(ImageBuf& dst, const ImageBuf& src, ROI roi, int nthreads = 1)
 static bool
 copy_deep(ImageBuf& dst, const ImageBuf& src, ROI roi, int nthreads = 1)
 {
-    ASSERT(dst.deep() && src.deep());
+    OIIO_ASSERT(dst.deep() && src.deep());
     using namespace ImageBufAlgo;
     parallel_image(roi, nthreads, [&](ROI roi) {
         DeepData& dstdeep(*dst.deepdata());
@@ -136,7 +170,7 @@ copy_deep(ImageBuf& dst, const ImageBuf& src, ROI roi, int nthreads = 1)
             // The caller should ALREADY have set the samples, since that
             // is not thread-safe against the copying below.
             // d.set_deep_samples (samples);
-            DASSERT(d.deep_samples() == samples);
+            OIIO_DASSERT(d.deep_samples() == samples);
             if (samples == 0)
                 continue;
             for (int c = roi.chbegin; c < roi.chend; ++c) {
@@ -215,7 +249,7 @@ ImageBufAlgo::copy(const ImageBuf& src, TypeDesc convert, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = copy(result, src, convert, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::copy() error");
+        result.errorf("ImageBufAlgo::copy() error");
     return result;
 }
 
@@ -269,7 +303,7 @@ ImageBufAlgo::crop(const ImageBuf& src, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = crop(result, src, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::crop() error");
+        result.errorf("ImageBufAlgo::crop() error");
     return result;
 }
 
@@ -280,7 +314,6 @@ ImageBufAlgo::cut(ImageBuf& dst, const ImageBuf& src, ROI roi, int nthreads)
 {
     pvt::LoggedTimer logtime("IBA::cut");
     bool ok = crop(dst, src, roi, nthreads);
-    ASSERT(ok);
     if (!ok)
         return false;
     // Crop did the heavy lifting of copying the roi of pixels from src to
@@ -301,7 +334,7 @@ ImageBufAlgo::cut(const ImageBuf& src, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = cut(result, src, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::cut() error");
+        result.errorf("ImageBufAlgo::cut() error");
     return result;
 }
 
@@ -360,7 +393,7 @@ ImageBufAlgo::circular_shift(const ImageBuf& src, int xshift, int yshift,
     bool ok = circular_shift(result, src, xshift, yshift, zshift, roi,
                              nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::circular_shift() error");
+        result.errorf("ImageBufAlgo::circular_shift() error");
     return result;
 }
 

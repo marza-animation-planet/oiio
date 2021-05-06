@@ -1,10 +1,10 @@
 README for OpenImageIO
 ======================
 
-[![License](https://img.shields.io/badge/license-BSD%203--Clause-blue.svg?style=flat-square)](https://github.com/OpenImageIO/oiio/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/license-BSD%203--Clause-blue.svg?style=flat-square)](https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md)
 [![Build Status](https://travis-ci.org/OpenImageIO/oiio.svg?branch=master)](https://travis-ci.org/OpenImageIO/oiio)
 [![Windows Build Status](https://ci.appveyor.com/api/projects/status/a0l32ti7gcoergtf/branch/master?svg=true)](https://ci.appveyor.com/api/projects/status/a0l32ti7gcoergtf/branch/master)
-
+[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2694/badge)](https://bestpractices.coreinfrastructure.org/projects/2694)
 
 
 Introduction
@@ -32,8 +32,8 @@ OpenImageIO consists of:
   including TIFF, JPEG/JFIF, OpenEXR, PNG, HDR/RGBE, ICO, BMP, Targa,
   JPEG-2000, RMan Zfile, FITS, DDS, Softimage PIC, PNM, DPX, Cineon,
   IFF, Field3D, OpenVDB, Ptex, Photoshop PSD, Wavefront RLA, SGI, WebP,
-  GIF, DICOM, many "RAW" digital camera formats, and a variety of movie
-  formats (readable as individual frames).  More are being developed
+  GIF, DICOM, HEIC/HEIF, many "RAW" digital camera formats, and a variety of
+  movie formats (readable as individual frames).  More are being developed
   all the time.
 
 * Several command line image tools based on these classes, including
@@ -66,8 +66,7 @@ OpenImageIO consists of:
 Licensing
 ---------
 
-OpenImageIO is (c) Copyright 2008-2019 by Larry Gritz et al.
-All Rights Reserved.
+OpenImageIO is (c) Copyright Contributors to the OpenImageIO project.
 
 OpenImageIO is distributed using the [modified BSD license](LICENSE.md)
 (also known as the "new BSD" or "3-clause BSD" license).  The documentation
@@ -102,10 +101,9 @@ plugins.
 Documentation
 -------------
 
-The primary user and programmer documentation can be found in
-[src/doc/openimageio.pdf](src/doc/openimageio.pdf) (in a source
-distribution) or in the share/doc/OpenImageIO/openimageio.pdf file of an
-installed binary distribution.
+The primary user and programmer documentation can be found
+on [openimageio.readthedocs.io](https://openimageio.readthedocs.io/en/latest/)
+as html or as [PDF](https://readthedocs.org/projects/openimageio/downloads/pdf/latest/).
 
 
 Contact & reporting problems

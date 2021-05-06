@@ -1,32 +1,6 @@
-/*
-  Copyright 2011 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cmath>
@@ -372,6 +346,25 @@ TextureSystemImpl::environment(TextureHandle* texture_handle_,
         return missing_texture(options, nchannels, result, dresultds,
                                dresultdt);
 
+    if (!options.subimagename.empty()) {
+        // If subimage was specified by name, figure out its index.
+        int s = m_imagecache->subimage_from_name(texturefile,
+                                                 options.subimagename);
+        if (s < 0) {
+            errorf("Unknown subimage \"%s\" in texture \"%s\"",
+                   options.subimagename, texturefile->filename());
+            return missing_texture(options, nchannels, result, dresultds,
+                                   dresultdt);
+        }
+        options.subimage = s;
+        options.subimagename.clear();
+    }
+    if (options.subimage < 0 || options.subimage >= texturefile->subimages()) {
+        errorf("Unknown subimage \"%s\" in texture \"%s\"",
+               options.subimagename, texturefile->filename());
+        return missing_texture(options, nchannels, result, dresultds,
+                               dresultdt);
+    }
     const ImageSpec& spec(texturefile->spec(options.subimage, 0));
 
     // Environment maps dictate particular wrap modes
@@ -477,6 +470,7 @@ TextureSystemImpl::environment(TextureHandle* texture_handle_,
 
     ImageCacheFile::SubimageInfo& subinfo(
         texturefile->subimageinfo(options.subimage));
+    int min_mip_level = subinfo.min_mip_level;
 
     // FIXME -- assuming latlong
     bool ok   = true;
@@ -492,7 +486,7 @@ TextureSystemImpl::environment(TextureHandle* texture_handle_,
         float levelblend = 0;
 
         int nmiplevels = (int)subinfo.levels.size();
-        for (int m = 0; m < nmiplevels; ++m) {
+        for (int m = min_mip_level; m < nmiplevels; ++m) {
             // Compute the filter size in raster space at this MIP level.
             // Filters are in radians, and the vertical resolution of a
             // latlong map is PI radians.  So to compute the raster size of
@@ -517,11 +511,11 @@ TextureSystemImpl::environment(TextureHandle* texture_handle_,
             miplevel[0] = nmiplevels - 1;
             miplevel[1] = miplevel[0];
             levelblend  = 0;
-        } else if (miplevel[0] < 0) {
+        } else if (miplevel[0] < min_mip_level) {
             // We wish we had even more resolution than the finest MIP level,
             // but tough for us.
-            miplevel[0] = 0;
-            miplevel[1] = 0;
+            miplevel[0] = min_mip_level;
+            miplevel[1] = min_mip_level;
             levelblend  = 0;
         }
         if (options.mipmode == TextureOpt::MipModeOneLevel) {
@@ -530,8 +524,8 @@ TextureSystemImpl::environment(TextureHandle* texture_handle_,
             levelblend  = 0;
         } else if (mipmode == TextureOpt::MipModeNoMIP) {
             // Just sample from lowest level
-            miplevel[0] = 0;
-            miplevel[1] = 0;
+            miplevel[0] = min_mip_level;
+            miplevel[1] = min_mip_level;
             levelblend  = 0;
         }
 

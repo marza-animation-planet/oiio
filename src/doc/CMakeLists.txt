@@ -1,7 +1,10 @@
+# Copyright 2008-present Contributors to the OpenImageIO project.
+# SPDX-License-Identifier: BSD-3-Clause
+# https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
+
 project(documentation)
 
 set (public_docs
-     openimageio.pdf
      "${OpenImageIO_SOURCE_DIR}/LICENSE.md"
      "${OpenImageIO_SOURCE_DIR}/LICENSE-THIRD-PARTY.md"
      "${OpenImageIO_SOURCE_DIR}/CHANGES.md"

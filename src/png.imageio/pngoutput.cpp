@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <cstdio>
@@ -60,7 +34,6 @@ public:
 
 private:
     std::string m_filename;  ///< Stash the filename
-    FILE* m_file;            ///< Open image handle
     png_structp m_png;       ///< PNG read structure pointer
     png_infop m_info;        ///< PNG image info structure pointer
     unsigned int m_dither;
@@ -70,39 +43,46 @@ private:
     std::vector<unsigned char> m_scratch;
     std::vector<png_text> m_pngtext;
     std::vector<unsigned char> m_tilebuffer;
+    std::unique_ptr<Filesystem::IOProxy> m_local_io;
     Filesystem::IOProxy* m_io = nullptr;
+    bool m_err                = false;
 
     // Initialize private members to pre-opened state
     void init(void)
     {
-        m_file          = NULL;
         m_png           = NULL;
         m_info          = NULL;
         m_convert_alpha = true;
         m_gamma         = 1.0;
         m_pngtext.clear();
-        m_io = nullptr;
+        m_local_io.reset();
+        m_io  = nullptr;
+        m_err = false;
     }
 
     // Add a parameter to the output
     bool put_parameter(const std::string& name, TypeDesc type,
                        const void* data);
 
-    // Callback for PNG that appends to in-memory buffer instead of writing
+    // Callback for PNG that writes via an IOProxy instead of writing
     // to a file.
     static void PngWriteCallback(png_structp png_ptr, png_bytep data,
                                  png_size_t length)
     {
-        Filesystem::IOProxy* p = (Filesystem::IOProxy*)png_get_io_ptr(png_ptr);
-        DASSERT(p);
-        p->write(data, length);
+        PNGOutput* pngoutput = (PNGOutput*)png_get_io_ptr(png_ptr);
+        OIIO_DASSERT(pngoutput);
+        size_t bytes = pngoutput->m_io->write(data, length);
+        if (bytes != length) {
+            pngoutput->errorf("Write error");
+            pngoutput->m_err = true;
+        }
     }
 
     static void PngFlushCallback(png_structp png_ptr)
     {
-        Filesystem::IOProxy* p = (Filesystem::IOProxy*)png_get_io_ptr(png_ptr);
-        DASSERT(p);
-        p->flush();
+        PNGOutput* pngoutput = (PNGOutput*)png_get_io_ptr(png_ptr);
+        OIIO_DASSERT(pngoutput);
+        pngoutput->m_io->flush();
     }
 };
 
@@ -142,7 +122,7 @@ PNGOutput::open(const std::string& name, const ImageSpec& userspec,
                 OpenMode mode)
 {
     if (mode != Create) {
-        error("%s does not support subimages or MIP levels", format_name());
+        errorf("%s does not support subimages or MIP levels", format_name());
         return false;
     }
 
@@ -155,32 +135,27 @@ PNGOutput::open(const std::string& name, const ImageSpec& userspec,
 
     // See if we were requested to write to a memory buffer, and if so,
     // extract the pointer.
-    const ParamValue* param = m_spec.find_attribute("oiio:ioproxy",
-                                                    TypeDesc::PTR);
-    m_io = param ? param->get<Filesystem::IOProxy*>() : nullptr;
-    if (m_io) {
-        m_file = nullptr;
-    } else {
-        // otherwise, we're writing to a file, so open it.
-        m_file = Filesystem::fopen(name, "wb");
-        if (!m_file) {
-            error("Could not open file \"%s\"", name);
-            return false;
-        }
+    auto ioparam = m_spec.find_attribute("oiio:ioproxy", TypeDesc::PTR);
+    m_io         = ioparam ? ioparam->get<Filesystem::IOProxy*>() : nullptr;
+    if (!m_io) {
+        // If no proxy was supplied, create a file writer
+        m_io = new Filesystem::IOFile(name, Filesystem::IOProxy::Mode::Write);
+        m_local_io.reset(m_io);
+    }
+    if (!m_io || m_io->mode() != Filesystem::IOProxy::Mode::Write) {
+        errorf("Could not open \"%s\"", name);
+        return false;
     }
 
     std::string s = PNG_pvt::create_write_struct(m_png, m_info, m_color_type,
                                                  m_spec);
     if (s.length()) {
         close();
-        error("%s", s);
+        errorf("%s", s);
         return false;
     }
 
-    if (m_file)
-        png_init_io(m_png, m_file);
-    else
-        png_set_write_fn(m_png, m_io, PngWriteCallback, PngFlushCallback);
+    png_set_write_fn(m_png, this, PngWriteCallback, PngFlushCallback);
 
     png_set_compression_level(
         m_png, std::max(std::min(m_spec.get_int_attribute(
@@ -205,6 +180,23 @@ PNGOutput::open(const std::string& name, const ImageSpec& userspec,
         png_set_compression_strategy(m_png, Z_DEFAULT_STRATEGY);
     }
 
+    png_set_filter(m_png, 0,
+                   spec().get_int_attribute("png:filter", PNG_NO_FILTERS));
+    // https://www.w3.org/TR/PNG-Encoders.html#E.Filter-selection
+    // https://www.w3.org/TR/PNG-Rationale.html#R.Filtering
+    // The official advice is to PNG_NO_FILTER for palette or < 8 bpp
+    // images, but we and one of the others may be fine for >= 8 bit
+    // greyscale or color images (they aren't very prescriptive, noting that
+    // different flters may be better for different images.
+    // We have found the tradeoff complex, in fact as seen in
+    // https://github.com/OpenImageIO/oiio/issues/2645
+    // where we showed that across several images, 8 (PNG_FILTER_NONE --
+    // don't ask me how that's different from PNG_NO_FILTERS) had the
+    // fastest performance, but also made the largest files. I had trouble
+    // finding a filter choice that for "ordinary" images consistently
+    // performed better than the default on both time and resulting file
+    // size. So for now, we are keeping the default 0 (PNG_NO_FILTERS).
+
     PNG_pvt::write_info(m_png, m_info, m_color_type, m_spec, m_pngtext,
                         m_convert_alpha, m_gamma);
 
@@ -228,7 +220,7 @@ PNGOutput::open(const std::string& name, const ImageSpec& userspec,
 bool
 PNGOutput::close()
 {
-    if (!m_file && !m_io) {  // already closed
+    if (!m_io) {  // already closed
         init();
         return true;
     }
@@ -236,7 +228,7 @@ PNGOutput::close()
     bool ok = true;
     if (m_spec.tile_width) {
         // Handle tile emulation -- output the buffered pixels
-        ASSERT(m_tilebuffer.size());
+        OIIO_ASSERT(m_tilebuffer.size());
         ok &= write_scanlines(m_spec.y, m_spec.y + m_spec.height, 0,
                               m_spec.format, &m_tilebuffer[0]);
         std::vector<unsigned char>().swap(m_tilebuffer);
@@ -244,17 +236,6 @@ PNGOutput::close()
 
     if (m_png) {
         PNG_pvt::finish_image(m_png, m_info);
-    }
-
-    if (m_file) {
-        // We were writing to a file, so close it.
-        ASSERT(m_io == nullptr);
-        fclose(m_file);
-        m_file = nullptr;
-    }
-    if (m_io) {
-        ASSERT(m_file == nullptr);
-        m_io->close();
     }
 
     init();  // re-initialize
@@ -323,7 +304,7 @@ PNGOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
         swap_endian((unsigned short*)data, m_spec.width * m_spec.nchannels);
 
     if (!PNG_pvt::write_row(m_png, (png_byte*)data)) {
-        error("PNG library error");
+        errorf("PNG library error");
         return false;
     }
 

@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <algorithm>
 #include <cstdio>
@@ -127,18 +101,18 @@ public:
         }
     }
 
-    size_t data_offset(int pixel, int channel, int sample)
+    size_t data_offset(int64_t pixel, int channel, int sample)
     {
-        DASSERT(int(m_cumcapacity.size()) > pixel);
-        DASSERT(m_capacity[pixel] >= m_nsamples[pixel]);
+        OIIO_DASSERT(int(m_cumcapacity.size()) > pixel);
+        OIIO_DASSERT(m_capacity[pixel] >= m_nsamples[pixel]);
         return (m_cumcapacity[pixel] + sample) * m_samplesize
                + m_channeloffsets[channel];
     }
 
-    void* data_ptr(int pixel, int channel, int sample)
+    void* data_ptr(int64_t pixel, int channel, int sample)
     {
         size_t offset = data_offset(pixel, channel, sample);
-        DASSERT(offset < m_data.size());
+        OIIO_DASSERT(offset < m_data.size());
         return &m_data[offset];
     }
 
@@ -150,19 +124,19 @@ public:
     inline void sanity() const
     {
         // int nchannels = int (m_channeltypes.size());
-        ASSERT(m_channeltypes.size() == m_channelsizes.size());
-        ASSERT(m_channeltypes.size() == m_channeloffsets.size());
-        int npixels = int(m_capacity.size());
-        ASSERT(m_nsamples.size() == m_capacity.size());
-        ASSERT(m_cumcapacity.size() == m_capacity.size());
+        OIIO_ASSERT(m_channeltypes.size() == m_channelsizes.size());
+        OIIO_ASSERT(m_channeltypes.size() == m_channeloffsets.size());
+        int64_t npixels = int64_t(m_capacity.size());
+        OIIO_ASSERT(m_nsamples.size() == m_capacity.size());
+        OIIO_ASSERT(m_cumcapacity.size() == m_capacity.size());
         if (m_allocated) {
             size_t totalcapacity = 0;
-            for (int p = 0; p < npixels; ++p) {
-                ASSERT(m_cumcapacity[p] == totalcapacity);
+            for (int64_t p = 0; p < npixels; ++p) {
+                OIIO_ASSERT(m_cumcapacity[p] == totalcapacity);
                 totalcapacity += m_capacity[p];
-                ASSERT(m_capacity[p] >= m_nsamples[p]);
+                OIIO_ASSERT(m_capacity[p] >= m_nsamples[p]);
             }
-            ASSERT(totalcapacity * m_samplesize == m_data.size());
+            OIIO_ASSERT(totalcapacity * m_samplesize == m_data.size());
         }
     }
 };
@@ -221,7 +195,7 @@ DeepData::operator=(const DeepData& d)
 
 
 
-int
+int64_t
 DeepData::pixels() const
 {
     return m_npixels;
@@ -292,7 +266,7 @@ DeepData::AB_channel() const
 string_view
 DeepData::channelname(int c) const
 {
-    DASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     return (c >= 0 && c < m_nchannels) ? string_view(m_impl->m_channelnames[c])
                                        : string_view();
 }
@@ -302,7 +276,7 @@ DeepData::channelname(int c) const
 TypeDesc
 DeepData::channeltype(int c) const
 {
-    DASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     return (c >= 0 && c < m_nchannels) ? m_impl->m_channeltypes[c] : TypeDesc();
 }
 
@@ -311,7 +285,7 @@ DeepData::channeltype(int c) const
 size_t
 DeepData::channelsize(int c) const
 {
-    DASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     return (c >= 0 && c < m_nchannels) ? m_impl->m_channelsizes[c] : 0;
 }
 
@@ -337,13 +311,13 @@ is_or_endswithdot(string_view name, string_view suffix)
 
 
 void
-DeepData::init(int npix, int nchan, cspan<TypeDesc> channeltypes,
+DeepData::init(int64_t npix, int nchan, cspan<TypeDesc> channeltypes,
                cspan<std::string> channelnames)
 {
     clear();
     m_npixels   = npix;
     m_nchannels = nchan;
-    ASSERT(channeltypes.size() >= 1);
+    OIIO_ASSERT(channeltypes.size() >= 1);
     if (!m_impl)
         m_impl = new Impl;
     if (int(channeltypes.size()) >= nchan) {
@@ -480,22 +454,22 @@ DeepData::allocated() const
 
 
 int
-DeepData::capacity(int pixel) const
+DeepData::capacity(int64_t pixel) const
 {
     if (pixel < 0 || pixel >= m_npixels)
         return 0;
-    DASSERT(m_impl && m_impl->m_capacity.size() > size_t(pixel));
+    OIIO_DASSERT(m_impl && m_impl->m_capacity.size() > size_t(pixel));
     return m_impl->m_capacity[pixel];
 }
 
 
 
 void
-DeepData::set_capacity(int pixel, int samps)
+DeepData::set_capacity(int64_t pixel, int samps)
 {
     if (pixel < 0 || pixel >= m_npixels)
         return;
-    ASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     spin_lock lock(m_impl->m_mutex);
     if (m_impl->m_allocated) {
         // Data already allocated. Expand capacity if necessary, don't
@@ -512,7 +486,7 @@ DeepData::set_capacity(int pixel, int samps)
                                       toadd * samplesize(), 0);
             }
             // Adjust the cumulative prefix sum of samples for subsequent pixels
-            for (int p = pixel + 1; p < m_npixels; ++p)
+            for (int64_t p = pixel + 1; p < m_npixels; ++p)
                 m_impl->m_cumcapacity[p] += toadd;
             m_impl->m_capacity[pixel] = samps;
         }
@@ -524,25 +498,25 @@ DeepData::set_capacity(int pixel, int samps)
 
 
 int
-DeepData::samples(int pixel) const
+DeepData::samples(int64_t pixel) const
 {
     if (pixel < 0 || pixel >= m_npixels)
         return 0;
-    DASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     return m_impl->m_nsamples[pixel];
 }
 
 
 
 void
-DeepData::set_samples(int pixel, int samps)
+DeepData::set_samples(int64_t pixel, int samps)
 {
     if (pixel < 0 || pixel >= m_npixels)
         return;
-    ASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     if (m_impl->m_allocated) {
         // Data already allocated. Turn it into an insert or delete
-        int n = (int)samples(pixel);
+        int n = (int)m_impl->m_nsamples[pixel];
         if (samps > n)
             insert_samples(pixel, n, samps - n);
         else if (samps < n)
@@ -561,10 +535,10 @@ DeepData::set_all_samples(cspan<unsigned int> samples)
 {
     if (samples.size() != m_npixels)
         return;
-    ASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     if (m_impl->m_allocated) {
         // Data already allocated: set pixels individually
-        for (int p = 0; p < m_npixels; ++p)
+        for (int64_t p = 0; p < m_npixels; ++p)
             set_samples(p, int(samples[p]));
     } else {
         // Data not yet allocated: copy in one shot
@@ -576,7 +550,7 @@ DeepData::set_all_samples(cspan<unsigned int> samples)
 
 
 void
-DeepData::insert_samples(int pixel, int samplepos, int n)
+DeepData::insert_samples(int64_t pixel, int samplepos, int n)
 {
     int oldsamps = samples(pixel);
     if (oldsamps + n > int(m_impl->m_capacity[pixel]))
@@ -602,7 +576,7 @@ DeepData::insert_samples(int pixel, int samplepos, int n)
 
 
 void
-DeepData::erase_samples(int pixel, int samplepos, int n)
+DeepData::erase_samples(int64_t pixel, int samplepos, int n)
 {
     // DON'T reduce the capacity! Just leave holes for speed.
     // Because erase_samples only moves data within a pixel and doesn't
@@ -623,7 +597,7 @@ DeepData::erase_samples(int pixel, int samplepos, int n)
 
 
 void*
-DeepData::data_ptr(int pixel, int channel, int sample)
+DeepData::data_ptr(int64_t pixel, int channel, int sample)
 {
     m_impl->alloc(m_npixels);
     if (pixel < 0 || pixel >= m_npixels || channel < 0 || channel >= m_nchannels
@@ -635,7 +609,7 @@ DeepData::data_ptr(int pixel, int channel, int sample)
 
 
 const void*
-DeepData::data_ptr(int pixel, int channel, int sample) const
+DeepData::data_ptr(int64_t pixel, int channel, int sample) const
 {
     if (pixel < 0 || pixel >= m_npixels || channel < 0 || channel >= m_nchannels
         || !m_impl || !m_impl->m_data.size() || sample < 0
@@ -647,7 +621,7 @@ DeepData::data_ptr(int pixel, int channel, int sample) const
 
 
 float
-DeepData::deep_value(int pixel, int channel, int sample) const
+DeepData::deep_value(int64_t pixel, int channel, int sample) const
 {
     const void* ptr = data_ptr(pixel, channel, sample);
     if (!ptr)
@@ -676,8 +650,8 @@ DeepData::deep_value(int pixel, int channel, int sample) const
     case TypeDesc::INT64:
         return ConstDataArrayProxy<long long, float>((const long long*)ptr)[0];
     default:
-        ASSERT_MSG(0, "Unknown/unsupported data type %d",
-                   channeltype(channel).basetype);
+        OIIO_ASSERT_MSG(0, "Unknown/unsupported data type %d",
+                        channeltype(channel).basetype);
         return 0.0f;
     }
 }
@@ -685,7 +659,7 @@ DeepData::deep_value(int pixel, int channel, int sample) const
 
 
 uint32_t
-DeepData::deep_value_uint(int pixel, int channel, int sample) const
+DeepData::deep_value_uint(int64_t pixel, int channel, int sample) const
 {
     const void* ptr = data_ptr(pixel, channel, sample);
     if (!ptr)
@@ -715,8 +689,8 @@ DeepData::deep_value_uint(int pixel, int channel, int sample) const
         return ConstDataArrayProxy<long long, uint32_t>(
             (const long long*)ptr)[0];
     default:
-        ASSERT_MSG(0, "Unknown/unsupported data type %d",
-                   channeltype(channel).basetype);
+        OIIO_ASSERT_MSG(0, "Unknown/unsupported data type %d",
+                        channeltype(channel).basetype);
         return 0;
     }
 }
@@ -724,7 +698,7 @@ DeepData::deep_value_uint(int pixel, int channel, int sample) const
 
 
 void
-DeepData::set_deep_value(int pixel, int channel, int sample, float value)
+DeepData::set_deep_value(int64_t pixel, int channel, int sample, float value)
 {
     void* ptr = data_ptr(pixel, channel, sample);
     if (!ptr)
@@ -759,15 +733,15 @@ DeepData::set_deep_value(int pixel, int channel, int sample, float value)
         DataArrayProxy<int64_t, float>((int64_t*)ptr)[0] = value;
         break;
     default:
-        ASSERT_MSG(0, "Unknown/unsupported data type %d",
-                   channeltype(channel).basetype);
+        OIIO_ASSERT_MSG(0, "Unknown/unsupported data type %d",
+                        channeltype(channel).basetype);
     }
 }
 
 
 
 void
-DeepData::set_deep_value(int pixel, int channel, int sample, uint32_t value)
+DeepData::set_deep_value(int64_t pixel, int channel, int sample, uint32_t value)
 {
     void* ptr = data_ptr(pixel, channel, sample);
     if (!ptr)
@@ -805,8 +779,8 @@ DeepData::set_deep_value(int pixel, int channel, int sample, uint32_t value)
         DataArrayProxy<int64_t, uint32_t>((int64_t*)ptr)[0] = value;
         break;
     default:
-        ASSERT_MSG(0, "Unknown/unsupported data type %d",
-                   channeltype(channel).basetype);
+        OIIO_ASSERT_MSG(0, "Unknown/unsupported data type %d",
+                        channeltype(channel).basetype);
     }
 }
 
@@ -815,7 +789,7 @@ DeepData::set_deep_value(int pixel, int channel, int sample, uint32_t value)
 cspan<TypeDesc>
 DeepData::all_channeltypes() const
 {
-    ASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     return m_impl->m_channeltypes;
 }
 
@@ -824,7 +798,7 @@ DeepData::all_channeltypes() const
 cspan<unsigned int>
 DeepData::all_samples() const
 {
-    ASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     return m_impl->m_nsamples;
 }
 
@@ -833,7 +807,7 @@ DeepData::all_samples() const
 cspan<char>
 DeepData::all_data() const
 {
-    ASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     m_impl->alloc(m_npixels);
     return m_impl->m_data;
 }
@@ -843,10 +817,10 @@ DeepData::all_data() const
 void
 DeepData::get_pointers(std::vector<void*>& pointers) const
 {
-    ASSERT(m_impl);
+    OIIO_DASSERT(m_impl);
     m_impl->alloc(m_npixels);
     pointers.resize(pixels() * channels());
-    for (int i = 0; i < m_npixels; ++i) {
+    for (int64_t i = 0; i < m_npixels; ++i) {
         if (m_impl->m_nsamples[i])
             for (int c = 0; c < m_nchannels; ++c)
                 pointers[i * m_nchannels + c] = (void*)m_impl->data_ptr(i, c,
@@ -860,8 +834,8 @@ DeepData::get_pointers(std::vector<void*>& pointers) const
 
 
 bool
-DeepData::copy_deep_sample(int pixel, int sample, const DeepData& src,
-                           int srcpixel, int srcsample)
+DeepData::copy_deep_sample(int64_t pixel, int sample, const DeepData& src,
+                           int64_t srcpixel, int srcsample)
 {
     const void* srcdata = src.data_ptr(srcpixel, 0, srcsample);
     int nchans          = channels();
@@ -884,11 +858,11 @@ DeepData::copy_deep_sample(int pixel, int sample, const DeepData& src,
 
 
 bool
-DeepData::copy_deep_pixel(int pixel, const DeepData& src, int srcpixel)
+DeepData::copy_deep_pixel(int64_t pixel, const DeepData& src, int64_t srcpixel)
 {
     if (pixel < 0 || pixel >= pixels()) {
         // std::cout << "dst pixel was " << pixel << "\n";
-        DASSERT(0 && "Out of range pixel index");
+        OIIO_DASSERT(0 && "Out of range pixel index");
         return false;
     }
     if (srcpixel < 0 || srcpixel >= src.pixels()) {
@@ -899,7 +873,7 @@ DeepData::copy_deep_pixel(int pixel, const DeepData& src, int srcpixel)
     }
     int nchans = channels();
     if (nchans != src.channels()) {
-        DASSERT(0 && "Number of channels don't match.");
+        OIIO_DASSERT(0 && "Number of channels don't match.");
         return false;
     }
     int nsamples = src.samples(srcpixel);
@@ -931,7 +905,7 @@ DeepData::copy_deep_pixel(int pixel, const DeepData& src, int srcpixel)
 
 
 bool
-DeepData::split(int pixel, float depth)
+DeepData::split(int64_t pixel, float depth)
 {
     using std::expm1;
     using std::log1p;
@@ -1043,7 +1017,7 @@ private:
 
 
 void
-DeepData::sort(int pixel)
+DeepData::sort(int64_t pixel)
 {
     int zchan = m_impl->m_z_channel;
     if (zchan < 0)
@@ -1075,7 +1049,7 @@ DeepData::sort(int pixel)
 
 
 void
-DeepData::merge_overlaps(int pixel)
+DeepData::merge_overlaps(int64_t pixel)
 {
     using std::log1p;
     int zchan     = m_impl->m_z_channel;
@@ -1153,7 +1127,7 @@ DeepData::merge_overlaps(int pixel)
 
 
 void
-DeepData::merge_deep_pixels(int pixel, const DeepData& src, int srcpixel)
+DeepData::merge_deep_pixels(int64_t pixel, const DeepData& src, int srcpixel)
 {
     int srcsamples = src.samples(srcpixel);
     if (srcsamples == 0)
@@ -1192,7 +1166,7 @@ DeepData::merge_deep_pixels(int pixel, const DeepData& src, int srcpixel)
 
 
 float
-DeepData::opaque_z(int pixel) const
+DeepData::opaque_z(int64_t pixel) const
 {
     if (pixel < 0)
         return std::numeric_limits<float>::max();
@@ -1237,7 +1211,7 @@ DeepData::opaque_z(int pixel) const
 
 
 void
-DeepData::occlusion_cull(int pixel)
+DeepData::occlusion_cull(int64_t pixel)
 {
     int alpha_channel = m_impl->m_alpha_channel;
     if (alpha_channel < 0)

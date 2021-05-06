@@ -166,9 +166,9 @@ dpx::ImageElement::ImageElement()
 {
 	this->dataSign = 0xffffffff;
 	this->lowData = 0xffffffff;
-	this->lowQuantity = 0xffffffff;
+	this->lowQuantity = R32(0xffffffff);
 	this->highData = 0xffffffff;
-	this->highQuantity = 0xffffffff;
+	this->highQuantity = R32(0xffffffff);
 	this->descriptor = kUndefinedDescriptor;
 	this->transfer = kUndefinedCharacteristic;	
 	this->colorimetric = kUndefinedCharacteristic;
@@ -767,7 +767,7 @@ void dpx::GenericHeader::SetCreationTimeDate(const long sec)
 	struct tm *tm_time;
 	char str[32];
 	
-#ifdef WIN32
+#ifdef _WIN32
 	_tzset();
 #endif
 
@@ -783,7 +783,7 @@ void dpx::GenericHeader::SetSourceTimeDate(const long sec)
 	struct tm *tm_time;
 	char str[32];
 	
-#ifdef WIN32
+#ifdef _WIN32
 	_tzset();
 #endif
 

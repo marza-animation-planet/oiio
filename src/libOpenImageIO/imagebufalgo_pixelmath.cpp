@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 /// \file
 /// Implementation of ImageBufAlgo algorithms that do math on
@@ -102,7 +76,7 @@ ImageBufAlgo::clamp(const ImageBuf& src, cspan<float> min, cspan<float> max,
     ImageBuf result;
     bool ok = clamp(result, src, min, max, clampalpha01, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::clamp error");
+        result.errorf("ImageBufAlgo::clamp error");
     return result;
 }
 
@@ -163,7 +137,7 @@ ImageBufAlgo::absdiff(ImageBuf& dst, Image_or_Const A_, Image_or_Const B_,
             // the bigger of them, but adjusted roi to be the lesser. Now handle
             // the channels that got left out because they were not common to
             // all the inputs.
-            ASSERT(roi.chend <= dst.nchannels());
+            OIIO_DASSERT(roi.chend <= dst.nchannels());
             roi.chbegin = roi.chend;
             roi.chend   = origroi.chend;
             if (A.nchannels() > B.nchannels()) {  // A exists
@@ -187,7 +161,7 @@ ImageBufAlgo::absdiff(ImageBuf& dst, Image_or_Const A_, Image_or_Const B_,
         return ok;
     }
     // Remaining cases: error
-    dst.error(
+    dst.errorf(
         "ImageBufAlgo::absdiff(): at least one argument must be an image");
     return false;
 }
@@ -200,7 +174,7 @@ ImageBufAlgo::absdiff(Image_or_Const A, Image_or_Const B, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = absdiff(result, A, B, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::absdiff() error");
+        result.errorf("ImageBufAlgo::absdiff() error");
     return result;
 }
 
@@ -221,7 +195,7 @@ ImageBufAlgo::abs(const ImageBuf& A, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = abs(result, A, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("abs error");
+        result.errorf("abs error");
     return result;
 }
 
@@ -262,7 +236,7 @@ ImageBufAlgo::pow(const ImageBuf& A, cspan<float> b, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = pow(result, A, b, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("pow error");
+        result.errorf("pow error");
     return result;
 }
 
@@ -319,7 +293,7 @@ ImageBufAlgo::channel_sum(const ImageBuf& src, cspan<float> weights, ROI roi,
     ImageBuf result;
     bool ok = channel_sum(result, src, weights, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("channel_sum error");
+        result.errorf("channel_sum error");
     return result;
 }
 
@@ -545,7 +519,7 @@ ImageBufAlgo::rangecompress(const ImageBuf& src, bool useluma, ROI roi,
     ImageBuf result;
     bool ok = rangecompress(result, src, useluma, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::rangecompress() error");
+        result.errorf("ImageBufAlgo::rangecompress() error");
     return result;
 }
 
@@ -558,7 +532,7 @@ ImageBufAlgo::rangeexpand(const ImageBuf& src, bool useluma, ROI roi,
     ImageBuf result;
     bool ok = rangeexpand(result, src, useluma, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::rangeexpand() error");
+        result.errorf("ImageBufAlgo::rangeexpand() error");
     return result;
 }
 
@@ -635,7 +609,7 @@ ImageBufAlgo::unpremult(const ImageBuf& src, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = unpremult(result, src, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::unpremult() error");
+        result.errorf("ImageBufAlgo::unpremult() error");
     return result;
 }
 
@@ -702,7 +676,7 @@ ImageBufAlgo::premult(const ImageBuf& src, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = premult(result, src, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::premult() error");
+        result.errorf("ImageBufAlgo::premult() error");
     return result;
 }
 
@@ -728,7 +702,7 @@ contrast_remap_(ImageBuf& dst, const ImageBuf& src, cspan<float> black,
                 int nthreads)
 {
     bool same_black_white = (black == white);
-    float* bwdiffinv      = ALLOCA(float, roi.chend);
+    float* bwdiffinv      = OIIO_ALLOCA(float, roi.chend);
     for (int c = roi.chbegin; c < roi.chend; ++c)
         bwdiffinv[c] = 1.0f / (white[c] - black[c]);
     bool use_sigmoid = !allspan(scontrast, 1.0f);
@@ -747,8 +721,10 @@ contrast_remap_(ImageBuf& dst, const ImageBuf& src, cspan<float> black,
         }
 
         // First do the linear stretch
-        float* r = ALLOCA(float, roi.chend);  // temp result
+        float* r = OIIO_ALLOCA(float, roi.chend);  // temp result
         ImageBuf::ConstIterator<S> s(src, roi);
+        float* y     = OIIO_ALLOCA(float, roi.chend);
+        float* denom = OIIO_ALLOCA(float, roi.chend);
         for (ImageBuf::Iterator<D> d(dst, roi); !d.done(); ++d, ++s) {
             for (int c = roi.chbegin; c < roi.chend; ++c)
                 r[c] = (s[c] - black[c]) * bwdiffinv[c];
@@ -759,8 +735,6 @@ contrast_remap_(ImageBuf& dst, const ImageBuf& src, cspan<float> black,
             if (use_sigmoid) {
                 // Sorry about the lack of clarity, we're working hard to
                 // minimize computation.
-                float* y     = ALLOCA(float, roi.chend);
-                float* denom = ALLOCA(float, roi.chend);
                 for (int c = roi.chbegin; c < roi.chend; ++c) {
                     y[c]     = 1.0f / (1.0f + expf(scontrast[c] * sthresh[c]));
                     denom[c] = 1.0f
@@ -830,7 +804,7 @@ ImageBufAlgo::contrast_remap(const ImageBuf& src, cspan<float> black,
     bool ok = contrast_remap(result, src, black, white, min, max, scontrast,
                              sthresh, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::contrast_remap error");
+        result.errorf("ImageBufAlgo::contrast_remap error");
     return result;
 }
 
@@ -869,11 +843,11 @@ ImageBufAlgo::color_map(ImageBuf& dst, const ImageBuf& src, int srcchannel,
 {
     pvt::LoggedTimer logtime("IBA::color_map");
     if (srcchannel >= src.nchannels()) {
-        dst.error("invalid source channel selected");
+        dst.errorf("invalid source channel selected");
         return false;
     }
     if (nknots < 2 || knots.size() < (nknots * channels)) {
-        dst.error("not enough knot values supplied");
+        dst.errorf("not enough knot values supplied");
         return false;
     }
     if (!roi.defined())
@@ -903,7 +877,7 @@ ImageBufAlgo::color_map(const ImageBuf& src, int srcchannel, int nknots,
     bool ok = color_map(result, src, srcchannel, nknots, channels, knots, roi,
                         nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::color_map() error");
+        result.errorf("ImageBufAlgo::color_map() error");
     return result;
 }
 
@@ -923,45 +897,71 @@ ImageBufAlgo::color_map(const ImageBuf& src, int srcchannel, int nknots,
 // LG has altered the original maps by converting from sRGB to a linear
 // response (since that's how OIIO wants to operate), and also decimated the
 // arrays from 256 entries to 17 entries (fine, since we interpolate).
-static const float magma_data[]
-    = { 0.000113, 0.000036, 0.001073, 0.003066, 0.002406, 0.016033, 0.012176,
-        0.005476, 0.062265, 0.036874, 0.005102, 0.146314, 0.081757, 0.006177,
-        0.200758, 0.143411, 0.011719, 0.218382, 0.226110, 0.019191, 0.221188,
-        0.334672, 0.027718, 0.212689, 0.471680, 0.037966, 0.191879, 0.632894,
-        0.053268, 0.159870, 0.795910, 0.083327, 0.124705, 0.913454, 0.146074,
-        0.106311, 0.970011, 0.248466, 0.120740, 0.991142, 0.384808, 0.167590,
-        0.992958, 0.553563, 0.247770, 0.982888, 0.756759, 0.367372, 0.970800,
-        0.980633, 0.521749 };
+// clang-format off
+static const float magma_data[] = {
+    0.000113f, 0.000036f, 0.001073f, 0.003066f, 0.002406f, 0.016033f, 0.012176f,
+    0.005476f, 0.062265f, 0.036874f, 0.005102f, 0.146314f, 0.081757f, 0.006177f,
+    0.200758f, 0.143411f, 0.011719f, 0.218382f, 0.226110f, 0.019191f, 0.221188f,
+    0.334672f, 0.027718f, 0.212689f, 0.471680f, 0.037966f, 0.191879f, 0.632894f,
+    0.053268f, 0.159870f, 0.795910f, 0.083327f, 0.124705f, 0.913454f, 0.146074f,
+    0.106311f, 0.970011f, 0.248466f, 0.120740f, 0.991142f, 0.384808f, 0.167590f,
+    0.992958f, 0.553563f, 0.247770f, 0.982888f, 0.756759f, 0.367372f, 0.970800f,
+    0.980633f, 0.521749f
+};
 static const float inferno_data[] = {
-    0.000113, 0.000036, 0.001073, 0.003275, 0.002178, 0.017634, 0.015183,
-    0.003697, 0.068760, 0.046307, 0.002834, 0.130327, 0.095494, 0.005137,
-    0.154432, 0.163601, 0.009920, 0.156097, 0.253890, 0.016282, 0.143715,
-    0.367418, 0.024893, 0.119982, 0.500495, 0.038279, 0.089117, 0.642469,
-    0.061553, 0.057555, 0.776190, 0.102517, 0.031141, 0.883568, 0.169990,
-    0.012559, 0.951614, 0.271639, 0.002704, 0.972636, 0.413571, 0.005451,
-    0.943272, 0.599923, 0.035112, 0.884900, 0.822282, 0.140466, 0.973729,
-    0.996282, 0.373522,
+    0.000113f, 0.000036f, 0.001073f, 0.003275f, 0.002178f, 0.017634f, 0.015183f,
+    0.003697f, 0.068760f, 0.046307f, 0.002834f, 0.130327f, 0.095494f, 0.005137f,
+    0.154432f, 0.163601f, 0.009920f, 0.156097f, 0.253890f, 0.016282f, 0.143715f,
+    0.367418f, 0.024893f, 0.119982f, 0.500495f, 0.038279f, 0.089117f, 0.642469f,
+    0.061553f, 0.057555f, 0.776190f, 0.102517f, 0.031141f, 0.883568f, 0.169990f,
+    0.012559f, 0.951614f, 0.271639f, 0.002704f, 0.972636f, 0.413571f, 0.005451f,
+    0.943272f, 0.599923f, 0.035112f, 0.884900f, 0.822282f, 0.140466f, 0.973729f,
+    0.996282f, 0.373522f
 };
 static const float plasma_data[] = {
-    0.003970, 0.002307, 0.240854, 0.031078, 0.001421, 0.307376, 0.073167,
-    0.000740, 0.356714, 0.132456, 0.000066, 0.388040, 0.209330, 0.000928,
-    0.390312, 0.300631, 0.005819, 0.358197, 0.399925, 0.017084, 0.301977,
-    0.501006, 0.036122, 0.240788, 0.600808, 0.063814, 0.186921, 0.698178,
-    0.101409, 0.142698, 0.790993, 0.151134, 0.106347, 0.874354, 0.216492,
-    0.076152, 0.940588, 0.302179, 0.051495, 0.980469, 0.413691, 0.032625,
-    0.984224, 0.556999, 0.020728, 0.942844, 0.738124, 0.018271, 0.868931,
-    0.944416, 0.015590,
+    0.003970f, 0.002307f, 0.240854f, 0.031078f, 0.001421f, 0.307376f, 0.073167f,
+    0.000740f, 0.356714f, 0.132456f, 0.000066f, 0.388040f, 0.209330f, 0.000928f,
+    0.390312f, 0.300631f, 0.005819f, 0.358197f, 0.399925f, 0.017084f, 0.301977f,
+    0.501006f, 0.036122f, 0.240788f, 0.600808f, 0.063814f, 0.186921f, 0.698178f,
+    0.101409f, 0.142698f, 0.790993f, 0.151134f, 0.106347f, 0.874354f, 0.216492f,
+    0.076152f, 0.940588f, 0.302179f, 0.051495f, 0.980469f, 0.413691f, 0.032625f,
+    0.984224f, 0.556999f, 0.020728f, 0.942844f, 0.738124f, 0.018271f, 0.868931f,
+    0.944416f, 0.015590f
 };
 static const float viridis_data[] = {
-    0.057951, 0.000377, 0.088657, 0.064791, 0.009258, 0.145340, 0.063189,
-    0.025975, 0.198994, 0.054539, 0.051494, 0.237655, 0.043139, 0.084803,
-    0.258811, 0.032927, 0.124348, 0.268148, 0.025232, 0.169666, 0.271584,
-    0.019387, 0.221569, 0.270909, 0.014846, 0.281323, 0.263855, 0.013529,
-    0.349530, 0.246357, 0.021457, 0.425216, 0.215605, 0.049317, 0.505412,
-    0.172291, 0.112305, 0.585164, 0.121207, 0.229143, 0.657992, 0.070438,
-    0.417964, 0.717561, 0.029928, 0.683952, 0.762557, 0.009977, 0.984709,
-    0.799651, 0.018243,
+    0.057951f, 0.000377f, 0.088657f, 0.064791f, 0.009258f, 0.145340f, 0.063189f,
+    0.025975f, 0.198994f, 0.054539f, 0.051494f, 0.237655f, 0.043139f, 0.084803f,
+    0.258811f, 0.032927f, 0.124348f, 0.268148f, 0.025232f, 0.169666f, 0.271584f,
+    0.019387f, 0.221569f, 0.270909f, 0.014846f, 0.281323f, 0.263855f, 0.013529f,
+    0.349530f, 0.246357f, 0.021457f, 0.425216f, 0.215605f, 0.049317f, 0.505412f,
+    0.172291f, 0.112305f, 0.585164f, 0.121207f, 0.229143f, 0.657992f, 0.070438f,
+    0.417964f, 0.717561f, 0.029928f, 0.683952f, 0.762557f, 0.009977f, 0.984709f,
+    0.799651f, 0.018243f
 };
+
+
+// "Turbo" color map Copyright 2019 Google LLC.
+// SPDX-License-Identifier: Apache-2.0
+// Author: Anton Mikhailov
+// https://gist.github.com/mikhailov-work/6a308c20e494d9e0ccc29036b28faa7a
+// Altered by LG to convert from sRGB to linear and decimate the table to
+// 17 entries.
+//
+// Turbo is also pretty nice, in similar ways to the matplotlib palettes,
+// except for not being monotonically increasing in luminance.
+static const float turbo_data[] = {
+    0.03006f, 0.00619f, 0.04403f,  0.05131f, 0.05183f, 0.35936f,
+    0.06204f, 0.14820f, 0.77017f,  0.05440f, 0.29523f, 0.99718f,
+    0.02160f, 0.50023f, 0.83380f,  0.00892f, 0.72094f, 0.54189f,
+    0.03205f, 0.88790f, 0.31235f,  0.15318f, 0.98683f, 0.12310f,
+    0.37185f, 0.97738f, 0.04454f,  0.61188f, 0.83681f, 0.03455f,
+    0.85432f, 0.62499f, 0.04203f,  0.98447f, 0.41196f, 0.03420f,
+    0.96310f, 0.20754f, 0.01503f,  0.82971f, 0.08083f, 0.00438f,
+    0.63144f, 0.02851f, 0.00140f,  0.39907f, 0.00776f, 0.00033f,
+    0.19564f, 0.00123f, 0.00082f
+};
+
+// clang-format on
 
 
 
@@ -971,7 +971,7 @@ ImageBufAlgo::color_map(ImageBuf& dst, const ImageBuf& src, int srcchannel,
 {
     pvt::LoggedTimer logtime("IBA::color_map");
     if (srcchannel >= src.nchannels()) {
-        dst.error("invalid source channel selected");
+        dst.errorf("invalid source channel selected");
         return false;
     }
     cspan<float> knots;
@@ -983,20 +983,24 @@ ImageBufAlgo::color_map(ImageBuf& dst, const ImageBuf& src, int srcchannel,
         knots = cspan<float>(plasma_data);
     } else if (mapname == "viridis") {
         knots = cspan<float>(viridis_data);
+    } else if (mapname == "turbo") {
+        knots = cspan<float>(turbo_data);
     } else if (mapname == "blue-red" || mapname == "red-blue"
                || mapname == "bluered" || mapname == "redblue") {
         static const float k[] = { 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f };
         knots                  = cspan<float>(k);
     } else if (mapname == "spectrum") {
-        static const float k[] = { 0, 0,   0.05, 0, 0, 0.75, 0, 0.5,
-                                   0, 0.5, 0.5,  0, 1, 0,    0 };
+        static const float k[] = { 0.0f,  0.0f, 0.05f, 0.0f, 0.0f,
+                                   0.75f, 0.0f, 0.5f,  0.0f, 0.5f,
+                                   0.5f,  0.0f, 1.0f,  0.0f, 0.0f };
         knots                  = cspan<float>(k);
     } else if (mapname == "heat") {
-        static const float k[] = { 0, 0,    0,    0.05, 0, 0, 0.25, 0,
-                                   0, 0.75, 0.75, 0,    1, 1, 1 };
+        static const float k[] = { 0.0f,  0.0f,  0.0f, 0.05f, 0.0f,
+                                   0.0f,  0.25f, 0.0f, 0.0f,  0.75f,
+                                   0.75f, 0.0f,  1.0f, 1.0f,  1.0f };
         knots                  = cspan<float>(k);
     } else {
-        dst.error("Unknown map name \"%s\"", mapname);
+        dst.errorf("Unknown map name \"%s\"", mapname);
         return false;
     }
     return color_map(dst, src, srcchannel, int(knots.size() / 3), 3, knots, roi,
@@ -1011,7 +1015,7 @@ ImageBufAlgo::color_map(const ImageBuf& src, int srcchannel,
     ImageBuf result;
     bool ok = color_map(result, src, srcchannel, mapname, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::color_map() error");
+        result.errorf("ImageBufAlgo::color_map() error");
     return result;
 }
 
@@ -1184,7 +1188,7 @@ ImageBufAlgo::fixNonFinite(ImageBuf& dst, const ImageBuf& src,
         && mode != ImageBufAlgo::NONFINITE_BOX3
         && mode != ImageBufAlgo::NONFINITE_ERROR) {
         // Something went wrong
-        dst.error("fixNonFinite: unknown repair mode");
+        dst.errorf("fixNonFinite: unknown repair mode");
         return false;
     }
 
@@ -1214,7 +1218,7 @@ ImageBufAlgo::fixNonFinite(ImageBuf& dst, const ImageBuf& src,
     // pixel values, so the copy was enough.
 
     if (mode == ImageBufAlgo::NONFINITE_ERROR && *pixelsFixed) {
-        dst.error("Nonfinite pixel values found");
+        dst.errorf("Nonfinite pixel values found");
         ok = false;
     }
     return ok;
@@ -1229,7 +1233,7 @@ ImageBufAlgo::fixNonFinite(const ImageBuf& src, NonFiniteFixMode mode,
     ImageBuf result;
     bool ok = fixNonFinite(result, src, mode, pixelsFixed, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::fixNonFinite() error");
+        result.errorf("ImageBufAlgo::fixNonFinite() error");
     return result;
 }
 
@@ -1328,11 +1332,11 @@ over_impl_rgbafloat(ImageBuf& R, const ImageBuf& A, const ImageBuf& B, ROI roi,
                     int nthreads)
 {
     using namespace simd;
-    ASSERT(A.localpixels() && B.localpixels() && A.spec().format == TypeFloat
-           && A.nchannels() == 4 && B.spec().format == TypeFloat
-           && B.nchannels() == 4 && A.spec().alpha_channel == 3
-           && A.spec().z_channel < 0 && B.spec().alpha_channel == 3
-           && B.spec().z_channel < 0);
+    OIIO_DASSERT(A.localpixels() && B.localpixels()
+                 && A.spec().format == TypeFloat && A.nchannels() == 4
+                 && B.spec().format == TypeFloat && B.nchannels() == 4
+                 && A.spec().alpha_channel == 3 && A.spec().z_channel < 0
+                 && B.spec().alpha_channel == 3 && B.spec().z_channel < 0);
     // const int nchannels = 4, alpha_channel = 3;
     ImageBufAlgo::parallel_image(roi, nthreads, [=, &R, &A, &B](ROI roi) {
         vfloat4 zero = vfloat4::Zero();
@@ -1396,7 +1400,7 @@ ImageBufAlgo::over(const ImageBuf& A, const ImageBuf& B, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = over(result, A, B, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::over() error");
+        result.errorf("ImageBufAlgo::over() error");
     return result;
 }
 
@@ -1427,7 +1431,7 @@ ImageBufAlgo::zover(const ImageBuf& A, const ImageBuf& B, bool z_zeroisinf,
     ImageBuf result;
     bool ok = zover(result, A, B, z_zeroisinf, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::zover() error");
+        result.errorf("ImageBufAlgo::zover() error");
     return result;
 }
 

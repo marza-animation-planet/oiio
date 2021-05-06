@@ -844,7 +844,7 @@ only be called on a tile that has been requested by
 {\cf get_tile()} but has not yet been released with {\cf release_tile()}.
 \apiend
 
-\apiitem{void {\ce invalidate} (ustring filename)}
+\apiitem{void {\ce invalidate} (ustring filename, bool force=true)}
 Invalidate any loaded tiles or open file handles associated with
 the filename, so that any subsequent queries will be forced to
 re-open the file or re-load any tiles (even those that were
@@ -855,6 +855,10 @@ to do even if other procedures are currently holding
 reference-counted tile pointers from the named image, but those 
 procedures will not get updated pixels until they release the 
 tiles they are holding.
+
+If {\cf force} is true, this invalidation will happen unconditionally; if
+false, the file will only be invalidated if it has been changed since it was
+first opened by the ImageCache.
 \apiend
 
 \apiitem{void {\ce invalidate_all} (bool force=false)}
@@ -873,7 +877,6 @@ modification times have been changed since they were first opened.
 
 \apiitem{void {\ce close} (ustring filename) \\
 void {\ce close_all} ()}
-\NEW % 1.9
 Close any open file handles associated with a named file, or for all
 files, but do not invalidate any image spec information or pixels
 associated with the files.  A client might do this in order to

@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <string>
 
@@ -60,20 +34,18 @@ typedef null_lock<null_mutex> ustring_read_lock_t;
 typedef null_lock<null_mutex> ustring_write_lock_t;
 #endif
 
+// #define USTRING_TRACK_NUM_LOOKUPS
 
-// NOTE: BASE_CAPACITY must be a power of 2
-template<unsigned BASE_CAPACITY = 1 << 20, unsigned POOL_SIZE = 4 << 20>
-struct TableRepMap {
+template<unsigned BASE_CAPACITY, unsigned POOL_SIZE> struct TableRepMap {
+    static_assert((BASE_CAPACITY & (BASE_CAPACITY - 1)) == 0,
+                  "BASE_CAPACITY must be a power of 2");
+
     TableRepMap()
-        : mask(BASE_CAPACITY - 1)
-        , entries(static_cast<ustring::TableRep**>(
-              calloc(BASE_CAPACITY, sizeof(ustring::TableRep*))))
-        , num_entries(0)
+        : entries(static_cast<ustring::TableRep**>(
+            calloc(BASE_CAPACITY, sizeof(ustring::TableRep*))))
         , pool(static_cast<char*>(malloc(POOL_SIZE)))
-        , pool_offset(0)
         , memory_usage(sizeof(*this) + POOL_SIZE
                        + sizeof(ustring::TableRep*) * BASE_CAPACITY)
-        , num_lookups(0)
     {
     }
 
@@ -93,16 +65,18 @@ struct TableRepMap {
         return num_entries;
     }
 
+#ifdef USTRING_TRACK_NUM_LOOKUPS
     size_t get_num_lookups()
     {
         ustring_read_lock_t lock(mutex);
         return num_lookups;
     }
+#endif
 
     const char* lookup(string_view str, size_t hash)
     {
         ustring_read_lock_t lock(mutex);
-#if 0
+#ifdef USTRING_TRACK_NUM_LOOKUPS
         // NOTE: this simple increment adds a substantial amount of overhead
         // so keep it off by default, unless the user really wants it
         // NOTE2: note that in debug, asserts like the one in ustring::from_unique
@@ -182,7 +156,6 @@ private:
     {
         char* repmem = pool_alloc(sizeof(ustring::TableRep) + str.length() + 1);
         return new (repmem) ustring::TableRep(str, hash);
-        ;
     }
 
     char* pool_alloc(size_t len)
@@ -206,19 +179,21 @@ private:
         return result;
     }
 
-    size_t mask;
+    OIIO_CACHE_ALIGN ustring_mutex_t mutex;
+    size_t mask = BASE_CAPACITY - 1;
     ustring::TableRep** entries;
-    size_t num_entries;
+    size_t num_entries = 0;
     char* pool;
-    size_t pool_offset;
+    size_t pool_offset = 0;
     size_t memory_usage;
-    size_t num_lookups;
-    ustring_mutex_t mutex;
+#ifdef USTRING_TRACK_NUM_LOOKUPS
+    size_t num_lookups = 0;
+#endif
 };
 
 #if 0
 // Naive map with a single lock for the whole table
-typedef TableRepMap<1 << 20, 4 << 20> UstringTable;
+typedef TableRepMap<1 << 20, 16 << 20> UstringTable;
 #else
 // Optimized map broken up into chunks by the top bits of the hash.
 // This helps reduce the amount of contention for locks.
@@ -249,6 +224,7 @@ struct UstringTable {
         return num;
     }
 
+#    ifdef USTRING_TRACK_NUM_LOOKUPS
     size_t get_num_lookups()
     {
         size_t num = 0;
@@ -256,16 +232,17 @@ struct UstringTable {
             num += bin.get_num_lookups();
         return num;
     }
+#    endif
 
 private:
     enum {
-        BIN_SHIFT = 5,
-        NUM_BINS
-        = 1 << BIN_SHIFT,  // NOTE: this guarentees NUM_BINS is a power of 2
+        // NOTE: this guarentees NUM_BINS is a power of 2
+        BIN_SHIFT = 12,
+        NUM_BINS  = 1 << BIN_SHIFT,
         TOP_SHIFT = 8 * sizeof(size_t) - BIN_SHIFT
     };
 
-    typedef TableRepMap<(1 << 20) / NUM_BINS, (4 << 20) / NUM_BINS> Bin;
+    typedef TableRepMap<(1 << 20) / NUM_BINS, (16 << 20) / NUM_BINS> Bin;
 
     Bin bins[NUM_BINS];
 
@@ -381,7 +358,7 @@ ustring::TableRep::TableRep(string_view strref, size_t hash)
     dummy_capacity      = length;
     dummy_refcount      = 1;  // so it never frees
     *(const char**)&str = c_str();
-    DASSERT(str.c_str() == c_str() && str.size() == length);
+    OIIO_DASSERT(str.c_str() == c_str() && str.size() == length);
     return;
 
 #elif defined(_LIBCPP_VERSION)
@@ -401,7 +378,7 @@ ustring::TableRep::TableRep(string_view strref, size_t hash)
                                                | (length + 1);
         ((libcpp_string__long*)&str)->__size_ = length;
         ((libcpp_string__long*)&str)->__data_ = (char*)c_str();
-        DASSERT(str.c_str() == c_str() && str.size() == length);
+        OIIO_DASSERT(str.c_str() == c_str() && str.size() == length);
         return;
     }
 #endif
@@ -442,25 +419,47 @@ ustring::make_unique(string_view strref)
     return result ? result : table.insert(strref, hash);
 }
 
+
+
+ustring
+ustring::concat(string_view s, string_view t)
+{
+    size_t sl  = s.size();
+    size_t tl  = t.size();
+    size_t len = sl + tl;
+    std::unique_ptr<char[]> heap_buf;
+    char local_buf[256];
+    char* buf = local_buf;
+    if (len > sizeof(local_buf)) {
+        heap_buf.reset(new char[len]);
+        buf = heap_buf.get();
+    }
+    memcpy(buf, s.data(), sl);
+    memcpy(buf + sl, t.data(), tl);
+    return ustring(buf, len);
+}
+
+
+
 std::string
 ustring::getstats(bool verbose)
 {
     UstringTable& table(ustring_table());
     std::ostringstream out;
     out.imbue(std::locale::classic());  // Force "C" locale with '.' decimal
-    size_t n_l = table.get_num_lookups();
     size_t n_e = table.get_num_entries();
     size_t mem = table.get_memory_usage();
     if (verbose) {
         out << "ustring statistics:\n";
-        if (n_l)  // NOTE: see #if 0 above
-            out << "  ustring requests: " << n_l << ", unique " << n_e << "\n";
-        else
-            out << "  unique strings: " << n_e << "\n";
+#ifdef USTRING_TRACK_NUM_LOOKUPS
+        out << "  ustring requests: " << table.get_num_lookups() << "\n";
+#endif
+        out << "  unique strings: " << n_e << "\n";
         out << "  ustring memory: " << Strutil::memformat(mem) << "\n";
     } else {
-        if (n_l)  // NOTE: see #if 0 above
-            out << "requests: " << n_l << ", ";
+#ifdef USTRING_TRACK_NUM_LOOKUPS
+        out << "requests: " << table.get_num_lookups() << ", ";
+#endif
         out << "unique " << n_e << ", " << Strutil::memformat(mem);
     }
     return out.str();

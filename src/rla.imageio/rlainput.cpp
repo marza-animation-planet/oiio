@@ -1,32 +1,6 @@
-/*
-  Copyright 2011 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cassert>
 #include <cmath>
@@ -36,8 +10,8 @@
 #include <OpenImageIO/dassert.h>
 #include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/fmath.h>
+#include <OpenImageIO/imagebufalgo_util.h>
 #include <OpenImageIO/imageio.h>
-#include <OpenImageIO/typedesc.h>
 
 #include "rla_pvt.h"
 
@@ -85,8 +59,8 @@ private:
     {
         size_t n = ::fread(buf, itemsize, nitems, m_file);
         if (n != nitems)
-            error("Read error: read %d records but %d expected %s", (int)n,
-                  (int)nitems, feof(m_file) ? " (hit EOF)" : "");
+            errorf("Read error: read %d records but %d expected %s", (int)n,
+                   (int)nitems, feof(m_file) ? " (hit EOF)" : "");
         return n == nitems;
     }
 
@@ -129,7 +103,7 @@ private:
     // debugging aid
     void preview(std::ostream& out)
     {
-        ASSERT(!feof(m_file));
+        OIIO_DASSERT(!feof(m_file));
         long pos = ftell(m_file);
         out << "@" << pos << ", next 4 bytes are ";
         union {  // trickery to avoid punned pointer warnings
@@ -184,7 +158,7 @@ RLAInput::open(const std::string& name, ImageSpec& newspec)
 
     m_file = Filesystem::fopen(name, "rb");
     if (!m_file) {
-        error("Could not open file \"%s\"", name.c_str());
+        errorf("Could not open file \"%s\"", name);
         return false;
     }
 
@@ -203,17 +177,23 @@ RLAInput::read_header()
 {
     // Read the image header, which should have the same exact layout as
     // the m_rla structure (except for endianness issues).
-    ASSERT(sizeof(m_rla) == 740 && "Bad RLA struct size");
+    static_assert(sizeof(m_rla) == 740, "Bad RLA struct size");
     if (!read(&m_rla)) {
-        error("RLA could not read the image header");
+        errorf("RLA could not read the image header");
         return false;
     }
     m_rla.rla_swap_endian();  // fix endianness
 
     if (m_rla.Revision != (int16_t)0xFFFE
         && m_rla.Revision != 0 /* for some reason, this can happen */) {
-        error("RLA header Revision number unrecognized: %d", m_rla.Revision);
+        errorf("RLA header Revision number unrecognized: %d", m_rla.Revision);
         return false;  // unknown file revision
+    }
+    if (m_rla.NumOfChannelBits < 0 || m_rla.NumOfChannelBits > 32
+        || m_rla.NumOfMatteBits < 0 || m_rla.NumOfMatteBits > 32
+        || m_rla.NumOfAuxBits < 0 || m_rla.NumOfAuxBits > 32) {
+        errorf("Unsupported bit depth, or maybe corrupted file.");
+        return false;
     }
     if (m_rla.NumOfChannelBits == 0)
         m_rla.NumOfChannelBits = 8;  // apparently, this can happen
@@ -224,7 +204,7 @@ RLAInput::read_header()
     // scanline of this subimage.
     m_sot.resize(std::abs(m_rla.ActiveBottom - m_rla.ActiveTop) + 1, 0);
     if (!read(&m_sot[0], m_sot.size())) {
-        error("RLA could not read the scanline offset table");
+        errorf("RLA could not read the scanline offset table");
         return false;
     }
     return true;
@@ -255,53 +235,61 @@ RLAInput::seek_subimage(int subimage, int miplevel)
     }
     // forward scrolling -- skip subimages until we're at the right place
     while (diff > 0 && m_rla.NextOffset != 0) {
-        fseek(m_file, m_rla.NextOffset, SEEK_SET);
+        if (!fseek(m_file, m_rla.NextOffset, SEEK_SET)) {
+            errorf("Could not seek to header offset. Corrupted file?");
+            return false;
+        }
         if (!read_header())
             return false;  // read_header always calls error()
         --diff;
     }
     if (diff > 0 && m_rla.NextOffset == 0) {  // no more subimages to read
-        error("Unknown subimage");
+        errorf("Unknown subimage");
         return false;
     }
 
     // Now m_rla holds the header of the requested subimage.  Examine it
     // to fill out our ImageSpec.
 
-    if (m_rla.ColorChannelType > CT_FLOAT) {
-        error("Illegal color channel type: %d", m_rla.ColorChannelType);
+    if (m_rla.ColorChannelType < 0 || m_rla.ColorChannelType > CT_FLOAT) {
+        errorf("Illegal color channel type: %d", m_rla.ColorChannelType);
         return false;
     }
-    if (m_rla.MatteChannelType > CT_FLOAT) {
-        error("Illegal matte channel type: %d", m_rla.MatteChannelType);
+    if (m_rla.MatteChannelType < 0 || m_rla.MatteChannelType > CT_FLOAT) {
+        errorf("Illegal matte channel type: %d", m_rla.MatteChannelType);
         return false;
     }
-    if (m_rla.AuxChannelType > CT_FLOAT) {
-        error("Illegal auxiliary channel type: %d", m_rla.AuxChannelType);
+    if (m_rla.AuxChannelType < 0 || m_rla.AuxChannelType > CT_FLOAT) {
+        errorf("Illegal auxiliary channel type: %d", m_rla.AuxChannelType);
         return false;
     }
 
     // pick maximum precision for the time being
-    int maxbytes
-        = (std::max(m_rla.NumOfChannelBits
-                        * (m_rla.NumOfColorChannels > 0 ? 1 : 0),
-                    std::max(m_rla.NumOfMatteBits
-                                 * (m_rla.NumOfMatteChannels > 0 ? 1 : 0),
-                             m_rla.NumOfAuxBits
-                                 * (m_rla.NumOfAuxChannels > 0 ? 1 : 0)))
-           + 7)
-          / 8;
-    int nchannels = m_rla.NumOfColorChannels + m_rla.NumOfMatteChannels
-                    + m_rla.NumOfAuxChannels;
-    TypeDesc maxtype = (maxbytes == 4) ? TypeDesc::FLOAT
-                                       : (maxbytes == 2 ? TypeDesc::UINT16
-                                                        : TypeDesc::UINT8);
-    if (nchannels < 1 || nchannels > 16
-        || (maxbytes != 1 && maxbytes != 2 && maxbytes != 4)) {
-        error("Failed channel bytes sanity check");
+    TypeDesc col_type = get_channel_typedesc(m_rla.ColorChannelType,
+                                             m_rla.NumOfChannelBits);
+    TypeDesc mat_type = m_rla.NumOfMatteChannels
+                            ? get_channel_typedesc(m_rla.MatteChannelType,
+                                                   m_rla.NumOfMatteBits)
+                            : TypeUnknown;
+    TypeDesc aux_type = m_rla.NumOfAuxChannels
+                            ? get_channel_typedesc(m_rla.AuxChannelType,
+                                                   m_rla.NumOfAuxBits)
+                            : TypeUnknown;
+    TypeDesc maxtype = ImageBufAlgo::type_merge(col_type, mat_type, aux_type);
+    if (maxtype == TypeUnknown) {
+        errorf("Failed channel bytes sanity check");
         return false;  // failed sanity check
     }
 
+    if (m_rla.NumOfColorChannels < 1 || m_rla.NumOfColorChannels > 3
+        || m_rla.NumOfMatteChannels < 0 || m_rla.NumOfMatteChannels > 3
+        || m_rla.NumOfAuxChannels < 0 || m_rla.NumOfAuxChannels > 256) {
+        errorf(
+            "Invalid number of channels (%d color, %d matte, %d aux), or corrupted header.",
+            m_rla.NumOfColorChannels, m_rla.NumOfMatteChannels,
+            m_rla.NumOfAuxChannels);
+        return false;
+    }
     m_spec = ImageSpec(m_rla.ActiveRight - m_rla.ActiveLeft + 1,
                        (m_rla.ActiveTop - m_rla.ActiveBottom + 1)
                            / (m_rla.FieldRendered ? 2 : 1),  // interlaced image?
@@ -321,32 +309,28 @@ RLAInput::seek_subimage(int subimage, int miplevel)
     // set channel formats and stride
     int z_channel = -1;
     m_stride      = 0;
-    TypeDesc t    = get_channel_typedesc(m_rla.ColorChannelType,
-                                      m_rla.NumOfChannelBits);
     for (int i = 0; i < m_rla.NumOfColorChannels; ++i)
-        m_spec.channelformats.push_back(t);
-    m_stride += m_rla.NumOfColorChannels * t.size();
-    t = get_channel_typedesc(m_rla.MatteChannelType, m_rla.NumOfMatteBits);
+        m_spec.channelformats.push_back(col_type);
+    m_stride += m_rla.NumOfColorChannels * col_type.size();
     for (int i = 0; i < m_rla.NumOfMatteChannels; ++i)
-        m_spec.channelformats.push_back(t);
+        m_spec.channelformats.push_back(mat_type);
     if (m_rla.NumOfMatteChannels >= 1)
         m_spec.alpha_channel = m_rla.NumOfColorChannels;
     else
         m_spec.alpha_channel = -1;
-    m_stride += m_rla.NumOfMatteChannels * t.size();
-    t = get_channel_typedesc(m_rla.AuxChannelType, m_rla.NumOfAuxBits);
+    m_stride += m_rla.NumOfMatteChannels * mat_type.size();
     for (int i = 0; i < m_rla.NumOfAuxChannels; ++i) {
-        m_spec.channelformats.push_back(t);
+        m_spec.channelformats.push_back(aux_type);
         // assume first float aux or 32 bit int channel is z
         if (z_channel < 0
-            && (t == TypeDesc::FLOAT || t == TypeDesc::INT32
-                || t == TypeDesc::UINT32)) {
+            && (aux_type == TypeDesc::FLOAT || aux_type == TypeDesc::INT32
+                || aux_type == TypeDesc::UINT32)) {
             z_channel = m_rla.NumOfColorChannels + m_rla.NumOfMatteChannels;
             m_spec.z_channel               = z_channel;
             m_spec.channelnames[z_channel] = "Z";
         }
     }
-    m_stride += m_rla.NumOfAuxChannels * t.size();
+    m_stride += m_rla.NumOfAuxChannels * aux_type.size();
 
     // But if all channels turned out the same, just use 'format' and don't
     // bother sending back channelformats at all.
@@ -506,7 +490,7 @@ RLAInput::decode_rle_span(unsigned char* buf, int n, int stride,
         }
     }
     if (n != 0) {
-        error("Read error: malformed RLE record");
+        errorf("Read error: malformed RLE record");
         return 0;
     }
     return e;
@@ -549,13 +533,13 @@ RLAInput::decode_channel_group(int first_channel, short num_channels,
         // Read the length
         uint16_t length;  // number of encoded bytes
         if (!read(&length)) {
-            error("Read error: couldn't read RLE record length");
+            errorf("Read error: couldn't read RLE record length");
             return false;
         }
         // Read the encoded RLE record
         encoded.resize(length);
         if (!read(&encoded[0], length)) {
-            error("Read error: couldn't read RLE data span");
+            errorf("Read error: couldn't read RLE data span");
             return false;
         }
 
@@ -712,14 +696,14 @@ RLAInput::get_channel_typedesc(short chan_type, short chan_bits)
             case 2: return TypeDesc::UINT16;
             case 3:
             case 4: return TypeDesc::UINT32;
-            default: ASSERT(!"Invalid colour channel type");
+            default: OIIO_ASSERT(!"Invalid colour channel type");
             }
         } else
             return TypeDesc::UINT8;
     case CT_WORD: return TypeDesc::UINT16;
     case CT_DWORD: return TypeDesc::UINT32;
     case CT_FLOAT: return TypeDesc::FLOAT;
-    default: ASSERT(!"Invalid colour channel type");
+    default: OIIO_ASSERT(!"Invalid colour channel type");
     }
     // shut up compiler
     return TypeDesc::UINT8;

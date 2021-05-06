@@ -1,32 +1,6 @@
-/*
-  Copyright 2010 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <cstdio>
@@ -173,18 +147,18 @@ Field3DOutput::open(const std::string& name, const ImageSpec& userspec,
         return open(name, 1, &userspec);
 
     if (mode == AppendMIPLevel) {
-        error("%s does not support MIP-mapping", format_name());
+        errorf("%s does not support MIP-mapping", format_name());
         return false;
     }
 
-    ASSERT(mode == AppendSubimage && "invalid open() mode");
+    OIIO_ASSERT(mode == AppendSubimage && "invalid open() mode");
 
     write_current_subimage();
 
     ++m_subimage;
     if (m_subimage >= m_nsubimages) {
-        error("Appending past the pre-declared number of subimages (%d)",
-              m_nsubimages);
+        errorf("Appending past the pre-declared number of subimages (%d)",
+               m_nsubimages);
         return false;
     }
 
@@ -204,7 +178,7 @@ Field3DOutput::open(const std::string& name, int subimages,
         close();
 
     if (subimages < 1) {
-        error("%s does not support %d subimages.", format_name(), subimages);
+        errorf("%s does not support %d subimages.", format_name(), subimages);
         return false;
     }
 
@@ -238,8 +212,8 @@ Field3DOutput::open(const std::string& name, int subimages,
             spec.format = TypeDesc::FLOAT;
         }
         if (spec.nchannels != 1 && spec.nchannels != 3) {
-            error("%s does not allow %d channels in a field (subimage %d)",
-                  format_name(), spec.nchannels, s);
+            errorf("%s does not allow %d channels in a field (subimage %d)",
+                   format_name(), spec.nchannels, s);
             return false;
         }
     }
@@ -335,7 +309,7 @@ Field3DOutput::write_scanline_specialized(int y, int z, const T* data)
         return true;
     }
 
-    error("Unknown field type");
+    errorf("Unknown field type");
     return false;
 }
 
@@ -368,7 +342,7 @@ Field3DOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
             return write_scanline_specialized(
                 y, z, (const FIELD3D_VEC3_T<FIELD3D_NS::half>*)data);
     } else {
-        ASSERT(0 && "Unsupported data format for field3d");
+        OIIO_ASSERT(0 && "Unsupported data format for field3d");
     }
 
     return false;
@@ -412,7 +386,7 @@ Field3DOutput::write_tile_specialized(int x, int y, int z, const T* data)
         return true;
     }
 
-    error("Unknown field type");
+    errorf("Unknown field type");
     return false;
 }
 
@@ -448,7 +422,7 @@ Field3DOutput::write_tile(int x, int y, int z, TypeDesc format,
             return write_tile_specialized(
                 x, y, z, (const FIELD3D_VEC3_T<FIELD3D_NS::half>*)data);
     } else {
-        ASSERT(0 && "Unsupported data format for field3d");
+        OIIO_ASSERT(0 && "Unsupported data format for field3d");
     }
 
     return false;
@@ -461,7 +435,7 @@ bool
 Field3DOutput::prep_subimage_specialized()
 {
     m_spec = m_specs[m_subimage];
-    ASSERT(m_spec.nchannels == 1 || m_spec.nchannels == 3);
+    OIIO_ASSERT(m_spec.nchannels == 1 || m_spec.nchannels == 3);
 
     Box3i extents(V3i(m_spec.full_x, m_spec.full_y, m_spec.full_z),
                   V3i(m_spec.full_x + m_spec.full_width - 1,
@@ -479,7 +453,7 @@ Field3DOutput::prep_subimage_specialized()
         m_field.reset(f);
     } else if (Strutil::iequals(fieldtype, "MAC")) {
         // FIXME
-        ASSERT(0 && "MAC fields not yet supported");
+        OIIO_ASSERT(0 && "MAC fields not yet supported");
     } else {
         // Dense
         DenseField<T>* f(new DenseField<T>);
@@ -544,7 +518,7 @@ bool
 Field3DOutput::prep_subimage()
 {
     m_spec = m_specs[m_subimage];
-    ASSERT(m_spec.nchannels == 1 || m_spec.nchannels == 3);
+    OIIO_ASSERT(m_spec.nchannels == 1 || m_spec.nchannels == 3);
     if (m_spec.format == TypeDesc::FLOAT) {
         if (m_spec.nchannels == 1)
             prep_subimage_specialized<float>();
@@ -561,7 +535,7 @@ Field3DOutput::prep_subimage()
         else
             prep_subimage_specialized<FIELD3D_VEC3_T<FIELD3D_NS::half>>();
     } else {
-        ASSERT(0 && "Unsupported data format for field3d");
+        OIIO_ASSERT(0 && "Unsupported data format for field3d");
     }
 
     m_writepending = true;

@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cstdio>
 #include <cstdlib>
@@ -242,6 +216,7 @@ PLUGENTRY(ffmpeg);
 PLUGENTRY(field3d);
 PLUGENTRY(fits);
 PLUGENTRY(gif);
+PLUGENTRY(heif);
 PLUGENTRY(hdr);
 PLUGENTRY(ico);
 PLUGENTRY(iff);
@@ -292,56 +267,121 @@ catalog_builtin_plugins()
             name##_input_extensions, nullptr, nullptr,                   \
             name##_imageio_library_version())
 
+#if !defined(DISABLE_BMP)
     DECLAREPLUG (bmp);
+#endif
+#if !defined(DISABLE_CINEON)
     DECLAREPLUG_RO (cineon);
+#endif
+#if !defined(DISABLE_DDS)
     DECLAREPLUG_RO (dds);
+#endif
 #ifdef USE_DCMTK
+#if !defined(DISABLE_DICOM)
     DECLAREPLUG_RO (dicom);
 #endif
+#endif
+#if !defined(DISABLE_DPX)
     DECLAREPLUG (dpx);
+#endif
 #ifdef USE_FFMPEG
+#if !defined(DISABLE_FFMPEG)
     DECLAREPLUG_RO (ffmpeg);
 #endif
+#endif
 #ifdef USE_FIELD3D
+#if !defined(DISABLE_FIELD3D)
     DECLAREPLUG (field3d);
 #endif
+#endif
+#if !defined(DISABLE_FITS)
     DECLAREPLUG (fits);
+#endif
 #ifdef USE_GIF
+#if !defined(DISABLE_GIF)
     DECLAREPLUG (gif);
 #endif
+#endif
+#ifdef USE_HEIF
+#if !defined(DISABLE_HEIF)
+    DECLAREPLUG (heif);
+#endif
+#endif
+#if !defined(DISABLE_HDR)
     DECLAREPLUG (hdr);
+#endif
+#if !defined(DISABLE_ICO)
     DECLAREPLUG (ico);
+#endif
+#if !defined(DISABLE_IFF)
     DECLAREPLUG (iff);
+#endif
+#if !defined(DISABLE_JPEG)
     DECLAREPLUG (jpeg);
+#endif
 #ifdef USE_OPENJPEG
+#if !defined(DISABLE_JPEG2000)
     DECLAREPLUG (jpeg2000);
 #endif
+#endif
+#if !defined(DISABLE_NULL)
     DECLAREPLUG (null);
+#endif
+#if !defined(DISABLE_OPENEXR)
     DECLAREPLUG (openexr);
+#endif
 #ifdef USE_OPENVDB
+#if !defined(DISABLE_OPENVDB)
     DECLAREPLUG_RO (openvdb);
 #endif
+#endif
+#if !defined(DISABLE_PNG)
     DECLAREPLUG (png);
+#endif
+#if !defined(DISABLE_PNM)
     DECLAREPLUG (pnm);
+#endif
+#if !defined(DISABLE_PSD)
     DECLAREPLUG_RO (psd);
+#endif
 #ifdef USE_PTEX
+#if !defined(DISABLE_PTEX)
     DECLAREPLUG_RO (ptex);
 #endif
+#endif
 #ifdef USE_LIBRAW
+#if !defined(DISABLE_RAW)
     DECLAREPLUG_RO (raw);
 #endif
+#endif
+#if !defined(DISABLE_RLA)
     DECLAREPLUG (rla);
+#endif
+#if !defined(DISABLE_SGI)
     DECLAREPLUG (sgi);
+#endif
 #ifdef USE_BOOST_ASIO
+#if !defined(DISABLE_SOCKET)
     DECLAREPLUG (socket);
 #endif
+#endif
+#if !defined(DISABLE_SOFTIMAGE)
     DECLAREPLUG_RO (softimage);
+#endif
+#if !defined(DISABLE_TIFF)
     DECLAREPLUG (tiff);
+#endif
+#if !defined(DISABLE_TARGA)
     DECLAREPLUG (targa);
+#endif
 #ifdef USE_WEBP
+#if !defined(DISABLE_WEBP)
     DECLAREPLUG (webp);
 #endif
+#endif
+#if !defined(DISABLE_ZFILE)
     DECLAREPLUG (zfile);
+#endif
 #endif
 }
 // clang-format on
@@ -457,7 +497,7 @@ ImageOutput::create(const std::string& filename,
         }
     }
 
-    ASSERT(create_function != nullptr);
+    OIIO_ASSERT(create_function != nullptr);
     try {
         out = std::unique_ptr<ImageOutput>(create_function());
     } catch (...) {
@@ -653,7 +693,7 @@ ImageInput::create(const std::string& filename, bool do_open,
             OIIO::pvt::errorf(
                 "Image \"%s\" does not exist. Also, it is not the name of an image format that OpenImageIO recognizes.\n",
                 filename);
-        DASSERT(!in);
+        OIIO_DASSERT(!in);
         return in;
     }
 

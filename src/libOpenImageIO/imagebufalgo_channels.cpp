@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 /// \file
 /// Implementation of ImageBufAlgo algorithms that merely move pixels
@@ -90,13 +64,13 @@ ImageBufAlgo::channels(ImageBuf& dst, const ImageBuf& src, int nchannels,
     pvt::LoggedTimer logtime("IBA::channels");
     // Not intended to create 0-channel images.
     if (nchannels <= 0) {
-        dst.error("%d-channel images not supported", nchannels);
+        dst.errorf("%d-channel images not supported", nchannels);
         return false;
     }
     // If we dont have a single source channel,
     // hard to know how big to make the additional channels
     if (src.spec().nchannels == 0) {
-        dst.error("%d-channel images not supported", src.spec().nchannels);
+        dst.errorf("%d-channel images not supported", src.spec().nchannels);
         return false;
     }
 
@@ -104,7 +78,7 @@ ImageBufAlgo::channels(ImageBuf& dst, const ImageBuf& src, int nchannels,
     // {0, 1, ..., nchannels-1}.
     int* local_channelorder = NULL;
     if (channelorder.empty()) {
-        local_channelorder = ALLOCA(int, nchannels);
+        local_channelorder = OIIO_ALLOCA(int, nchannels);
         for (int c = 0; c < nchannels; ++c)
             local_channelorder[c] = c;
         channelorder = cspan<int>(local_channelorder, nchannels);
@@ -166,7 +140,7 @@ ImageBufAlgo::channels(ImageBuf& dst, const ImageBuf& src, int nchannels,
 
     if (dst.deep()) {
         // Deep case:
-        ASSERT(src.deep() && src.deepdata() && dst.deepdata());
+        OIIO_DASSERT(src.deep() && src.deepdata() && dst.deepdata());
         const DeepData& srcdata(*src.deepdata());
         DeepData& dstdata(*dst.deepdata());
         // The earlier dst.alloc() already called dstdata.init()
@@ -218,7 +192,7 @@ ImageBufAlgo::channels(const ImageBuf& src, int nchannels,
     bool ok = channels(result, src, nchannels, channelorder, channelvalues,
                        newchannelnames, shuffle_channel_names, nthreads);
     if (!ok && !result.has_error())
-        result.error("ImageBufAlgo::channels() error");
+        result.errorf("ImageBufAlgo::channels() error");
     return result;
 }
 
@@ -311,7 +285,7 @@ ImageBufAlgo::channel_append(const ImageBuf& A, const ImageBuf& B, ROI roi,
     ImageBuf result;
     bool ok = channel_append(result, A, B, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("channel_append error");
+        result.errorf("channel_append error");
     return result;
 }
 

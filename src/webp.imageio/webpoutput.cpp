@@ -1,32 +1,6 @@
-/*
-  Copyright 2011 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cstdio>
 
@@ -102,7 +76,7 @@ bool
 WebpOutput::open(const std::string& name, const ImageSpec& spec, OpenMode mode)
 {
     if (mode != Create) {
-        error("%s does not support subimages or MIP levels", format_name());
+        errorf("%s does not support subimages or MIP levels", format_name());
         return false;
     }
 
@@ -111,19 +85,19 @@ WebpOutput::open(const std::string& name, const ImageSpec& spec, OpenMode mode)
     m_spec     = spec;
 
     if (m_spec.nchannels != 3 && m_spec.nchannels != 4) {
-        error("%s does not support %d-channel images\n", format_name(),
-              m_spec.nchannels);
+        errorf("%s does not support %d-channel images\n", format_name(),
+               m_spec.nchannels);
         return false;
     }
 
     m_file = Filesystem::fopen(m_filename, "wb");
     if (!m_file) {
-        error("Unable to open file \"%s\"", m_filename.c_str());
+        errorf("Could not open \"%s\"", m_filename);
         return false;
     }
 
     if (!WebPPictureInit(&m_webp_picture)) {
-        error("Couldn't initialize WebPPicture\n");
+        errorf("Couldn't initialize WebPPicture\n");
         close();
         return false;
     }
@@ -134,7 +108,7 @@ WebpOutput::open(const std::string& name, const ImageSpec& spec, OpenMode mode)
     m_webp_picture.custom_ptr = (void*)m_file;
 
     if (!WebPConfigInit(&m_webp_config)) {
-        error("Couldn't initialize WebPPicture\n");
+        errorf("Couldn't initialize WebPPicture\n");
         close();
         return false;
     }
@@ -166,7 +140,7 @@ WebpOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
                            stride_t xstride)
 {
     if (y > m_spec.height) {
-        error("Attempt to write too many scanlines to %s", m_filename.c_str());
+        errorf("Attempt to write too many scanlines to %s", m_filename);
         close();
         return false;
     }
@@ -191,7 +165,7 @@ WebpOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
                                  m_scanline_size);
         }
         if (!WebPEncode(&m_webp_config, &m_webp_picture)) {
-            error("Failed to encode %s as WebP image", m_filename.c_str());
+            errorf("Failed to encode %s as WebP image", m_filename);
             close();
             return false;
         }
@@ -221,7 +195,7 @@ WebpOutput::close()
     bool ok = true;
     if (m_spec.tile_width) {
         // We've been emulating tiles; now dump as scanlines.
-        ASSERT(m_uncompressed_image.size());
+        OIIO_DASSERT(m_uncompressed_image.size());
         ok &= write_scanlines(m_spec.y, m_spec.y + m_spec.height, 0,
                               m_spec.format, &m_uncompressed_image[0]);
         std::vector<uint8_t>().swap(m_uncompressed_image);

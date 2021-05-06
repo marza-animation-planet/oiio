@@ -1,32 +1,6 @@
-/*
-  Copyright 2010 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <cstdio>
@@ -207,18 +181,18 @@ DPXOutput::open(const std::string& name, const ImageSpec& userspec,
         // Nothing else to do, the header taken care of when we opened with
         // Create.
     } else if (mode == AppendMIPLevel) {
-        error("DPX does not support MIP-maps");
+        errorf("DPX does not support MIP-maps");
         return false;
     }
 
     // From here out, all the heavy lifting is done for Create
-    ASSERT(mode == Create);
+    OIIO_DASSERT(mode == Create);
 
     if (is_opened())
         close();  // Close any already-opened file
     m_stream = new OutStream();
     if (!m_stream->Open(name.c_str())) {
-        error("Could not open file \"%s\"", name.c_str());
+        errorf("Could not open \"%s\"", name);
         delete m_stream;
         m_stream = nullptr;
         return false;
@@ -239,7 +213,7 @@ DPXOutput::open(const std::string& name, const ImageSpec& userspec,
     if (m_spec.depth < 1)
         m_spec.depth = 1;
     else if (m_spec.depth > 1) {
-        error("DPX does not support volume images (depth > 1)");
+        errorf("DPX does not support volume images (depth > 1)");
         return false;
     }
 
@@ -439,14 +413,14 @@ DPXOutput::open(const std::string& name, const ImageSpec& userspec,
 
     // commit!
     if (!m_dpx.WriteHeader()) {
-        error("Failed to write DPX header");
+        errorf("Failed to write DPX header");
         return false;
     }
 
     // write the user data
     if (user && user->datasize() > 0 && user->datasize() <= 1024 * 1024) {
         if (!m_dpx.WriteUserData((void*)user->data())) {
-            error("Failed to write user data");
+            errorf("Failed to write user data");
             return false;
         }
     }
@@ -571,7 +545,7 @@ DPXOutput::prep_subimage(int s, bool allocate)
         m_bytes = dpx::QueryNativeBufferSize(m_desc, m_datasize, m_spec.width,
                                              1);
         if (m_bytes == 0 && !m_rawcolor) {
-            error("Unable to deliver native format data from source data");
+            errorf("Unable to deliver native format data from source data");
             return false;
         } else if (m_bytes < 0) {
             // no need to allocate another buffer
@@ -622,7 +596,7 @@ DPXOutput::close()
     bool ok = true;
     if (m_spec.tile_width) {
         // Handle tile emulation -- output the buffered pixels
-        ASSERT(m_tilebuffer.size());
+        OIIO_DASSERT(m_tilebuffer.size());
         ok &= write_scanlines(m_spec.y, m_spec.y + m_spec.height, 0,
                               m_spec.format, &m_tilebuffer[0]);
         std::vector<unsigned char>().swap(m_tilebuffer);

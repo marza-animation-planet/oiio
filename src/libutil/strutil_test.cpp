@@ -1,32 +1,6 @@
-/*
-  Copyright 2010 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 // clang-format off
 
 #include <cstdio>
@@ -79,7 +53,7 @@ test_format()
     bench ("Strutil::to_string(float)", [&](){ DoNotOptimize (Strutil::to_string(123.45f)); });
 
     bench ("std::sprintf(\"%d\")", [&](){ DoNotOptimize (std::sprintf(buffer,"%d",123)); });
-    bench ("Strutil::sprintf(\"%d\")", [&](){ DoNotOptimize (Strutil::sprintf("%g",123)); });
+    bench ("Strutil::sprintf(\"%d\")", [&](){ DoNotOptimize (Strutil::sprintf("%g",123.0f)); });
     bench ("Strutil::fmt::format(\"{}\")", [&](){ DoNotOptimize (Strutil::fmt::format("{}",123)); });
     bench ("Strutil::to_string(int)", [&](){ DoNotOptimize (Strutil::to_string(123)); });
 
@@ -87,7 +61,7 @@ test_format()
                DoNotOptimize (std::sprintf(buffer,"%g %d %s %d %s %g", 123.45f, 1234, "foobar", 42, "kablooey", 3.14159f));
            });
     bench ("Strutil::sprintf(\"%g %d %s %d %s %g\")", [&](){
-               DoNotOptimize (Strutil::sprintf("%g %d %s %d %s %g", 123.45f, 1234, "foobar", "kablooey", 42, 3.14159f));
+               DoNotOptimize (Strutil::sprintf("%g %d %s %d %s %g", 123.45f, 1234, "foobar", 42, "kablooey", 3.14159f));
            });
     bench ("Strutil::fmt::format(\"{} {} {} {} {} {}\")", [&](){
                DoNotOptimize (Strutil::fmt::format("{} {} {} {} {} {}", 123.45f, 1234, "foobar", 42, "kablooey", 3.14159f));
@@ -185,6 +159,30 @@ test_get_rest_arguments()
     ret            = Strutil::get_rest_arguments(url, base, result);
     OIIO_CHECK_EQUAL(ret, false);
     OIIO_CHECK_EQUAL(base, "atext");
+    OIIO_CHECK_EQUAL(result["arg1"], "value1");
+    OIIO_CHECK_EQUAL(result["arg2"], "somevalue");
+
+    result.clear();
+    url            = "\\\\?\\C:\\WindowsLongPathNoRestArgs";
+    ret            = Strutil::get_rest_arguments(url, base, result);
+    OIIO_CHECK_EQUAL(ret, true);
+    OIIO_CHECK_EQUAL(base, "\\\\?\\C:\\WindowsLongPathNoRestArgs");
+    OIIO_CHECK_EQUAL(result["arg1"], "");
+
+    result.clear();
+    url            = "\\\\?\\C:\\WindowsLongPathWithGoodRestArgs?arg1=value1&arg2=value2";
+    ret            = Strutil::get_rest_arguments(url, base, result);
+    OIIO_CHECK_EQUAL(ret, true);
+    OIIO_CHECK_EQUAL(base, "\\\\?\\C:\\WindowsLongPathWithGoodRestArgs");
+    OIIO_CHECK_EQUAL(result["arg1"], "value1");
+    OIIO_CHECK_EQUAL(result["arg2"], "value2");
+
+    result.clear();
+    url            = "\\\\?\\C:\\WindowsLongPathWithBadRestArgs?arg1=value1&arg2value2";
+    result["arg2"] = "somevalue";
+    ret            = Strutil::get_rest_arguments(url, base, result);
+    OIIO_CHECK_EQUAL(ret, false);
+    OIIO_CHECK_EQUAL(base, "\\\\?\\C:\\WindowsLongPathWithBadRestArgs");
     OIIO_CHECK_EQUAL(result["arg1"], "value1");
     OIIO_CHECK_EQUAL(result["arg2"], "somevalue");
 }
@@ -328,6 +326,13 @@ test_case()
     s = "abcDEF,*1";
     Strutil::to_upper(s);
     OIIO_CHECK_EQUAL(s, "ABCDEF,*1");
+
+    s = "abcDEF,*1";
+    OIIO_CHECK_EQUAL(Strutil::lower(s), "abcdef,*1");
+    OIIO_CHECK_EQUAL (s, "abcDEF,*1");  // make sure it's nondestructive
+    Strutil::to_upper(s);
+    OIIO_CHECK_EQUAL(Strutil::upper(s), "ABCDEF,*1");
+    Strutil::to_upper(s);
 }
 
 
@@ -357,41 +362,109 @@ test_strip()
 
 
 void
-test_split()
+test_splits()
 {
     std::string s("Now\nis the  time!");
-    std::vector<string_view> splits;
+    {   // test default -- split at whitespace
+        auto pieces = Strutil::splits(s);
+        OIIO_CHECK_EQUAL(pieces.size(), 4);
+        OIIO_CHECK_EQUAL(pieces[0], "Now");
+        OIIO_CHECK_EQUAL(pieces[1], "is");
+        OIIO_CHECK_EQUAL(pieces[2], "the");
+        OIIO_CHECK_EQUAL(pieces[3], "time!");
+    }
+    {   // test custom split string
+        auto pieces = Strutil::splits(s, " t");
+        OIIO_CHECK_EQUAL(pieces.size(), 3);
+        OIIO_CHECK_EQUAL(pieces[0], "Now\nis");
+        OIIO_CHECK_EQUAL(pieces[1], "he ");
+        OIIO_CHECK_EQUAL(pieces[2], "ime!");
+    }
+    {   // test maxsplit
+        auto pieces = Strutil::splits(s, "", 2);
+        OIIO_CHECK_EQUAL(pieces.size(), 2);
+        OIIO_CHECK_EQUAL(pieces[0], "Now");
+        OIIO_CHECK_EQUAL(pieces[1], "is the  time!");
+    }
+    {   // test maxsplit with non-default sep
+        auto pieces = Strutil::splits(s, " ", 2);
+        OIIO_CHECK_EQUAL(pieces.size(), 2);
+        OIIO_CHECK_EQUAL(pieces[0], "Now\nis");
+        OIIO_CHECK_EQUAL(pieces[1], "the  time!");
+    }
+    {   // test split against a substring that is not present
+        auto pieces = Strutil::splits("blah", "!");
+        OIIO_CHECK_EQUAL(pieces.size(), 1);
+        OIIO_CHECK_EQUAL(pieces[0], "blah");
+    }
+    {   // test splitting empty string
+        auto pieces = Strutil::splits("", ",");
+        OIIO_CHECK_EQUAL(pieces.size(), 0);
+    }
+    {   // test splitting with empty pieces
+        auto pieces = Strutil::splits(",foo,,,bar,", ",");
+        OIIO_CHECK_EQUAL(pieces.size(), 6);
+        OIIO_CHECK_EQUAL(pieces[0], "");
+        OIIO_CHECK_EQUAL(pieces[1], "foo");
+        OIIO_CHECK_EQUAL(pieces[2], "");
+        OIIO_CHECK_EQUAL(pieces[3], "");
+        OIIO_CHECK_EQUAL(pieces[4], "bar");
+        OIIO_CHECK_EQUAL(pieces[5], "");
+    }
+}
 
-    // test default -- split at whitespace
-    Strutil::split(s, splits);
-    OIIO_CHECK_EQUAL(splits.size(), 4);
-    OIIO_CHECK_EQUAL(splits[0], "Now");
-    OIIO_CHECK_EQUAL(splits[1], "is");
-    OIIO_CHECK_EQUAL(splits[2], "the");
-    OIIO_CHECK_EQUAL(splits[3], "time!");
 
-    // test custom split string
-    Strutil::split(s, splits, " t");
-    OIIO_CHECK_EQUAL(splits.size(), 3);
-    OIIO_CHECK_EQUAL(splits[0], "Now\nis");
-    OIIO_CHECK_EQUAL(splits[1], "he ");
-    OIIO_CHECK_EQUAL(splits[2], "ime!");
 
-    // test maxsplit
-    Strutil::split(s, splits, "", 2);
-    OIIO_CHECK_EQUAL(splits.size(), 2);
-    OIIO_CHECK_EQUAL(splits[0], "Now");
-    OIIO_CHECK_EQUAL(splits[1], "is the  time!");
-
-    // test maxsplit with non-default sep
-    Strutil::split(s, splits, " ", 2);
-    OIIO_CHECK_EQUAL(splits.size(), 2);
-    OIIO_CHECK_EQUAL(splits[0], "Now\nis");
-    OIIO_CHECK_EQUAL(splits[1], "the  time!");
-
-    Strutil::split("blah", splits, "!");
-    OIIO_CHECK_EQUAL(splits.size(), 1);
-    OIIO_CHECK_EQUAL(splits[0], "blah");
+void
+test_splitsv()
+{
+    std::string s("Now\nis the  time!");
+    {   // test default -- split at whitespace
+        auto pieces = Strutil::splitsv(s);
+        OIIO_CHECK_EQUAL(pieces.size(), 4);
+        OIIO_CHECK_EQUAL(pieces[0], "Now");
+        OIIO_CHECK_EQUAL(pieces[1], "is");
+        OIIO_CHECK_EQUAL(pieces[2], "the");
+        OIIO_CHECK_EQUAL(pieces[3], "time!");
+    }
+    {   // test custom split string
+        auto pieces = Strutil::splitsv(s, " t");
+        OIIO_CHECK_EQUAL(pieces.size(), 3);
+        OIIO_CHECK_EQUAL(pieces[0], "Now\nis");
+        OIIO_CHECK_EQUAL(pieces[1], "he ");
+        OIIO_CHECK_EQUAL(pieces[2], "ime!");
+    }
+    {   // test maxsplit
+        auto pieces = Strutil::splitsv(s, "", 2);
+        OIIO_CHECK_EQUAL(pieces.size(), 2);
+        OIIO_CHECK_EQUAL(pieces[0], "Now");
+        OIIO_CHECK_EQUAL(pieces[1], "is the  time!");
+    }
+    {   // test maxsplit with non-default sep
+        auto pieces = Strutil::splitsv(s, " ", 2);
+        OIIO_CHECK_EQUAL(pieces.size(), 2);
+        OIIO_CHECK_EQUAL(pieces[0], "Now\nis");
+        OIIO_CHECK_EQUAL(pieces[1], "the  time!");
+    }
+    {   // test split against a substring that is not present
+        auto pieces = Strutil::splitsv("blah", "!");
+        OIIO_CHECK_EQUAL(pieces.size(), 1);
+        OIIO_CHECK_EQUAL(pieces[0], "blah");
+    }
+    {   // test splitting empty string
+        auto pieces = Strutil::splitsv("", ",");
+        OIIO_CHECK_EQUAL(pieces.size(), 0);
+    }
+    {   // test splitting with empty pieces
+        auto pieces = Strutil::splitsv(",foo,,,bar,", ",");
+        OIIO_CHECK_EQUAL(pieces.size(), 6);
+        OIIO_CHECK_EQUAL(pieces[0], "");
+        OIIO_CHECK_EQUAL(pieces[1], "foo");
+        OIIO_CHECK_EQUAL(pieces[2], "");
+        OIIO_CHECK_EQUAL(pieces[3], "");
+        OIIO_CHECK_EQUAL(pieces[4], "bar");
+        OIIO_CHECK_EQUAL(pieces[5], "");
+    }
 }
 
 
@@ -420,6 +493,21 @@ test_join()
 
 
 void
+test_concat()
+{
+    std::cout << "Testing concat\n";
+    OIIO_CHECK_EQUAL(Strutil::concat("foo", "bar"), "foobar");
+    OIIO_CHECK_EQUAL(Strutil::concat("foo", ""), "foo");
+    OIIO_CHECK_EQUAL(Strutil::concat("", "foo"), "foo");
+    OIIO_CHECK_EQUAL(Strutil::concat("", ""), "");
+    std::string longstring(Strutil::repeat("01234567890", 100));
+    OIIO_CHECK_EQUAL(Strutil::concat(longstring, longstring),
+                     Strutil::sprintf("%s%s", longstring, longstring));
+}
+
+
+
+void
 test_repeat()
 {
     std::cout << "Testing repeat\n";
@@ -427,6 +515,8 @@ test_repeat()
     OIIO_CHECK_EQUAL(Strutil::repeat("foo", 1), "foo");
     OIIO_CHECK_EQUAL(Strutil::repeat("foo", 0), "");
     OIIO_CHECK_EQUAL(Strutil::repeat("foo", -1), "");
+    OIIO_CHECK_EQUAL(Strutil::repeat("0123456789", 100),
+                     Strutil::repeat("01234567890123456789", 50));
 }
 
 
@@ -806,7 +896,14 @@ void test_parse ()
     s = "";        skip_whitespace(s);  OIIO_CHECK_EQUAL (s, "");
     s = "   ";     skip_whitespace(s);  OIIO_CHECK_EQUAL (s, "");
     s = "foo";     skip_whitespace(s);  OIIO_CHECK_EQUAL (s, "foo");
+    s = "\tfoo\t"; skip_whitespace(s);  OIIO_CHECK_EQUAL (s, "foo\t");
     s = "  foo  "; skip_whitespace(s);  OIIO_CHECK_EQUAL (s, "foo  ");
+
+    s = "";        remove_trailing_whitespace(s);  OIIO_CHECK_EQUAL (s, "");
+    s = "   ";     remove_trailing_whitespace(s);  OIIO_CHECK_EQUAL (s, "");
+    s = "foo";     remove_trailing_whitespace(s);  OIIO_CHECK_EQUAL (s, "foo");
+    s = "\tfoo\t"; remove_trailing_whitespace(s);  OIIO_CHECK_EQUAL (s, "\tfoo");
+    s = "  foo  "; remove_trailing_whitespace(s);  OIIO_CHECK_EQUAL (s, "  foo");
 
     s = "abc"; OIIO_CHECK_ASSERT (! parse_char (s, 'd') && s == "abc");
 
@@ -1041,8 +1138,10 @@ main(int argc, char* argv[])
     test_comparisons();
     test_case();
     test_strip();
-    test_split();
+    test_splits();
+    test_splitsv();
     test_join();
+    test_concat();
     test_repeat();
     test_replace();
     test_excise_string_after_head();

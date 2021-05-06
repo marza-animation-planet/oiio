@@ -159,10 +159,10 @@ void cineon::IndustryHeader::Reset()
 
 cineon::ImageElement::ImageElement()
 {
-	this->lowData = 0xffffffff;
-	this->lowQuantity = 0xffffffff;
-	this->highData = 0xffffffff;
-	this->highQuantity = 0xffffffff;
+	this->lowData = R32(0xffffffff);
+	this->lowQuantity = R32(0xffffffff);
+	this->highData = R32(0xffffffff);
+	this->highQuantity = R32(0xffffffff);
 	this->bitDepth = 0xff;
 }
 
@@ -543,7 +543,7 @@ void cineon::GenericHeader::SetCreationTimeDate(const long sec)
 	struct tm *tm_time;
 	char str[32];
 
-#ifdef WIN32
+#ifdef _WIN32
 	_tzset();
 #endif
 
@@ -560,7 +560,7 @@ void cineon::GenericHeader::SetSourceTimeDate(const long sec)
 	struct tm *tm_time;
 	char str[32];
 
-#ifdef WIN32
+#ifdef _WIN32
 	_tzset();
 #endif
 

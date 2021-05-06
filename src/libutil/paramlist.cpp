@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <algorithm>
 #include <cstdio>
@@ -44,7 +18,7 @@ OIIO_NAMESPACE_BEGIN
 
 void
 ParamValue::init_noclear(ustring _name, TypeDesc _type, int _nvalues,
-                         const void* _value, bool _copy)
+                         const void* _value, bool _copy) noexcept
 {
     init_noclear(_name, _type, _nvalues, INTERP_CONSTANT, _value, _copy);
 }
@@ -53,7 +27,8 @@ ParamValue::init_noclear(ustring _name, TypeDesc _type, int _nvalues,
 
 void
 ParamValue::init_noclear(ustring _name, TypeDesc _type, int _nvalues,
-                         Interp _interp, const void* _value, bool _copy)
+                         Interp _interp, const void* _value,
+                         bool _copy) noexcept
 {
     m_name      = _name;
     m_type      = _type;
@@ -100,9 +75,9 @@ ParamValue::init_noclear(ustring _name, TypeDesc _type, int _nvalues,
 // helper to parse a list from a string
 template<class T>
 static void
-parse_elements(string_view name, TypeDesc type, const char* type_code,
-               string_view value, ParamValue& p)
+parse_elements(const char* type_code, string_view value, ParamValue& p)
 {
+    TypeDesc type = p.type();
     int num_items = type.numelements() * type.aggregate;
     T* data       = (T*)p.data();
     // Erase any leading whitespace
@@ -128,21 +103,21 @@ ParamValue::ParamValue(string_view name, TypeDesc type, string_view value)
     : ParamValue(name, type, 1, nullptr)
 {
     if (type.basetype == TypeDesc::INT) {
-        parse_elements<int>(name, type, "%d", value, *this);
+        parse_elements<int>("%d", value, *this);
     } else if (type.basetype == TypeDesc::UINT) {
-        parse_elements<unsigned int>(name, type, "%u", value, *this);
+        parse_elements<unsigned int>("%u", value, *this);
     } else if (type.basetype == TypeDesc::FLOAT) {
-        parse_elements<float>(name, type, "%f", value, *this);
+        parse_elements<float>("%f", value, *this);
     } else if (type.basetype == TypeDesc::DOUBLE) {
-        parse_elements<double>(name, type, "%lf", value, *this);
+        parse_elements<double>("%lf", value, *this);
     } else if (type.basetype == TypeDesc::INT64) {
-        parse_elements<long long>(name, type, "%lld", value, *this);
+        parse_elements<long long>("%lld", value, *this);
     } else if (type.basetype == TypeDesc::UINT64) {
-        parse_elements<unsigned long long>(name, type, "%llu", value, *this);
+        parse_elements<unsigned long long>("%llu", value, *this);
     } else if (type.basetype == TypeDesc::INT16) {
-        parse_elements<short>(name, type, "%hd", value, *this);
+        parse_elements<short>("%hd", value, *this);
     } else if (type.basetype == TypeDesc::UINT16) {
-        parse_elements<unsigned short>(name, type, "%hu", value, *this);
+        parse_elements<unsigned short>("%hu", value, *this);
     } else if (type == TypeDesc::STRING) {
         ustring s(value);
         init(name, type, 1, &s);
@@ -162,6 +137,13 @@ ParamValue::get_int(int defaultval) const
 int
 ParamValue::get_int_indexed(int index, int defaultval) const
 {
+#if 1 && OIIO_VERSION >= 20101
+    int val = defaultval;
+    convert_type(type().elementtype(),
+                 (const char*)data() + index * type().basesize(), TypeInt,
+                 &val);
+    return val;
+#else
     int base = type().basetype;
     if (base == TypeDesc::INT)
         return get<int>(index);
@@ -188,6 +170,7 @@ ParamValue::get_int_indexed(int index, int defaultval) const
             return val;
     }
     return defaultval;  // Some nonstandard type, fail
+#endif
 }
 
 
@@ -203,6 +186,13 @@ ParamValue::get_float(float defaultval) const
 float
 ParamValue::get_float_indexed(int index, float defaultval) const
 {
+#if 1 && OIIO_VERSION >= 20101
+    float val = defaultval;
+    convert_type(type().elementtype(),
+                 (const char*)data() + index * type().basesize(), TypeFloat,
+                 &val);
+    return val;
+#else
     int base = type().basetype;
     if (base == TypeDesc::FLOAT)
         return get<float>(index);
@@ -243,6 +233,7 @@ ParamValue::get_float_indexed(int index, float defaultval) const
     }
 
     return defaultval;
+#endif
 }
 
 
@@ -251,13 +242,13 @@ namespace {  // make an anon namespace
 
 template<typename T>
 void
-formatType(const ParamValue& p, const int n, const char* formatString,
-           std::string& out)
+formatType(const ParamValue& p, int beginindex, int endindex,
+           const char* formatString, std::string& out)
 {
     TypeDesc element = p.type().elementtype();
-    const T* f       = (const T*)p.data();
-    for (int i = 0; i < n; ++i) {
-        if (i)
+    const T* f       = (const T*)p.data() + beginindex * element.aggregate;
+    for (int i = beginindex; i < endindex; ++i) {
+        if (i > beginindex)
             out += ", ";
         for (int c = 0; c < (int)element.aggregate; ++c, ++f) {
             if (c)
@@ -292,6 +283,20 @@ bcdToBinary(unsigned int bcd)
 std::string
 ParamValue::get_string(int maxsize) const
 {
+#if OIIO_VERSION >= 20101
+    int nfull  = int(type().numelements()) * nvalues();
+    int n      = std::min(nfull, maxsize);
+    TypeDesc t = type();
+    if (nvalues() > 1 || n < nfull)
+        t.arraylen = n;
+    static const tostring_formatting fmt
+        = { "%d", "%g", "\"%s\"", "%p", "", "", ", ", "", "", ", ", true };
+    std::string out = tostring(t, data(), fmt);
+    if (n < nfull)
+        out += Strutil::sprintf(", ... [%d x %s]", nfull,
+                                TypeDesc(TypeDesc::BASETYPE(type().basetype)))
+                   .c_str();
+#else
     std::string out;
     TypeDesc element = type().elementtype();
     int nfull        = int(type().numelements()) * nvalues();
@@ -309,11 +314,11 @@ ParamValue::get_string(int maxsize) const
                                       : std::string());
         }
     } else if (element.basetype == TypeDesc::FLOAT) {
-        formatType<float>(*this, n, "%g", out);
+        formatType<float>(*this, 0, n, "%g", out);
     } else if (element.basetype == TypeDesc::DOUBLE) {
-        formatType<double>(*this, n, "%g", out);
+        formatType<double>(*this, 0, n, "%g", out);
     } else if (element.basetype == TypeDesc::HALF) {
-        formatType<half>(*this, n, "%g", out);
+        formatType<half>(*this, 0, n, "%g", out);
     } else if (element.basetype == TypeDesc::INT) {
         if (element == TypeRational) {
             const int* val = (const int*)data();
@@ -323,12 +328,12 @@ ParamValue::get_string(int maxsize) const
                 out += Strutil::sprintf("%d/%d", val[0], val[1]);
             }
         } else {
-            formatType<int>(*this, n, "%d", out);
+            formatType<int>(*this, 0, n, "%d", out);
         }
     } else if (element.basetype == TypeDesc::UINT) {
         if (element.vecsemantics == TypeDesc::RATIONAL
             && element.aggregate == TypeDesc::VEC2) {
-            const int* val = (const int*)data();
+            const uint32_t* val = (const uint32_t*)data();
             for (int i = 0; i < n; ++i, val += 2) {
                 if (i)
                     out += ", ";
@@ -345,23 +350,23 @@ ParamValue::get_string(int maxsize) const
             out += Strutil::sprintf("%02d:%02d:%02d:%02d", hours, minutes,
                                     seconds, frame);
         } else {
-            formatType<unsigned int>(*this, n, "%u", out);
+            formatType<unsigned int>(*this, 0, n, "%u", out);
         }
     } else if (element.basetype == TypeDesc::UINT16) {
-        formatType<unsigned short>(*this, n, "%u", out);
+        formatType<unsigned short>(*this, 0, n, "%u", out);
     } else if (element.basetype == TypeDesc::INT16) {
-        formatType<short>(*this, n, "%d", out);
+        formatType<short>(*this, 0, n, "%d", out);
     } else if (element.basetype == TypeDesc::UINT64) {
-        formatType<unsigned long long>(*this, n, "%llu", out);
+        formatType<unsigned long long>(*this, 0, n, "%llu", out);
     } else if (element.basetype == TypeDesc::INT64) {
-        formatType<long long>(*this, n, "%lld", out);
+        formatType<long long>(*this, 0, n, "%lld", out);
     } else if (element.basetype == TypeDesc::UINT8) {
-        formatType<unsigned char>(*this, n, "%d", out);
+        formatType<unsigned char>(*this, 0, n, "%d", out);
     } else if (element.basetype == TypeDesc::INT8) {
-        formatType<char>(*this, n, "%d", out);
+        formatType<char>(*this, 0, n, "%d", out);
     } else if (element.basetype == TypeDesc::PTR) {
         out += "ptr ";
-        formatType<void*>(*this, n, "%p", out);
+        formatType<void*>(*this, 0, n, "%p", out);
     } else {
         out += Strutil::sprintf("<unknown data type> (base %d, agg %d vec %d)",
                                 type().basetype, type().aggregate,
@@ -369,7 +374,74 @@ ParamValue::get_string(int maxsize) const
     }
     if (n < nfull)
         out += Strutil::sprintf(", ... [%d x %s]", nfull,
-                                TypeDesc(TypeDesc::BASETYPE(element.basetype)));
+                                TypeDesc(TypeDesc::BASETYPE(type().basetype)));
+#endif
+    return out;
+}
+
+
+
+std::string
+ParamValue::get_string_indexed(int index) const
+{
+    std::string out;
+    TypeDesc element = type().elementtype();
+    int n            = int(type().numelements()) * nvalues();
+    if (index < 0 || index >= n)
+        return out;
+    if (element.basetype == TypeDesc::STRING) {
+        return get<const char*>(index);
+    } else if (element.basetype == TypeDesc::FLOAT) {
+        formatType<float>(*this, index, index + 1, "%g", out);
+    } else if (element.basetype == TypeDesc::DOUBLE) {
+        formatType<double>(*this, index, index + 1, "%g", out);
+    } else if (element.basetype == TypeDesc::HALF) {
+        formatType<half>(*this, index, index + 1, "%g", out);
+    } else if (element.basetype == TypeDesc::INT) {
+        if (element == TypeRational) {
+            const int* val = (const int*)data() + 2 * index;
+            out            = Strutil::sprintf("%d/%d", val[0], val[1]);
+        } else {
+            formatType<int>(*this, index, index + 1, "%d", out);
+        }
+    } else if (element.basetype == TypeDesc::UINT) {
+        if (element.vecsemantics == TypeDesc::RATIONAL
+            && element.aggregate == TypeDesc::VEC2) {
+            const int* val = (const int*)data() + 2 * index;
+            out            = Strutil::sprintf("%d/%d", val[0], val[1]);
+        } else if (type() == TypeTimeCode) {
+            // Replicating the logic in OpenEXR, but this prevents us from
+            // needing to link to libIlmImf just to do this.
+            unsigned int t = get<unsigned int>(0);
+            int hours      = bcdToBinary(bitField(t, 24, 29));
+            int minutes    = bcdToBinary(bitField(t, 16, 22));
+            int seconds    = bcdToBinary(bitField(t, 8, 14));
+            int frame      = bcdToBinary(bitField(t, 0, 5));
+            out += Strutil::sprintf("%02d:%02d:%02d:%02d", hours, minutes,
+                                    seconds, frame);
+        } else {
+            formatType<unsigned int>(*this, index, index + 1, "%u", out);
+        }
+    } else if (element.basetype == TypeDesc::UINT16) {
+        formatType<unsigned short>(*this, index, index + 1, "%u", out);
+    } else if (element.basetype == TypeDesc::INT16) {
+        formatType<short>(*this, index, index + 1, "%d", out);
+    } else if (element.basetype == TypeDesc::UINT64) {
+        formatType<unsigned long long>(*this, index, index + 1, "%llu", out);
+    } else if (element.basetype == TypeDesc::INT64) {
+        formatType<long long>(*this, index, index + 1, "%lld", out);
+    } else if (element.basetype == TypeDesc::UINT8) {
+        formatType<unsigned char>(*this, index, index + 1, "%d", out);
+    } else if (element.basetype == TypeDesc::INT8) {
+        formatType<char>(*this, index, index + 1, "%d", out);
+    } else if (element.basetype == TypeDesc::PTR) {
+        out += "ptr ";
+        formatType<void*>(*this, index, index + 1, "%p", out);
+    } else {
+        out += Strutil::sprintf("<unknown data type> (base %d, agg %d vec %d)",
+                                type().basetype, type().aggregate,
+                                type().vecsemantics);
+    }
     return out;
 }
 
@@ -387,8 +459,20 @@ ParamValue::get_ustring(int maxsize) const
 
 
 
+ustring
+ParamValue::get_ustring_indexed(int index) const
+{
+    // Special case for retrieving a string already in ustring form,
+    // super inexpensive.
+    if (type() == TypeDesc::STRING)
+        return get<ustring>(index);
+    return ustring(get_string_indexed(index));
+}
+
+
+
 void
-ParamValue::clear_value()
+ParamValue::clear_value() noexcept
 {
     if (m_copy && m_nonlocal && m_data.ptr)
         free((void*)m_data.ptr);
@@ -530,7 +614,8 @@ ParamValueList::remove(string_view name, TypeDesc type, bool casesensitive)
 
 
 bool
-ParamValueList::contains(string_view name, TypeDesc type, bool casesensitive)
+ParamValueList::contains(string_view name, TypeDesc type,
+                         bool casesensitive) const
 {
     auto p = find(name, type, casesensitive);
     return (p != end());
@@ -541,7 +626,7 @@ ParamValueList::contains(string_view name, TypeDesc type, bool casesensitive)
 void
 ParamValueList::add_or_replace(const ParamValue& pv, bool casesensitive)
 {
-    iterator p = find(pv.name(), pv.type(), casesensitive);
+    iterator p = find(pv.name(), TypeUnknown, casesensitive);
     if (p != end())
         *p = pv;
     else
@@ -552,11 +637,86 @@ ParamValueList::add_or_replace(const ParamValue& pv, bool casesensitive)
 void
 ParamValueList::add_or_replace(ParamValue&& pv, bool casesensitive)
 {
-    iterator p = find(pv.name(), pv.type(), casesensitive);
+    iterator p = find(pv.name(), TypeUnknown, casesensitive);
     if (p != end())
         *p = pv;
     else
         emplace_back(pv);
+}
+
+
+
+bool
+ParamValueList::getattribute(string_view name, TypeDesc type, void* value,
+                             bool casesensitive) const
+{
+    auto p = find(name, TypeUnknown, casesensitive);
+    if (p != cend()) {
+        return convert_type(p->type(), p->data(), type, value);
+    } else {
+        return false;
+    }
+}
+
+
+
+bool
+ParamValueList::getattribute(string_view name, std::string& value,
+                             bool casesensitive) const
+{
+    auto p = find(name, TypeUnknown, casesensitive);
+    if (p != cend()) {
+        ustring s;
+        bool ok = convert_type(p->type(), p->data(), TypeString, &s);
+        if (ok)
+            value = s.string();
+        return ok;
+    } else {
+        return false;
+    }
+}
+
+
+
+bool
+ParamValueList::getattribute_indexed(string_view name, int index, TypeDesc type,
+                                     void* value, bool casesensitive) const
+{
+    auto p = find(name, TypeUnknown, casesensitive);
+    if (p != cend()) {
+        if (index >= int(p->type().basevalues()))
+            return false;
+        TypeDesc basetype = p->type().scalartype();
+        return convert_type(basetype,
+                            (const char*)p->data() + index * basetype.size(),
+                            type, value);
+    } else {
+        return false;
+    }
+}
+
+
+
+bool
+ParamValueList::getattribute_indexed(string_view name, int index,
+                                     std::string& value,
+                                     bool casesensitive) const
+{
+    auto p = find(name, TypeUnknown, casesensitive);
+    if (p != cend()) {
+        if (index >= int(p->type().basevalues()))
+            return false;
+        TypeDesc basetype = p->type().scalartype();
+        ustring s;
+        bool ok = convert_type(basetype,
+                               (const char*)p->data() + index * basetype.size(),
+                               TypeString, &s);
+        if (ok)
+            value = s.string();
+        return ok;
+    } else {
+        return false;
+    }
 }
 
 
@@ -581,6 +741,17 @@ ParamValueList::sort(bool casesensitive)
                                  ? bprefix
                                  : Strutil::iless(a.name(), b.name());
                   });
+}
+
+
+
+void
+ParamValueList::merge(const ParamValueList& other, bool override)
+{
+    for (const auto& attr : other) {
+        if (override || !contains(attr.name()))
+            add_or_replace(attr);
+    }
 }
 
 OIIO_NAMESPACE_END

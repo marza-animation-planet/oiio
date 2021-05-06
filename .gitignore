@@ -2,10 +2,12 @@
 branches/
 build/
 dist/
+ext/
 testsuite/runtest.pyc
-src/doc/figures/
 .cproject
 .project
+.DS_Store
+
 .sconsign.dblite
 .build/
 oiio.cmake.*

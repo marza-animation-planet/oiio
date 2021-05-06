@@ -1,32 +1,6 @@
-/*
-  Copyright 2008-2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <OpenImageIO/oiioversion.h>
 
@@ -68,7 +42,7 @@ bool
 FitsOutput::open(const std::string& name, const ImageSpec& spec, OpenMode mode)
 {
     if (mode == AppendMIPLevel) {
-        error("%s does not support MIP levels", format_name());
+        errorf("%s does not support MIP levels", format_name());
         return false;
     }
 
@@ -77,11 +51,21 @@ FitsOutput::open(const std::string& name, const ImageSpec& spec, OpenMode mode)
     m_spec     = spec;
     if (m_spec.format == TypeDesc::UNKNOWN)  // if unknown, default to float
         m_spec.set_format(TypeDesc::FLOAT);
+    // FITS only supports signed short and int pixels
+    if (m_spec.format == TypeDesc::USHORT)
+        m_spec.format = TypeDesc::SHORT;
+    else if (m_spec.format == TypeDesc::UINT)
+        m_spec.format = TypeDesc::INT;
 
     // checking if the file exists and can be opened in WRITE mode
     m_fd = Filesystem::fopen(m_filename, mode == AppendSubimage ? "r+b" : "wb");
     if (!m_fd) {
-        error("Unable to open file \"%s\"", m_filename.c_str());
+        errorf("Could not open \"%s\"", m_filename);
+        return false;
+    }
+
+    if (m_spec.depth != 1) {
+        errorf("Volume FITS files not supported");
         return false;
     }
 
@@ -108,7 +92,7 @@ FitsOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
     if (m_spec.width == 0 && m_spec.height == 0)
         return true;
     if (y > m_spec.height) {
-        error("Attempt to write too many scanlines to %s", m_filename.c_str());
+        errorf("Attempt to write too many scanlines to %s", m_filename);
         close();
         return false;
     }
@@ -170,7 +154,7 @@ FitsOutput::close(void)
     bool ok = true;
     if (m_spec.tile_width) {
         // Handle tile emulation -- output the buffered pixels
-        ASSERT(m_tilebuffer.size());
+        OIIO_ASSERT(m_tilebuffer.size());
         ok &= write_scanlines(m_spec.y, m_spec.y + m_spec.height, 0,
                               m_spec.format, &m_tilebuffer[0]);
         std::vector<unsigned char>().swap(m_tilebuffer);
@@ -240,7 +224,7 @@ FitsOutput::create_fits_header(void)
     size_t byte_count = fwrite(&header[0], 1, header.size(), m_fd);
     if (byte_count != header.size()) {
         // FIXME Bad Write
-        error("Bad header write (err %d)", byte_count);
+        errorf("Bad header write (err %d)", byte_count);
     }
 }
 
@@ -277,16 +261,27 @@ FitsOutput::create_basic_header(std::string& header)
     header += create_card("BITPIX", num2str(m_bitpix));
 
     // NAXIS inform how many dimension have the image.
-    // we deal only with 2D images so this value is always set to 2
+    // we deal only with 2D images so this value is always set to 2.
+    // But we make a multi-channel FITS look like 3 axes and hope it's
+    // not confused with a volume.
     int axes = 0;
     if (m_spec.width != 0 || m_spec.height != 0)
         axes = 2;
+    if (m_spec.nchannels > 1)
+        axes += 1;
     header += create_card("NAXIS", num2str(axes));
 
     // now we save NAXIS1 and NAXIS2
     // this keywords represents width and height
-    header += create_card("NAXIS1", num2str(m_spec.width));
-    header += create_card("NAXIS2", num2str(m_spec.height));
+    if (m_spec.nchannels == 1) {
+        header += create_card("NAXIS1", num2str(m_spec.width));
+        header += create_card("NAXIS2", num2str(m_spec.height));
+    } else {
+        // 3D image for color
+        header += create_card("NAXIS1", num2str(m_spec.nchannels));
+        header += create_card("NAXIS2", num2str(m_spec.width));
+        header += create_card("NAXIS3", num2str(m_spec.height));
+    }
 }
 
 OIIO_PLUGIN_NAMESPACE_END

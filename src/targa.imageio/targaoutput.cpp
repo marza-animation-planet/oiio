@@ -1,32 +1,6 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <cstdio>
@@ -102,7 +76,7 @@ private:
             return true;
         size_t n = std::fwrite(buf, itemsize, nitems, m_file);
         if (n != nitems)
-            error("Write error: wrote %d records of %d", (int)n, (int)nitems);
+            errorf("Write error: wrote %d records of %d", (int)n, (int)nitems);
         return n == nitems;
     }
 
@@ -172,7 +146,7 @@ TGAOutput::open(const std::string& name, const ImageSpec& userspec,
                 OpenMode mode)
 {
     if (mode != Create) {
-        error("%s does not support subimages or MIP levels", format_name());
+        errorf("%s does not support subimages or MIP levels", format_name());
         return false;
     }
 
@@ -181,26 +155,40 @@ TGAOutput::open(const std::string& name, const ImageSpec& userspec,
 
     // Check for things this format doesn't support
     if (m_spec.width < 1 || m_spec.height < 1) {
-        error("Image resolution must be at least 1x1, you asked for %d x %d",
-              m_spec.width, m_spec.height);
+        errorf("Image resolution must be at least 1x1, you asked for %d x %d",
+               m_spec.width, m_spec.height);
+        return false;
+    }
+    if (m_spec.width > 65535 || m_spec.height > 65535) {
+        errorf("TGA image resolution maximum is 65535, you asked for %d x %d",
+               m_spec.width, m_spec.height);
         return false;
     }
 
     if (m_spec.depth < 1)
         m_spec.depth = 1;
     else if (m_spec.depth > 1) {
-        error("TGA does not support volume images (depth > 1)");
+        errorf("TGA does not support volume images (depth > 1)");
         return false;
     }
 
     if (m_spec.nchannels < 1 || m_spec.nchannels > 4) {
-        error("TGA only supports 1-4 channels, not %d", m_spec.nchannels);
+        errorf("TGA only supports 1-4 channels, not %d", m_spec.nchannels);
+        return false;
+    }
+
+    // Offsets within the file are 32 bits. Guard against creating a TGA
+    // file that (even counting the file footer or header) might exceed
+    // this.
+    if (m_spec.image_bytes() + sizeof(tga_header) + sizeof(tga_footer)
+        >= (int64_t(1) << 32)) {
+        errorf("Too large a TGA file");
         return false;
     }
 
     m_file = Filesystem::fopen(name, "wb");
     if (!m_file) {
-        error("Could not open file \"%s\"", name.c_str());
+        errorf("Could not open \"%s\"", name);
         return false;
     }
 
@@ -267,7 +255,7 @@ TGAOutput::open(const std::string& name, const ImageSpec& userspec,
         swap_endian(&tga.attr);
     }
     // due to struct packing, we may get a corrupt header if we just dump the
-    // struct to the file; to adress that, write every member individually
+    // struct to the file; to address that, write every member individually
     // save some typing
     if (!fwrite(&tga.idlen) || !fwrite(&tga.cmap_type) || !fwrite(&tga.type)
         || !fwrite(&tga.cmap_first) || !fwrite(&tga.cmap_length)
@@ -308,7 +296,7 @@ TGAOutput::write_tga20_data_fields()
         // it's probably safe to ignore it altogether until someone complains
         // that it's missing :)
 
-        fseek(m_file, 0, SEEK_END);
+        Filesystem::fseek(m_file, 0, SEEK_END);
 
         // write out the thumbnail, if there is one
         uint32_t ofs_thumb = 0;
@@ -461,7 +449,7 @@ TGAOutput::close()
     bool ok = true;
     if (m_spec.tile_width) {
         // Handle tile emulation -- output the buffered pixels
-        ASSERT(m_tilebuffer.size());
+        OIIO_ASSERT(m_tilebuffer.size());
         ok &= write_scanlines(m_spec.y, m_spec.y + m_spec.height, 0,
                               m_spec.format, &m_tilebuffer[0]);
         std::vector<unsigned char>().swap(m_tilebuffer);
@@ -548,8 +536,9 @@ deassociateAlpha(T* data, int size, int channels, int alpha_channel,
         for (int x = 0; x < size; ++x, data += channels)
             if (data[alpha_channel]) {
                 // See associateAlpha() for an explanation.
-                float alpha_deassociate = pow((float)max / data[alpha_channel],
-                                              gamma);
+                float alpha_deassociate
+                    = OIIO::fast_pow_pos((float)max / data[alpha_channel],
+                                         gamma);
                 for (int c = 0; c < channels; c++)
                     if (c != alpha_channel)
                         data[c] = static_cast<T>(std::min(
@@ -693,9 +682,11 @@ TGAOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
     } else {
         // raw, non-compressed data
         // seek to the correct scanline
-        int n = m_spec.nchannels;
-        int w = m_spec.width;
-        fseek(m_file, 18 + m_idlen + (m_spec.height - y - 1) * w * n, SEEK_SET);
+        int n     = m_spec.nchannels;
+        int64_t w = m_spec.width;
+        Filesystem::fseek(m_file,
+                          18 + m_idlen + int64_t(m_spec.height - y - 1) * w * n,
+                          SEEK_SET);
         if (n <= 2) {
             // 1- and 2-channels can write directly
             if (!fwrite(bdata, n, w)) {

@@ -1,4 +1,8 @@
-if (USE_DICOM AND DCMTK_FOUND)
+# Copyright 2008-present Contributors to the OpenImageIO project.
+# SPDX-License-Identifier: BSD-3-Clause
+# https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
+
+if (DCMTK_FOUND)
     add_oiio_plugin (dicominput.cpp
                      INCLUDE_DIRS ${DCMTK_INCLUDE_DIR}
                      LINK_LIBRARIES ${DCMTK_LIBRARIES}

@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 #import OpenImageIO as oiio
+from __future__ import division
+from __future__ import absolute_import
 import shutil
+import os
 
 ## This testsuite entry tests oiiotool features related to image
 ## transformations (moving pixels around and resampling).
@@ -11,7 +14,7 @@ def make_test_pattern1 (filename, xres=288, yres=216) :
     buf = oiio.ImageBuf (oiio.ImageSpec (xres, yres, 3, oiio.HALF))
     for y in range(yres) :
         for x in range(xres) :
-            b = 0.25 + 0.5 * float (((x/16) & 1) ^ ((y/16) & 1))
+            b = 0.25 + 0.5 * float (((x//16) & 1) ^ ((y//16) & 1))
             if x == 1 or y == 1 or x == xres-2 or y == yres-2 :
                 b = 0.0
             if (((x >= 10 and x <= 20) or (x >= xres-20 and x <= xres-10)) and
@@ -27,9 +30,10 @@ def make_test_pattern1 (filename, xres=288, yres=216) :
 # No need to do this every time, we stashed it in src
 #make_test_pattern1 ("src/target1.exr", 288, 216)
 
-shutil.copy ("../oiiotool/src/tahoe-tiny.tif", "./tahoe-tiny.tif")
-shutil.copy ("../oiiotool/src/tahoe-small.tif", "./tahoe-small.tif")
-shutil.copy ("../oiiotool/src/image.tif", "./image.tif")
+oiiotoolsrcdir = os.path.join(OIIO_TESTSUITE_ROOT, "oiiotool", "src")
+shutil.copy (oiiotoolsrcdir + "/tahoe-tiny.tif", "./tahoe-tiny.tif")
+shutil.copy (oiiotoolsrcdir + "/tahoe-small.tif", "./tahoe-small.tif")
+shutil.copy (oiiotoolsrcdir + "/image.tif", "./image.tif")
 
 
 # test resample

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
+from __future__ import absolute_import
 import os
 import glob
 import sys
@@ -52,19 +53,21 @@ def oiio_relpath (path, start=os.curdir):
 # the cmake tests, but if those aren't set, assume somebody is running
 # this script by hand from inside build/PLATFORM/testsuite/TEST and that
 # the rest of the tree has the standard layout.
-OIIO_TESTSUITE_ROOT = oiio_relpath(os.environ.get('OIIO_TESTSUITE_ROOT',
-                                                  '../../../../testsuite'))
-OIIO_TESTSUITE_IMAGEDIR = os.environ.get('OIIO_TESTSUITE_IMAGEDIR',
-                                         '../../../../../oiio-images')
+OIIO_TESTSUITE_ROOT = oiio_relpath(os.getenv('OIIO_TESTSUITE_ROOT',
+                                             '../../../../testsuite'))
+OIIO_TESTSUITE_IMAGEDIR = os.getenv('OIIO_TESTSUITE_IMAGEDIR',
+                                    '../../../../../oiio-images')
 if OIIO_TESTSUITE_IMAGEDIR:
     OIIO_TESTSUITE_IMAGEDIR = oiio_relpath(OIIO_TESTSUITE_IMAGEDIR)
     # Set it back so test's can use it (python-imagebufalgo)
-    os.environ['OIIO_TESTSUITE_IMAGEDIR'] = OIIO_TESTSUITE_IMAGEDIR
+    os.putenv('OIIO_TESTSUITE_IMAGEDIR', OIIO_TESTSUITE_IMAGEDIR)
 refdir = "ref/"
 refdirlist = [ refdir ]
 mytest = os.path.split(os.path.abspath(os.getcwd()))[-1]
-test_source_dir = os.environ.get('OIIO_TESTSUITE_SRC',
-                                 os.path.join(OIIO_TESTSUITE_ROOT, mytest))
+if str(mytest).endswith('.batch') :
+    mytest = mytest.split('.')[0]
+test_source_dir = os.getenv('OIIO_TESTSUITE_SRC',
+                            os.path.join(OIIO_TESTSUITE_ROOT, mytest))
 colorconfig_file = os.path.join(OIIO_TESTSUITE_ROOT,
                                 "common", "OpenColorIO", "nuke-default", "config.ocio")
 
@@ -80,7 +83,7 @@ if OIIO_TESTSUITE_ROOT != "../../../../testsuite":
                     imgdir = "oiio-images/" + imgdir
                 imgdir = "../../../../../" + imgdir
 
-        for i in xrange(len(lines)):
+        for i in range(len(lines)):
             lines[i] = lines[i].replace("../../../../testsuite", OIIO_TESTSUITE_ROOT)
             if imgdir:
                 lines[i] = lines[i].replace(imgdir, OIIO_TESTSUITE_IMAGEDIR)
@@ -96,9 +99,13 @@ failthresh = 0.004
 hardfail = 0.012
 failpercent = 0.02
 anymatch = False
+cleanup_on_success = False
+if int(os.getenv('TESTSUITE_CLEANUP_ON_SUCCESS', '0')) :
+    cleanup_on_success = True;
 
 image_extensions = [ ".tif", ".tx", ".exr", ".jpg", ".png", ".rla",
-                     ".dpx", ".iff", ".psd" ]
+                     ".dpx", ".iff", ".psd", ".bmp", ".fits", ".ico",
+                     ".jp2", ".sgi", ".tga", ".TGA" ]
 
 # print ("srcdir = " + srcdir)
 # print ("tmpdir = " + tmpdir)
@@ -128,9 +135,6 @@ else :
         newsymlink (os.path.join (test_source_dir, "src"), "./src")
     if not os.path.exists("./data") :
         newsymlink (test_source_dir, "./data")
-    if not os.path.exists("../common") :
-        newsymlink (os.path.join(os.environ['OIIO_TESTSUITE_ROOT'], "common"),
-                    "../common")
 
 
 # Disable this test on Travis when using leak sanitizer, because the error
@@ -187,12 +191,14 @@ def text_diff (fromfile, tofile, diff_file=None):
 
 
 def oiio_app (app):
-    # When we use Visual Studio, built applications are stored
-    # in the app/$(OutDir)/ directory, e.g., Release or Debug.
     if (platform.system () != 'Windows' or options.devenv_config == ""):
-        return os.path.join (path, "src", app, app) + " "
+        return os.path.join (path, "bin", app) + " "
     else:
-        return os.path.join (path, "src", app, options.devenv_config, app) + " "
+        return os.path.join (path, "bin", app) + " "
+        # Old... not true any more?
+        # When we use Visual Studio, built applications are stored
+        # in the app/$(OutDir)/ directory, e.g., Release or Debug.
+        # return os.path.join (path, "src", app, options.devenv_config, app) + " "
 
 
 # Construct a command that will print info for an image, appending output to
@@ -429,9 +435,7 @@ with open(os.path.join(test_source_dir,"run.py")) as f:
 
 # Allow a little more slop for slight pixel differences when in DEBUG
 # mode or when running on remote Travis-CI or Appveyor machines.
-if (("TRAVIS" in os.environ and os.environ["TRAVIS"]) or
-    ("APPVEYOR" in os.environ and os.environ["APPVEYOR"]) or
-    ("DEBUG" in os.environ and os.environ["DEBUG"])) :
+if (os.getenv('TRAVIS') or os.getenv('APPVEYOR') or os.getenv('DEBUG')) :
     failthresh *= 2.0
     hardfail *= 2.0
     failpercent *= 2.0
@@ -439,4 +443,11 @@ if (("TRAVIS" in os.environ and os.environ["TRAVIS"]) or
 
 # Run the test and check the outputs
 ret = runtest (command, outputs, failureok=failureok)
+
+if ret == 0 and cleanup_on_success :
+    for ext in image_extensions + [ ".txt", ".diff" ] :
+        for f in glob.iglob (srcdir + '/*' + ext) :
+            os.remove(f)
+            #print('REMOVED ', f)
+
 sys.exit (ret)

@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cmath>
@@ -111,6 +85,7 @@ static bool test_statquery         = false;
 static bool invalidate_before_iter = true;
 static bool close_before_iter      = false;
 static Imath::M33f xform;
+static std::string texoptions;
 void* dummyptr;
 
 typedef void (*Mapping2D)(const int&, const int&, float&, float&, float&,
@@ -150,47 +125,48 @@ getargs(int argc, const char* argv[])
                   "%*", parse_files, "",
                   "--help", &help, "Print help message",
                   "-v", &verbose, "Verbose status messages",
-                  "-o %s", &output_filename, "Output test image",
-                  "-d %s", &dataformatname, "Set the output data format to one of:"
+                  "-o %s:FILENAME", &output_filename, "Output test image",
+                  "-d %s:TYPE", &dataformatname, "Set the output data format to one of:"
                         "uint8, sint8, uint10, uint12, uint16, sint16, half, float, double",
-                  "--res %d %d", &output_xres, &output_yres,
+                  "--res %d:WIDTH %d:HEIGHT", &output_xres, &output_yres,
                       "Resolution of output test image",
-                  "--nchannels %d", &nchannels_override,
+                  "--nchannels %d:N", &nchannels_override,
                       "Force number of channels to look up",
-                  "--iters %d", &iters,
+                  "--iters %d:N", &iters,
                       "Iterations for time trials",
-                  "--threads %d", &nthreads, "Number of threads (default 0 = #cores)",
+                  "--threads %d:N", &nthreads, "Number of threads (default 0 = #cores)",
                   "-t %d", &nthreads, "",  // synonym
-                  "--blur %f", &sblur, "Add blur to texture lookup",
-                  "--stblur %f %f", &sblur, &tblur, "Add blur (s, t) to texture lookup",
-                  "--width %f", &width, "Multiply filter width of texture lookup",
-                  "--fill %f", &fill, "Set fill value for missing channels",
-                  "--wrap %s", &wrapmodes, "Set wrap mode (default, black, clamp, periodic, mirror, overscan)",
-                  "--anisoaspect %f", &anisoaspect, "Set anisotropic ellipse aspect ratio for threadtimes tests (default: 2.0)",
-                  "--anisomax %d", &anisomax,
+                  "--texoptions %s:OPTLIST", &texoptions, "Set extra TextureSystem options (name=val,name=val)",
+                  "--blur %f:BLURSIZE", &sblur, "Add blur to texture lookup",
+                  "--stblur %f:SBLUR %f:TBLUR", &sblur, &tblur, "Add blur (s, t) to texture lookup",
+                  "--width %f:WIDTH", &width, "Multiply filter width of texture lookup",
+                  "--fill %f:FILLVAL", &fill, "Set fill value for missing channels",
+                  "--wrap %s:MODE", &wrapmodes, "Set wrap mode (default, black, clamp, periodic, mirror, overscan)",
+                  "--anisoaspect %f:ASPECT", &anisoaspect, "Set anisotropic ellipse aspect ratio for threadtimes tests (default: 2.0)",
+                  "--anisomax %d:MAX", &anisomax,
                       Strutil::sprintf("Set max anisotropy (default: %d)", anisomax).c_str(),
-                  "--mipmode %d", &mipmode, "Set mip mode (default: 0 = aniso)",
-                  "--interpmode %d", &interpmode, "Set interp mode (default: 3 = smart bicubic)",
-                  "--missing %f %f %f", &missing[0], &missing[1], &missing[2],
+                  "--mipmode %d:MODE", &mipmode, "Set mip mode (default: 0 = aniso)",
+                  "--interpmode %d:MODE", &interpmode, "Set interp mode (default: 3 = smart bicubic)",
+                  "--missing %f:R %f:G %f:B", &missing[0], &missing[1], &missing[2],
                         "Specify missing texture color",
-                  "--autotile %d", &autotile, "Set auto-tile size for the image cache",
+                  "--autotile %d:TILESIZE", &autotile, "Set auto-tile size for the image cache",
                   "--automip", &automip, "Set auto-MIPmap for the image cache",
                   "--batch", &batch,
                         Strutil::sprintf("Use batched shading, batch size = %d", Tex::BatchWidth).c_str(),
                   "--handle", &use_handle, "Use texture handle rather than name lookup",
-                  "--searchpath %s", &searchpath, "Search path for files",
+                  "--searchpath %s:PATHLIST", &searchpath, "Search path for files (colon-separated directory list)",
                   "--filtertest", &filtertest, "Test the filter sizes",
                   "--nowarp", &nowarp, "Do not warp the image->texture mapping",
                   "--tube", &tube, "Make a tube projection",
                   "--ctr", &test_construction, "Test TextureOpt construction time",
                   "--gettexels", &test_gettexels, "Test TextureSystem::get_texels",
                   "--getimagespec", &test_getimagespec, "Test TextureSystem::get_imagespec",
-                  "--offset %f %f %f", &texoffset[0], &texoffset[1], &texoffset[2], "Offset texture coordinates",
-                  "--scalest %f %f", &sscale, &tscale, "Scale texture lookups (s, t)",
-                  "--cachesize %f", &cachesize, "Set cache size, in MB",
+                  "--offset %f:SOFF %f:TOFF %f:ROFF", &texoffset[0], &texoffset[1], &texoffset[2], "Offset texture coordinates",
+                  "--scalest %f:SSCALE %f:TSCALE", &sscale, &tscale, "Scale texture lookups (s, t)",
+                  "--cachesize %f:MB", &cachesize, "Set cache size, in MB",
                   "--nodedup %!", &dedup, "Turn off de-duplication",
-                  "--scale %f", &scalefactor, "Scale intensities",
-                  "--maxfiles %d", &maxfiles, "Set maximum open files",
+                  "--scale %f:SCALEFACTOR", &scalefactor, "Scale intensities",
+                  "--maxfiles %d:MAXFILES", &maxfiles, "Set maximum open files",
                   "--nountiled", &nountiled, "Reject untiled images",
                   "--nounmipped", &nounmipped, "Reject unmipped images",
                   "--graytorgb", &gray_to_rgb, "Convert gratscale textures to RGB",
@@ -198,12 +174,12 @@ getargs(int argc, const char* argv[])
                   "--derivs", &test_derivs, "Test returning derivatives of texture lookups",
                   "--resetstats", &resetstats, "Print and reset statistics on each iteration",
                   "--testhash", &testhash, "Test the tile hashing function",
-                  "--threadtimes %d", &threadtimes, "Do thread timings (arg = workload profile)",
-                  "--trials %d", &ntrials, "Number of trials for timings",
+                  "--threadtimes %d:MODE", &threadtimes, "Do thread timings (arg = workload profile)",
+                  "--trials %d:N", &ntrials, "Number of trials for timings",
                   "--wedge", &wedge, "Wedge test",
                   "--noinvalidate %!", &invalidate_before_iter, "Don't invalidate the cache before each --threadtimes trial",
                   "--closebeforeiter", &close_before_iter, "Close all handles before each --iter",
-                  "--testicwrite %d", &testicwrite, "Test ImageCache write ability (1=seeded, 2=generated)",
+                  "--testicwrite %d:MODE", &testicwrite, "Test ImageCache write ability (1=seeded, 2=generated)",
                   "--teststatquery", &test_statquery, "Test queries of statistics",
                   nullptr);
     // clang-format on
@@ -567,9 +543,9 @@ plain_tex_region(ImageBuf& image, ustring filename, Mapping2D mapping,
     TextureOpt opt;
     initialize_opt(opt, nchannels);
 
-    float* result    = ALLOCA(float, std::max(3, nchannels));
-    float* dresultds = test_derivs ? ALLOCA(float, nchannels) : NULL;
-    float* dresultdt = test_derivs ? ALLOCA(float, nchannels) : NULL;
+    float* result    = OIIO_ALLOCA(float, std::max(3, nchannels));
+    float* dresultds = test_derivs ? OIIO_ALLOCA(float, nchannels) : NULL;
+    float* dresultdt = test_derivs ? OIIO_ALLOCA(float, nchannels) : NULL;
     for (ImageBuf::Iterator<float> p(image, roi); !p.done(); ++p) {
         float s, t, dsdx, dtdx, dsdy, dtdy;
         mapping(p.x(), p.y(), s, t, dsdx, dtdx, dsdy, dtdy);
@@ -673,17 +649,19 @@ plain_tex_region_batch(ImageBuf& image, ustring filename, Mapping2DWide mapping,
         filename);
     int nchannels_img = image.nchannels();
     int nchannels = nchannels_override ? nchannels_override : image.nchannels();
-    DASSERT(image.spec().format == TypeDesc::FLOAT);
-    DASSERT(image_ds == nullptr || image_ds->spec().format == TypeDesc::FLOAT);
-    DASSERT(image_dt == nullptr || image_dt->spec().format == TypeDesc::FLOAT);
+    OIIO_DASSERT(image.spec().format == TypeDesc::FLOAT);
+    OIIO_DASSERT(image_ds == nullptr
+                 || image_ds->spec().format == TypeDesc::FLOAT);
+    OIIO_DASSERT(image_dt == nullptr
+                 || image_dt->spec().format == TypeDesc::FLOAT);
 
     TextureOptBatch opt;
     initialize_opt(opt, nchannels);
 
     int nc               = std::max(3, nchannels);
-    FloatWide* result    = ALLOCA(FloatWide, nc);
-    FloatWide* dresultds = test_derivs ? ALLOCA(FloatWide, nc) : nullptr;
-    FloatWide* dresultdt = test_derivs ? ALLOCA(FloatWide, nc) : nullptr;
+    FloatWide* result    = OIIO_ALLOCA(FloatWide, nc);
+    FloatWide* dresultds = test_derivs ? OIIO_ALLOCA(FloatWide, nc) : nullptr;
+    FloatWide* dresultdt = test_derivs ? OIIO_ALLOCA(FloatWide, nc) : nullptr;
     for (int y = roi.ybegin; y < roi.yend; ++y) {
         for (int x = roi.xbegin; x < roi.xend; x += BatchWidth) {
             FloatWide s, t, dsdx, dtdx, dsdy, dtdy;
@@ -806,10 +784,10 @@ tex3d_region(ImageBuf& image, ustring filename, Mapping3D mapping, ROI roi)
     opt.fill = (fill >= 0.0f) ? fill : 0.0f;
     //    opt.swrap = opt.twrap = opt.rwrap = TextureOpt::WrapPeriodic;
 
-    float* result    = ALLOCA(float, nchannels);
-    float* dresultds = test_derivs ? ALLOCA(float, nchannels) : NULL;
-    float* dresultdt = test_derivs ? ALLOCA(float, nchannels) : NULL;
-    float* dresultdr = test_derivs ? ALLOCA(float, nchannels) : NULL;
+    float* result    = OIIO_ALLOCA(float, nchannels);
+    float* dresultds = test_derivs ? OIIO_ALLOCA(float, nchannels) : NULL;
+    float* dresultdt = test_derivs ? OIIO_ALLOCA(float, nchannels) : NULL;
+    float* dresultdr = test_derivs ? OIIO_ALLOCA(float, nchannels) : NULL;
     for (ImageBuf::Iterator<float> p(image, roi); !p.done(); ++p) {
         Imath::V3f P, dPdx, dPdy, dPdz;
         mapping(p.x(), p.y(), P, dPdx, dPdy, dPdz);
@@ -849,10 +827,13 @@ tex3d_region_batch(ImageBuf& image, ustring filename, Mapping3DWide mapping,
     opt.fill = (fill >= 0.0f) ? fill : 0.0f;
     //    opt.swrap = opt.twrap = opt.rwrap = TextureOpt::WrapPeriodic;
 
-    FloatWide* result    = ALLOCA(FloatWide, nchannels);
-    FloatWide* dresultds = test_derivs ? ALLOCA(FloatWide, nchannels) : NULL;
-    FloatWide* dresultdt = test_derivs ? ALLOCA(FloatWide, nchannels) : NULL;
-    FloatWide* dresultdr = test_derivs ? ALLOCA(FloatWide, nchannels) : NULL;
+    FloatWide* result    = OIIO_ALLOCA(FloatWide, nchannels);
+    FloatWide* dresultds = test_derivs ? OIIO_ALLOCA(FloatWide, nchannels)
+                                       : NULL;
+    FloatWide* dresultdt = test_derivs ? OIIO_ALLOCA(FloatWide, nchannels)
+                                       : NULL;
+    FloatWide* dresultdr = test_derivs ? OIIO_ALLOCA(FloatWide, nchannels)
+                                       : NULL;
     for (int y = roi.ybegin; y < roi.yend; ++y) {
         for (int x = roi.xbegin; x < roi.xend; x += BatchWidth) {
             Imath::Vec3<FloatWide> P, dPdx, dPdy, dPdz;
@@ -1147,11 +1128,11 @@ do_tex_thread_workout(int iterations, int mythread)
     int nfiles = (int)filenames.size();
     float s = 0.1f, t = 0.1f;
     int nchannels = nchannels_override ? nchannels_override : 3;
-    float* result = ALLOCA(float, nchannels);
+    float* result = OIIO_ALLOCA(float, nchannels);
     TextureOpt opt;
     initialize_opt(opt, nchannels);
-    float* dresultds = test_derivs ? ALLOCA(float, nchannels) : NULL;
-    float* dresultdt = test_derivs ? ALLOCA(float, nchannels) : NULL;
+    float* dresultds = test_derivs ? OIIO_ALLOCA(float, nchannels) : NULL;
+    float* dresultdt = test_derivs ? OIIO_ALLOCA(float, nchannels) : NULL;
     TextureSystem::Perthread* perthread_info = texsys->get_perthread_info();
     int pixel, whichfile = 0;
 
@@ -1236,7 +1217,8 @@ do_tex_thread_workout(int iterations, int mythread)
                 pixel += 57557 * mythread;
             }
             break;
-        default: ASSERT_MSG(0, "Unkonwn thread work pattern %d", threadtimes);
+        default:
+            OIIO_ASSERT_MSG(0, "Unkonwn thread work pattern %d", threadtimes);
         }
         if (!ok && spec0.width && spec0.height) {
             s = (((2 * pixel) % spec0.width) + 0.5f) / spec0.width;
@@ -1266,7 +1248,7 @@ do_tex_thread_workout(int iterations, int mythread)
     }
     // Force the compiler to not optimize away the "other work"
     for (int c = 0; c < nchannels; ++c)
-        ASSERT(!isnan(result[c]));
+        OIIO_ASSERT(!isnan(result[c]));
 }
 
 
@@ -1282,7 +1264,7 @@ launch_tex_threads(int numthreads, int iterations)
     for (int i = 0; i < numthreads; ++i) {
         threads.create_thread(std::bind(do_tex_thread_workout, iterations, i));
     }
-    ASSERT((int)threads.size() == numthreads);
+    OIIO_ASSERT((int)threads.size() == numthreads);
     threads.join_all();
 }
 
@@ -1386,9 +1368,10 @@ test_icwrite(int testicwrite)
     spec.tile_depth  = 1;
     ustring filename(filenames[0]);
     bool ok = ic->add_file(filename, make_grid_input);
-    if (!ok)
+    if (!ok) {
         std::cout << "ic->add_file error: " << ic->geterror() << "\n";
-    ASSERT(ok);
+        OIIO_ASSERT(ok);
+    }
 
     // Now add all the tiles if it's a seeded map
     // testicwrite == 1 means to seed the first MIP level using add_tile.
@@ -1416,7 +1399,6 @@ test_icwrite(int testicwrite)
                                      ic->geterror());
                     return;
                 }
-                ASSERT(ok);
             }
         }
     }
@@ -1439,6 +1421,8 @@ main(int argc, const char* argv[])
 
     texsys = TextureSystem::create();
     std::cout << "Created texture system\n";
+    if (texoptions.size())
+        texsys->attribute("options", texoptions);
     texsys->attribute("autotile", autotile);
     texsys->attribute("automip", (int)automip);
     texsys->attribute("deduplicate", (int)dedup);

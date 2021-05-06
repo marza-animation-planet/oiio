@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <cassert>
@@ -87,7 +61,7 @@ HdrOutput::open(const std::string& name, const ImageSpec& newspec,
                 OpenMode mode)
 {
     if (mode != Create) {
-        error("%s does not support subimages or MIP levels", format_name());
+        errorf("%s does not support subimages or MIP levels", format_name());
         return false;
     }
 
@@ -98,18 +72,18 @@ HdrOutput::open(const std::string& name, const ImageSpec& newspec,
 
     // Check for things HDR can't support
     if (m_spec.nchannels != 3) {
-        error("HDR can only support 3-channel images");
+        errorf("HDR can only support 3-channel images");
         return false;
     }
     if (m_spec.width < 1 || m_spec.height < 1) {
-        error("Image resolution must be at least 1x1, you asked for %d x %d",
-              m_spec.width, m_spec.height);
+        errorf("Image resolution must be at least 1x1, you asked for %d x %d",
+               m_spec.width, m_spec.height);
         return false;
     }
     if (m_spec.depth < 1)
         m_spec.depth = 1;
     if (m_spec.depth > 1) {
-        error("%s does not support volume images (depth > 1)", format_name());
+        errorf("%s does not support volume images (depth > 1)", format_name());
         return false;
     }
 
@@ -117,7 +91,7 @@ HdrOutput::open(const std::string& name, const ImageSpec& newspec,
 
     m_fd = Filesystem::fopen(name, "wb");
     if (m_fd == NULL) {
-        error("Unable to open file");
+        errorf("Could not open \"%s\"", name);
         return false;
     }
 
@@ -141,7 +115,7 @@ HdrOutput::open(const std::string& name, const ImageSpec& newspec,
 
     int r = RGBE_WriteHeader(m_fd, m_spec.width, m_spec.height, &h, rgbe_error);
     if (r != RGBE_RETURN_SUCCESS)
-        error("%s", rgbe_error);
+        errorf("%s", rgbe_error);
 
     // If user asked for tiles -- which this format doesn't support, emulate
     // it by buffering the whole image.
@@ -161,7 +135,7 @@ HdrOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
     int r = RGBE_WritePixels_RLE(m_fd, (float*)data, m_spec.width, 1,
                                  rgbe_error);
     if (r != RGBE_RETURN_SUCCESS)
-        error("%s", rgbe_error);
+        errorf("%s", rgbe_error);
     return (r == RGBE_RETURN_SUCCESS);
 }
 
@@ -189,7 +163,7 @@ HdrOutput::close()
     bool ok = true;
     if (m_spec.tile_width) {
         // We've been emulating tiles; now dump as scanlines.
-        ASSERT(m_tilebuffer.size());
+        OIIO_ASSERT(m_tilebuffer.size());
         ok &= write_scanlines(m_spec.y, m_spec.y + m_spec.height, 0,
                               m_spec.format, &m_tilebuffer[0]);
         std::vector<unsigned char>().swap(m_tilebuffer);

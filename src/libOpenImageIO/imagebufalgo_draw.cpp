@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <OpenEXR/half.h>
 
@@ -68,7 +42,7 @@ fill_const_(ImageBuf& dst, const float* values, ROI roi = ROI(),
 {
     ImageBufAlgo::parallel_image(roi, nthreads, [=, &dst](ROI roi) {
         // Do the data conversion just once, store locally.
-        T* tvalues = ALLOCA(T, roi.chend);
+        T* tvalues = OIIO_ALLOCA(T, roi.chend);
         for (int i = roi.chbegin; i < roi.chend; ++i)
             tvalues[i] = convert_type<float, T>(values[i]);
         int nchannels = roi.nchannels();
@@ -175,7 +149,7 @@ ImageBufAlgo::fill(cspan<float> pixel, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = fill(result, pixel, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("fill error");
+        result.errorf("fill error");
     return result;
 }
 
@@ -186,7 +160,7 @@ ImageBufAlgo::fill(cspan<float> top, cspan<float> bottom, ROI roi, int nthreads)
     ImageBuf result;
     bool ok = fill(result, top, bottom, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("fill error");
+        result.errorf("fill error");
     return result;
 }
 
@@ -200,7 +174,7 @@ ImageBufAlgo::fill(cspan<float> topleft, cspan<float> topright,
     bool ok = fill(result, topleft, topright, bottomleft, bottomright, roi,
                    nthreads);
     if (!ok && !result.has_error())
-        result.error("fill error");
+        result.errorf("fill error");
     return result;
 }
 
@@ -211,7 +185,7 @@ ImageBufAlgo::zero(ImageBuf& dst, ROI roi, int nthreads)
     pvt::LoggedTimer logtime("IBA::zero");
     if (!IBAprep(roi, &dst))
         return false;
-    float* zero = ALLOCA(float, roi.chend);
+    float* zero = OIIO_ALLOCA(float, roi.chend);
     memset(zero, 0, roi.chend * sizeof(float));
     bool ok;
     OIIO_DISPATCH_TYPES(ok, "zero", fill_const_, dst.spec().format, dst, zero,
@@ -227,7 +201,7 @@ ImageBufAlgo::zero(ROI roi, int nthreads)
     ImageBuf result;
     bool ok = zero(result, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("zero error");
+        result.errorf("zero error");
     return result;
 }
 
@@ -535,7 +509,7 @@ ImageBufAlgo::checker(int width, int height, int depth, cspan<float> color1,
     bool ok = checker(result, width, height, depth, color1, color2, xoffset,
                       yoffset, zoffset, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("checker error");
+        result.errorf("checker error");
     return result;
 }
 
@@ -660,7 +634,7 @@ ImageBufAlgo::noise(ImageBuf& dst, string_view noisetype, float A, float B,
                                    roi, nthreads);
     } else {
         ok = false;
-        dst.error("noise", "unknown noise type \"%s\"", noisetype);
+        dst.errorf("noise", "unknown noise type \"%s\"", noisetype);
     }
     return ok;
 }
@@ -675,7 +649,7 @@ ImageBufAlgo::noise(string_view noisetype, float A, float B, bool mono,
     bool ok         = true;
     ok              = noise(result, noisetype, A, B, mono, seed, roi, nthreads);
     if (!ok && !result.has_error())
-        result.error("noise error");
+        result.errorf("noise error");
     return result;
 }
 
@@ -763,6 +737,13 @@ resolve_font(int fontsize, string_view font_, std::string& result)
         font_search_dirs.emplace_back("/opt/local/share/fonts");
         font_search_dirs.emplace_back("/opt/local/share/fonts/OpenImageIO");
         // Try $OPENIMAGEIO_ROOT_DIR/fonts
+        string_view OpenImageIOrootdir = Sysutil::getenv("OpenImageIO_ROOT");
+        if (OpenImageIOrootdir.size()) {
+            font_search_dirs.push_back(std::string(OpenImageIOrootdir)
+                                       + "/fonts");
+            font_search_dirs.push_back(std::string(OpenImageIOrootdir)
+                                       + "/share/fonts/OpenImageIO");
+        }
         string_view oiiorootdir = Sysutil::getenv("OPENIMAGEIO_ROOT_DIR");
         if (oiiorootdir.size()) {
             font_search_dirs.push_back(std::string(oiiorootdir) + "/fonts");
@@ -819,7 +800,6 @@ resolve_font(int fontsize, string_view font_, std::string& result)
         font = f;
     }
 
-    ASSERT(!font.empty());
     if (!Filesystem::is_regular(font)) {
         result = Strutil::sprintf("Could not find font \"%s\"", font);
         return false;
@@ -904,7 +884,7 @@ ImageBufAlgo::render_text(ImageBuf& R, int x, int y, string_view text,
 {
     pvt::LoggedTimer logtime("IBA::render_text");
     if (R.spec().depth > 1) {
-        R.error("ImageBufAlgo::render_text does not support volume images");
+        R.errorf("ImageBufAlgo::render_text does not support volume images");
         return false;
     }
 
@@ -916,7 +896,7 @@ ImageBufAlgo::render_text(ImageBuf& R, int x, int y, string_view text,
     bool ok = resolve_font(fontsize, font_, font);
     if (!ok) {
         std::string err = font.size() ? font : "Font error";
-        R.error("%s", err);
+        R.errorf("%s", err);
         return false;
     }
 
@@ -924,7 +904,7 @@ ImageBufAlgo::render_text(ImageBuf& R, int x, int y, string_view text,
     FT_Face face;  // handle to face object
     error = FT_New_Face(ft_library, font.c_str(), 0 /* face index */, &face);
     if (error) {
-        R.error("Could not set font face to \"%s\"", font);
+        R.errorf("Could not set font face to \"%s\"", font);
         return false;  // couldn't open the face
     }
 
@@ -932,7 +912,7 @@ ImageBufAlgo::render_text(ImageBuf& R, int x, int y, string_view text,
                                fontsize /*height*/);
     if (error) {
         FT_Done_Face(face);
-        R.error("Could not set font size to %d", fontsize);
+        R.errorf("Could not set font size to %d", fontsize);
         return false;  // couldn't set the character size
     }
 
@@ -1009,7 +989,7 @@ ImageBufAlgo::render_text(ImageBuf& R, int x, int y, string_view text,
     roi = roi_intersection(textroi, R.roi());
 
     // Now fill in the pixels of our destination image
-    float* pixelcolor = ALLOCA(float, nchannels);
+    float* pixelcolor = OIIO_ALLOCA(float, nchannels);
     ImageBuf::ConstIterator<float> t(textimg, roi, ImageBuf::WrapBlack);
     ImageBuf::ConstIterator<float> a(alphaimg, roi, ImageBuf::WrapBlack);
     ImageBuf::Iterator<float> r(R, roi);
@@ -1026,7 +1006,7 @@ ImageBufAlgo::render_text(ImageBuf& R, int x, int y, string_view text,
     return true;
 
 #else
-    R.error("OpenImageIO was not compiled with FreeType for font rendering");
+    R.errorf("OpenImageIO was not compiled with FreeType for font rendering");
     return false;  // Font rendering not supported
 #endif
 }

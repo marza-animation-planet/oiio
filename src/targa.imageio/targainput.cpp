@@ -1,32 +1,6 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <cstdio>
@@ -94,7 +68,7 @@ private:
     {
         size_t n = ::fread(buf, itemsize, nitems, m_file);
         if (n != nitems)
-            error("Read error");
+            errorf("Read error");
         return n == nitems;
     }
 };
@@ -131,7 +105,7 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
 
     m_file = Filesystem::fopen(name, "rb");
     if (!m_file) {
-        error("Could not open file \"%s\"", name.c_str());
+        errorf("Could not open file \"%s\"", name);
         return false;
     }
 
@@ -173,18 +147,18 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
 
     if (m_tga.bpp != 8 && m_tga.bpp != 15 && m_tga.bpp != 16 && m_tga.bpp != 24
         && m_tga.bpp != 32) {
-        error("Illegal pixel size: %d bits per pixel", m_tga.bpp);
+        errorf("Illegal pixel size: %d bits per pixel", m_tga.bpp);
         return false;
     }
 
     if (m_tga.type == TYPE_NODATA) {
-        error("Image with no data");
+        errorf("Image with no data");
         return false;
     }
     if (m_tga.type != TYPE_PALETTED && m_tga.type != TYPE_RGB
         && m_tga.type != TYPE_GRAY && m_tga.type != TYPE_PALETTED_RLE
         && m_tga.type != TYPE_RGB_RLE && m_tga.type != TYPE_GRAY_RLE) {
-        error("Illegal image type: %d", m_tga.type);
+        errorf("Illegal image type: %d", m_tga.type);
         return false;
     }
 
@@ -192,14 +166,14 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
         && (m_tga.type == TYPE_GRAY || m_tga.type == TYPE_GRAY_RLE)) {
         // it should be an error for TYPE_RGB* as well, but apparently some
         // *very* old TGAs can be this way, so we'll hack around it
-        error("Palette defined for grayscale image");
+        errorf("Palette defined for grayscale image");
         return false;
     }
 
     if (m_tga.cmap_type
         && (m_tga.cmap_size != 15 && m_tga.cmap_size != 16
             && m_tga.cmap_size != 24 && m_tga.cmap_size != 32)) {
-        error("Illegal palette entry size: %d bits", m_tga.cmap_size);
+        errorf("Illegal palette entry size: %d bits", m_tga.cmap_size);
         return false;
     }
 
@@ -249,7 +223,7 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
         m_spec.attribute("targa:ImageID", id);
     }
 
-    int ofs = ftell(m_file);
+    int64_t ofs = Filesystem::ftell(m_file);
     // now try and see if it's a TGA 2.0 image
     // TGA 2.0 files are identified by a nifty "TRUEVISION-XFILE.\0" signature
     fseek(m_file, -26, SEEK_END);
@@ -264,7 +238,7 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
         }
 
         // read the extension area
-        fseek(m_file, m_foot.ofs_ext, SEEK_SET);
+        Filesystem::fseek(m_file, m_foot.ofs_ext, SEEK_SET);
         // check if this is a TGA 2.0 extension area
         // according to the 2.0 spec, the size for valid 2.0 files is exactly
         // 495 bytes, and the reader should only read as much as it understands
@@ -407,7 +381,7 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
                 return false;
             if (bigendian())
                 swap_endian(&buf.l);
-            unsigned int ofs_thumb = buf.l;
+            int64_t ofs_thumb = buf.l;
 
             // offset to scan-line table
             if (!fread(&buf.l, 4, 1))
@@ -423,7 +397,7 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
 
             // now load the thumbnail
             if (ofs_thumb) {
-                fseek(m_file, ofs_thumb, SEEK_SET);
+                Filesystem::fseek(m_file, ofs_thumb, SEEK_SET);
 
                 // most of this code is a dupe of readimg(); according to the
                 // spec, the thumbnail is in the same format as the main image
@@ -458,8 +432,8 @@ TGAInput::open(const std::string& name, ImageSpec& newspec)
                 }
                 unsigned char pixel[4];
                 unsigned char in[4];
-                for (int y = buf.c[1] - 1; y >= 0; y--) {
-                    for (int x = 0; x < buf.c[0]; x++) {
+                for (int64_t y = buf.c[1] - 1; y >= 0; y--) {
+                    for (int64_t x = 0; x < buf.c[0]; x++) {
                         if (!fread(in, bytespp, 1))
                             return false;
                         decode_pixel(in, pixel, palette.get(), bytespp,
@@ -600,11 +574,12 @@ TGAInput::decode_pixel(unsigned char* in, unsigned char* out,
 
 template<class T>
 static void
-associateAlpha(T* data, int size, int channels, int alpha_channel, float gamma)
+associateAlpha(T* data, int64_t size, int channels, int alpha_channel,
+               float gamma)
 {
     T max = std::numeric_limits<T>::max();
     if (gamma == 1) {
-        for (int x = 0; x < size; ++x, data += channels)
+        for (int64_t x = 0; x < size; ++x, data += channels)
             for (int c = 0; c < channels; c++)
                 if (c != alpha_channel) {
                     unsigned int f = data[c];
@@ -612,8 +587,9 @@ associateAlpha(T* data, int size, int channels, int alpha_channel, float gamma)
                 }
     } else {  //With gamma correction
         float inv_max = 1.0 / max;
-        for (int x = 0; x < size; ++x, data += channels) {
-            float alpha_associate = pow(data[alpha_channel] * inv_max, gamma);
+        for (int64_t x = 0; x < size; ++x, data += channels) {
+            float alpha_associate
+                = OIIO::fast_pow_pos(data[alpha_channel] * inv_max, gamma);
             // We need to transform to linear space, associate the alpha, and
             // then transform back.  That is, if D = data[c], we want
             //
@@ -662,8 +638,8 @@ TGAInput::readimg()
     if (m_tga.type < TYPE_PALETTED_RLE) {
         // uncompressed image data
         unsigned char in[4];
-        for (int y = m_spec.height - 1; y >= 0; y--) {
-            for (int x = 0; x < m_spec.width; x++) {
+        for (int64_t y = m_spec.height - 1; y >= 0; y--) {
+            for (int64_t x = 0; x < m_spec.width; x++) {
                 if (!fread(in, bytespp, 1))
                     return false;
                 decode_pixel(in, pixel, palette, bytespp, palbytespp,
@@ -677,8 +653,8 @@ TGAInput::readimg()
         // Run Length Encoded image
         unsigned char in[5];
         int packet_size;
-        for (int y = m_spec.height - 1; y >= 0; y--) {
-            for (int x = 0; x < m_spec.width; x++) {
+        for (int64_t y = m_spec.height - 1; y >= 0; y--) {
+            for (int64_t x = 0; x < m_spec.width; x++) {
                 if (!fread(in, 1 + bytespp, 1))
                     return false;
                 packet_size = 1 + (in[0] & 0x7f);
@@ -758,7 +734,7 @@ TGAInput::readimg()
 
         std::vector<unsigned char> flip(bytespp * m_spec.width / 2);
         unsigned char *src, *dst, *tmp = &flip[0];
-        for (int y = 0; y < m_spec.height; y++) {
+        for (int64_t y = 0; y < m_spec.height; y++) {
             src = &m_buf[y * m_spec.width * bytespp];
             dst = &m_buf[(y * m_spec.width + m_spec.width / 2) * bytespp];
 
@@ -771,8 +747,8 @@ TGAInput::readimg()
     if (m_alpha != TGA_ALPHA_PREMULTIPLIED) {
         // Convert to associated unless we were requested not to do so
         if (m_spec.alpha_channel != -1 && !m_keep_unassociated_alpha) {
-            int size    = m_spec.width * m_spec.height;
-            float gamma = m_spec.get_float_attribute("oiio:Gamma", 1.0f);
+            int64_t size = m_spec.image_pixels();
+            float gamma  = m_spec.get_float_attribute("oiio:Gamma", 1.0f);
 
             associateAlpha((unsigned char*)&m_buf[0], size, m_spec.nchannels,
                            m_spec.alpha_channel, gamma);

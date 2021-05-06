@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cstdio>
 #include <cstdlib>
@@ -100,7 +74,7 @@ public:
     spin_mutex mutex;
     std::map<std::string, std::pair<double, size_t>> timing_map;
 
-    TimingLog() {}
+    TimingLog() noexcept {}
 
     // Destructor prints the timing report if oiio_log_times >= 2
     ~TimingLog()
@@ -287,7 +261,9 @@ debug(string_view message)
             const char* filename = getenv("OPENIMAGEIO_DEBUG_FILE");
             oiio_debug_file = filename && filename[0] ? fopen(filename, "a")
                                                       : stderr;
-            ASSERT(oiio_debug_file);
+            OIIO_ASSERT(oiio_debug_file);
+            if (!oiio_debug_file)
+                return;
         }
         Strutil::fprintf(oiio_debug_file, "OIIO DEBUG: %s", message);
     }
@@ -347,7 +323,7 @@ attribute(string_view name, TypeDesc type, const void* val)
         oiio_log_times = *(const int*)val;
         return true;
     }
-    if (name == "missingcolor" && type.basetype == TypeFloat) {
+    if (name == "missingcolor" && type.basetype == TypeDesc::FLOAT) {
         // missingcolor as float array
         oiio_missingcolor.clear();
         oiio_missingcolor.reserve(type.basevalues());
@@ -450,7 +426,7 @@ getattribute(string_view name, TypeDesc type, void* val)
         *(int*)val = int(Sysutil::memory_used(true) >> 20);
         return true;
     }
-    if (name == "missingcolor" && type.basetype == TypeFloat
+    if (name == "missingcolor" && type.basetype == TypeDesc::FLOAT
         && oiio_missingcolor.size()) {
         // missingcolor as float array
         int n  = type.basevalues();
@@ -540,7 +516,7 @@ pvt::contiguize(const void* src, int nchannels, stride_t xstride,
     case TypeDesc::UINT8:
         return _contiguize((const char*)src, nchannels, xstride, ystride,
                            zstride, (char*)dst, width, height, depth);
-    case TypeDesc::HALF: DASSERT(sizeof(half) == sizeof(short));
+    case TypeDesc::HALF: OIIO_DASSERT(sizeof(half) == sizeof(short));
     case TypeDesc::INT16:
     case TypeDesc::UINT16:
         return _contiguize((const short*)src, nchannels, xstride, ystride,
@@ -556,7 +532,9 @@ pvt::contiguize(const void* src, int nchannels, stride_t xstride,
     case TypeDesc::DOUBLE:
         return _contiguize((const double*)src, nchannels, xstride, ystride,
                            zstride, (double*)dst, width, height, depth);
-    default: ASSERT(0 && "OpenImageIO::contiguize : bad format"); return NULL;
+    default:
+        OIIO_ASSERT(0 && "OpenImageIO::contiguize : bad format");
+        return NULL;
     }
 }
 
@@ -587,7 +565,7 @@ pvt::convert_to_float(const void* src, float* dst, int nvals, TypeDesc format)
         convert_type((const unsigned long long*)src, dst, nvals);
         break;
     case TypeDesc::DOUBLE: convert_type((const double*)src, dst, nvals); break;
-    default: ASSERT(0 && "ERROR to_float: bad format"); return NULL;
+    default: OIIO_ASSERT(0 && "ERROR to_float: bad format"); return NULL;
     }
     return dst;
 }
@@ -643,7 +621,7 @@ pvt::convert_from_float(const float* src, void* dst, size_t nvals,
     case TypeDesc::INT64: return _from_float(src, (long long*)dst, nvals);
     case TypeDesc::UINT64:
         return _from_float(src, (unsigned long long*)dst, nvals);
-    default: ASSERT(0 && "ERROR from_float: bad format"); return NULL;
+    default: OIIO_ASSERT(0 && "ERROR from_float: bad format"); return NULL;
     }
 }
 
@@ -665,8 +643,8 @@ pvt::parallel_convert_from_float(const float* src, void* dst, size_t nvals,
 
 
 bool
-convert_types(TypeDesc src_type, const void* src, TypeDesc dst_type, void* dst,
-              int n)
+convert_pixel_values(TypeDesc src_type, const void* src, TypeDesc dst_type,
+                     void* dst, int n)
 {
     // If no conversion is necessary, just memcpy
     if ((src_type == dst_type || dst_type.basetype == TypeDesc::UNKNOWN)) {
@@ -687,7 +665,7 @@ convert_types(TypeDesc src_type, const void* src, TypeDesc dst_type, void* dst,
     if (src_type != TypeFloat) {
         // If src is also not float, convert through an intermediate buffer
         if (n <= 4096)  // If < 16k, use the stack
-            buf = ALLOCA(float, n);
+            buf = OIIO_ALLOCA(float, n);
         else {
             tmp.reset(new float[n]);  // Freed when tmp exists its scope
             buf = tmp.get();
@@ -747,15 +725,15 @@ convert_image(int nchannels, int width, int height, int depth, const void* src,
                 // Special case: pixels within each row are contiguous
                 // in both src and dst and we're copying all channels.
                 // Be efficient by converting each scanline as a single
-                // unit.  (Note that within convert_types, a memcpy will
-                // be used if the formats are identical.)
-                result &= convert_types(src_type, f, dst_type, t,
-                                        nchannels * width);
+                // unit.  (Note that within convert_pixel_values, a memcpy
+                // will be used if the formats are identical.)
+                result &= convert_pixel_values(src_type, f, dst_type, t,
+                                               nchannels * width);
             } else {
                 // General case -- anything goes with strides.
                 for (int x = 0; x < width; ++x) {
-                    result &= convert_types(src_type, f, dst_type, t,
-                                            nchannels);
+                    result &= convert_pixel_values(src_type, f, dst_type, t,
+                                                   nchannels);
                     f += src_xstride;
                     t += dst_xstride;
                 }
@@ -968,7 +946,7 @@ premult(int nchannels, int width, int height, int depth, int chbegin, int chend,
                      (double*)data, xstride, ystride, zstride, alpha_channel,
                      z_channel);
         break;
-    default: ASSERT(0 && "OIIO::premult() of an unsupported type"); break;
+    default: OIIO_ASSERT(0 && "OIIO::premult() of an unsupported type"); break;
     }
 }
 
@@ -1007,7 +985,7 @@ wrap_periodic(int& coord, int origin, int width)
 bool
 wrap_periodic_pow2(int& coord, int origin, int width)
 {
-    DASSERT(ispow2(width));
+    OIIO_DASSERT(ispow2(width));
     coord -= origin;
     coord &= (width - 1);  // Shortcut periodic if we're sure it's a pow of 2
     coord += origin;
@@ -1025,8 +1003,8 @@ wrap_mirror(int& coord, int origin, int width)
     coord -= iter * width;
     if (iter & 1)  // Odd iterations -- flip the sense
         coord = width - 1 - coord;
-    DASSERT_MSG(coord >= 0 && coord < width, "width=%d, origin=%d, result=%d",
-                width, origin, coord);
+    OIIO_DASSERT_MSG(coord >= 0 && coord < width,
+                     "width=%d, origin=%d, result=%d", width, origin, coord);
     coord += origin;
     return true;
 }

@@ -1,32 +1,6 @@
-/*
-  Copyright 2011 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cstdio>
 #include <vector>
@@ -164,7 +138,7 @@ private:
     {
         size_t n = ::fread(p_buf, p_itemSize, p_nitems, m_file);
         if (n != p_nitems)
-            error("Read error");
+            errorf("Read error");
         return n == p_nitems;
     }
 };
@@ -182,7 +156,7 @@ jpeg2000_imageio_library_version()
 OIIO_EXPORT ImageInput*
 jpeg2000_input_imageio_create()
 {
-    return { new Jpeg2000Input };
+    return new Jpeg2000Input;
 }
 OIIO_EXPORT const char* jpeg2000_input_extensions[] = { "jp2", "j2k", "j2c",
                                                         nullptr };
@@ -205,13 +179,13 @@ Jpeg2000Input::open(const std::string& p_name, ImageSpec& p_spec)
     m_filename = p_name;
     m_file     = Filesystem::fopen(m_filename, "rb");
     if (!m_file) {
-        error("Could not open file \"%s\"", m_filename.c_str());
+        errorf("Could not open file \"%s\"", m_filename);
         return false;
     }
 
     opj_dinfo_t* decompressor = create_decompressor();
     if (!decompressor) {
-        error("Could not create Jpeg2000 stream decompressor");
+        errorf("Could not create Jpeg2000 stream decompressor");
         close();
         return false;
     }
@@ -230,7 +204,7 @@ Jpeg2000Input::open(const std::string& p_name, ImageSpec& p_spec)
     opj_cio_t* cio = opj_cio_open((opj_common_ptr)decompressor, &fileContent[0],
                                   (int)fileLength);
     if (!cio) {
-        error("Could not open Jpeg2000 stream");
+        errorf("Could not open Jpeg2000 stream");
         opj_destroy_decompress(decompressor);
         close();
         return false;
@@ -240,7 +214,7 @@ Jpeg2000Input::open(const std::string& p_name, ImageSpec& p_spec)
     opj_cio_close(cio);
     opj_destroy_decompress(decompressor);
     if (!m_image) {
-        error("Could not decode Jpeg2000 stream");
+        errorf("Could not decode Jpeg2000 stream");
         close();
         return false;
     }
@@ -248,7 +222,7 @@ Jpeg2000Input::open(const std::string& p_name, ImageSpec& p_spec)
     // we support only one, three or four components in image
     const int channelCount = m_image->numcomps;
     if (channelCount != 1 && channelCount != 3 && channelCount != 4) {
-        error("Only images with one, three or four components are supported");
+        errorf("Only images with one, three or four components are supported");
         close();
         return false;
     }
@@ -387,7 +361,7 @@ Jpeg2000Input::create_decompressor()
 {
     int magic[3];
     if (::fread(&magic, 4, 3, m_file) != 3) {
-        error("Empty file \"%s\"", m_filename.c_str());
+        errorf("Empty file \"%s\"", m_filename);
         return NULL;
     }
     opj_dinfo_t* dinfo = NULL;

@@ -1,32 +1,6 @@
-/*
-  Copyright 2011 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include <cmath>
 #include <cstdio>
@@ -97,7 +71,7 @@ private:
     {
         size_t n = ::fwrite(buf, itemsize, nitems, m_file);
         if (n != nitems)
-            error("Write error: wrote %d records of %d", (int)n, (int)nitems);
+            errorf("Write error: wrote %d records of %d", (int)n, (int)nitems);
         return n == nitems;
     }
 
@@ -107,7 +81,7 @@ private:
         if (littleendian()
             && (is_same<T, uint16_t>::value || is_same<T, int16_t>::value
                 || is_same<T, uint32_t>::value || is_same<T, int32_t>::value)) {
-            T* newbuf = ALLOCA(T, nitems);
+            T* newbuf = OIIO_ALLOCA(T, nitems);
             memcpy(newbuf, buf, nitems * sizeof(T));
             swap_endian(newbuf, nitems);
             buf = newbuf;
@@ -174,7 +148,7 @@ RLAOutput::open(const std::string& name, const ImageSpec& userspec,
                 OpenMode mode)
 {
     if (mode != Create) {
-        error("%s does not support subimages or MIP levels", format_name());
+        errorf("%s does not support subimages or MIP levels", format_name());
         return false;
         // FIXME -- the RLA format supports subimages, but our writer
         // doesn't.  I'm not sure if it's worth worrying about for an
@@ -189,18 +163,18 @@ RLAOutput::open(const std::string& name, const ImageSpec& userspec,
 
     m_file = Filesystem::fopen(name, "wb");
     if (!m_file) {
-        error("Could not open file \"%s\"", name.c_str());
+        errorf("Could not open \"%s\"", name);
         return false;
     }
 
     // Check for things this format doesn't support
     if (m_spec.width < 1 || m_spec.height < 1) {
-        error("Image resolution must be at least 1x1, you asked for %d x %d",
-              m_spec.width, m_spec.height);
+        errorf("Image resolution must be at least 1x1, you asked for %d x %d",
+               m_spec.width, m_spec.height);
         return false;
     }
     if (m_spec.width > 65535 || m_spec.height > 65535) {
-        error(
+        errorf(
             "Image resolution %d x %d too large for RLA (maxiumum 65535x65535)",
             m_spec.width, m_spec.height);
         return false;
@@ -209,7 +183,7 @@ RLAOutput::open(const std::string& name, const ImageSpec& userspec,
     if (m_spec.depth < 1)
         m_spec.depth = 1;
     else if (m_spec.depth > 1) {
-        error("%s does not support volume images (depth > 1)", format_name());
+        errorf("%s does not support volume images (depth > 1)", format_name());
         return false;
     }
 
@@ -326,7 +300,7 @@ RLAOutput::open(const std::string& name, const ImageSpec& userspec,
         float g = Strutil::from_string<float>(colorspace.c_str() + 14);
         if (!(g >= 0.01f && g <= 10.0f /* sanity check */))
             g = m_spec.get_float_attribute("oiio:Gamma", 1.f);
-        snprintf(m_rla.Gamma, sizeof(m_rla.Gamma), "%.10f", g);
+        safe_snprintf(m_rla.Gamma, sizeof(m_rla.Gamma), "%.10f", g);
     }
 
     const ParamValue* p;
@@ -379,8 +353,7 @@ RLAOutput::open(const std::string& name, const ImageSpec& userspec,
     STRING_FIELD(Aspect, "rla:Aspect");
 
     float aspect = m_spec.get_float_attribute("PixelAspectRatio", 1.f);
-    Strutil::safe_strcpy(m_rla.AspectRatio, Strutil::sprintf("%.6f", aspect),
-                         sizeof(m_rla.AspectRatio));
+    safe_snprintf(m_rla.AspectRatio, sizeof(m_rla.AspectRatio), "%.6f", aspect);
     Strutil::safe_strcpy(m_rla.ColorChannel,
                          m_spec.get_string_attribute("rla:ColorChannel", "rgb"),
                          sizeof(m_rla.ColorChannel));
@@ -416,12 +389,13 @@ RLAOutput::set_chromaticity(const ParamValue* p, char* dst, size_t field_size,
     if (p && p->type().basetype == TypeDesc::FLOAT) {
         switch (p->type().aggregate) {
         case TypeDesc::VEC2:
-            snprintf(dst, field_size, "%.4f %.4f", ((float*)p->data())[0],
-                     ((float*)p->data())[1]);
+            safe_snprintf(dst, field_size, "%.4f %.4f", ((float*)p->data())[0],
+                          ((float*)p->data())[1]);
             break;
         case TypeDesc::VEC3:
-            snprintf(dst, field_size, "%.4f %.4f %.4f", ((float*)p->data())[0],
-                     ((float*)p->data())[1], ((float*)p->data())[2]);
+            safe_snprintf(dst, field_size, "%.4f %.4f %.4f",
+                          ((float*)p->data())[0], ((float*)p->data())[1],
+                          ((float*)p->data())[2]);
             break;
         }
     } else
@@ -441,7 +415,7 @@ RLAOutput::close()
     bool ok = true;
     if (m_spec.tile_width) {
         // Handle tile emulation -- output the buffered pixels
-        ASSERT(m_tilebuffer.size());
+        OIIO_DASSERT(m_tilebuffer.size());
         ok &= write_scanlines(m_spec.y, m_spec.y + m_spec.height, 0,
                               m_spec.format, &m_tilebuffer[0]);
         std::vector<unsigned char>().swap(m_tilebuffer);
@@ -519,7 +493,7 @@ RLAOutput::encode_channel(unsigned char* data, stride_t xstride,
             } else {  // Have not been repeating
                 if (newval == lastval) {
                     // starting a repetition?  Output previous
-                    ASSERT(count > 1);
+                    OIIO_DASSERT(count > 1);
                     // write everything but the last char
                     --count;
                     m_rle.push_back(-count);
@@ -549,7 +523,7 @@ RLAOutput::encode_channel(unsigned char* data, stride_t xstride,
             }
             lastval = newval;
         }
-        ASSERT(count == 0);
+        OIIO_ASSERT(count == 0);
     }
 
     // Now that we know the size of the encoded buffer, save it at the
@@ -571,7 +545,7 @@ RLAOutput::write_scanline(int y, int z, TypeDesc format, const void* data,
     m_spec.auto_stride(xstride, format, spec().nchannels);
     const void* origdata = data;
     data = to_native_scanline(format, data, xstride, m_scratch, m_dither, y, z);
-    ASSERT(data != NULL);
+    OIIO_DASSERT(data != nullptr);
     if (data == origdata) {
         m_scratch.assign((unsigned char*)data,
                          (unsigned char*)data + m_spec.scanline_bytes());

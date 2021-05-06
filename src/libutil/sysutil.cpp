@@ -1,32 +1,10 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+#if (defined __MINGW32__) || (defined __MINGW64__) && !(defined _POSIX_C_SOURCE)
+#    define _POSIX_C_SOURCE 1  // for localtime_r
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -157,7 +135,7 @@ Sysutil::memory_used(bool resident)
     return 0;  // Punt
 #else
     // No idea what platform this is
-    ASSERT(0 && "Need to implement Sysutil::memory_used on this platform");
+    OIIO_ASSERT(0 && "Need to implement Sysutil::memory_used on this platform");
     return 0;  // Punt
 #endif
 }
@@ -222,7 +200,8 @@ Sysutil::physical_memory()
 
 #else
     // No idea what platform this is
-    ASSERT(0 && "Need to implement Sysutil::physical_memory on this platform");
+    OIIO_ASSERT(
+        0 && "Need to implement Sysutil::physical_memory on this platform");
     return 0;  // Punt
 #endif
 }
@@ -258,7 +237,7 @@ Sysutil::this_program_path()
     unsigned int size = sizeof(filename);
     int r             = readlink("/proc/self/exe", filename, size);
     // user won't get the right answer if the filename is too long to store
-    ASSERT(r < int(size));
+    OIIO_ASSERT(r < int(size));
     if (r > 0)
         filename[r] = 0;  // readlink does not fill in the 0 byte
 #elif defined(__APPLE__)
@@ -548,7 +527,7 @@ Sysutil::put_in_background(int, char*[])
     return true;
 #endif
 
-#ifdef WIN32
+#ifdef _WIN32
     return true;
 #endif
 

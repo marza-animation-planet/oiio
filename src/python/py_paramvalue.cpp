@@ -1,72 +1,105 @@
-/*
-  Copyright 2009 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include "py_oiio.h"
 
 namespace PyOpenImageIO {
 
 
-py::object
-ParamValue_getitem(const ParamValue& self, int n)
+static ParamValue
+ParamValue_from_pyobject(string_view name, TypeDesc type, int nvalues,
+                         ParamValue::Interp interp, const py::object& obj)
 {
-    if (n < 0 || n >= self.nvalues()) {
-        throw std::out_of_range(
-            Strutil::sprintf("ParamValue index out of range %d", n));
+    size_t expected_size = size_t(type.numelements() * type.aggregate
+                                  * nvalues);
+    ParamValue pv;
+    if (type.basetype == TypeDesc::INT) {
+        std::vector<int> vals;
+        py_to_stdvector(vals, obj);
+        if (vals.size() >= expected_size) {
+            pv.init(name, type, nvalues, interp, &vals[0]);
+            return pv;
+        }
+    } else if (type.basetype == TypeDesc::UINT) {
+        std::vector<unsigned int> vals;
+        py_to_stdvector(vals, obj);
+        if (vals.size() >= expected_size) {
+            pv.init(name, type, nvalues, interp, &vals[0]);
+            return pv;
+        }
+    } else if (type.basetype == TypeDesc::FLOAT) {
+        std::vector<float> vals;
+        py_to_stdvector(vals, obj);
+        if (vals.size() >= expected_size) {
+            pv.init(name, type, nvalues, interp, &vals[0]);
+            return pv;
+        }
+    } else if (type.basetype == TypeDesc::STRING) {
+        std::vector<std::string> vals;
+        py_to_stdvector(vals, obj);
+        if (vals.size() >= expected_size) {
+            std::vector<ustring> u;
+            for (auto& val : vals)
+                u.emplace_back(val);
+            pv.init(name, type, nvalues, interp, &u[0]);
+            return pv;
+        }
     }
 
-    TypeDesc t = self.type();
+    // I think this is what we should do here when not enough data is
+    // provided, but I get crashes when I do. Maybe pybind11 bug?
+    //
+    // throw std::length_error("ParamValue data length mismatch");
 
-#define ParamValue_convert_dispatch(TYPE)                                      \
-    case TypeDesc::TYPE:                                                       \
-        return C_to_val_or_tuple((CType<TypeDesc::TYPE>::type*)self.data(), t)
+    return pv;
+}
 
-    switch (t.basetype) {
-        // ParamValue_convert_dispatch(UCHAR);
-        // ParamValue_convert_dispatch(CHAR);
-        ParamValue_convert_dispatch(USHORT);
-        ParamValue_convert_dispatch(SHORT);
-        ParamValue_convert_dispatch(UINT);
-        ParamValue_convert_dispatch(INT);
-        // ParamValue_convert_dispatch(ULONGLONG);
-        // ParamValue_convert_dispatch(LONGLONG);
-#ifdef _HALF_H_
-        ParamValue_convert_dispatch(HALF);
-#endif
-        ParamValue_convert_dispatch(FLOAT);
-        ParamValue_convert_dispatch(DOUBLE);
-    case TypeDesc::STRING:
-        return C_to_val_or_tuple((const char**)self.data(), t);
-    default: return py::none();
+
+
+// Based on attribute_typed in py_oiio.h, but with nvalues.
+template<typename T, typename POBJ>
+bool
+attribute_typed(T& myobj, string_view name, TypeDesc type, int nvalues,
+                const POBJ& dataobj)
+{
+    if (type.basetype == TypeDesc::INT) {
+        std::vector<int> vals;
+        bool ok = py_to_stdvector(vals, dataobj);
+        ok &= (vals.size() == type.numelements() * type.aggregate * nvalues);
+        if (ok)
+            myobj.attribute(name, type, nvalues, &vals[0]);
+        return ok;
     }
-
-#undef ParamValue_convert_dispatch
+    if (type.basetype == TypeDesc::UINT) {
+        std::vector<unsigned int> vals;
+        bool ok = py_to_stdvector(vals, dataobj);
+        ok &= (vals.size() == type.numelements() * type.aggregate * nvalues);
+        if (ok)
+            myobj.attribute(name, type, nvalues, &vals[0]);
+        return ok;
+    }
+    if (type.basetype == TypeDesc::FLOAT) {
+        std::vector<float> vals;
+        bool ok = py_to_stdvector(vals, dataobj);
+        ok &= (vals.size() == type.numelements() * type.aggregate * nvalues);
+        if (ok)
+            myobj.attribute(name, type, nvalues, &vals[0]);
+        return ok;
+    }
+    if (type.basetype == TypeDesc::STRING) {
+        std::vector<std::string> vals;
+        bool ok = py_to_stdvector(vals, dataobj);
+        ok &= (vals.size() == type.numelements() * type.aggregate * nvalues);
+        if (ok) {
+            std::vector<ustring> u;
+            for (auto& val : vals)
+                u.emplace_back(val);
+            myobj.attribute(name, type, nvalues, &u[0]);
+        }
+        return ok;
+    }
+    return false;
 }
 
 
@@ -77,6 +110,11 @@ declare_paramvalue(py::module& m)
     using namespace pybind11::literals;
 
     py::enum_<ParamValue::Interp>(m, "Interp")
+        .value("CONSTANT", ParamValue::INTERP_CONSTANT)
+        .value("PERPIECE", ParamValue::INTERP_PERPIECE)
+        .value("LINEAR", ParamValue::INTERP_LINEAR)
+        .value("VERTEX", ParamValue::INTERP_VERTEX)
+        // synonyms that more close to the C++ names
         .value("INTERP_CONSTANT", ParamValue::INTERP_CONSTANT)
         .value("INTERP_PERPIECE", ParamValue::INTERP_PERPIECE)
         .value("INTERP_LINEAR", ParamValue::INTERP_LINEAR)
@@ -93,13 +131,26 @@ declare_paramvalue(py::module& m)
                                })
         .def_property_readonly("value",
                                [](const ParamValue& p) {
-                                   return ParamValue_getitem(p, 0);
+                                   return ParamValue_getitem(p, true);
                                })
         // .def("__getitem__",       &ParamValue_getitem)
         .def_property_readonly("__len__", &ParamValue::nvalues)
         .def(py::init<const std::string&, int>())
         .def(py::init<const std::string&, float>())
-        .def(py::init<const std::string&, const std::string&>());
+        .def(py::init<const std::string&, const std::string&>())
+        .def(py::init([](const std::string& name, TypeDesc type,
+                         const py::object& obj) {
+                 return ParamValue_from_pyobject(name, type, 1,
+                                                 ParamValue::INTERP_CONSTANT,
+                                                 obj);
+             }),
+             "name"_a, "type"_a, "value"_a)
+        .def(py::init([](const std::string& name, TypeDesc type, int nvalues,
+                         ParamValue::Interp interp, const py::object& obj) {
+                 return ParamValue_from_pyobject(name, type, nvalues, interp,
+                                                 obj);
+             }),
+             "name"_a, "type"_a, "nvalues"_a, "interp"_a, "value"_a);
 
     py::class_<ParamValueList>(m, "ParamValueList")
         .def(py::init<>())
@@ -111,6 +162,17 @@ declare_paramvalue(py::module& m)
                 return self[i];
             },
             py::return_value_policy::reference_internal)
+        .def("__getitem__",
+             [](const ParamValueList& self, const std::string& key) {
+                 auto p = self.find(key);
+                 if (p == self.end())
+                     throw py::key_error("key '" + key + "' does not exist");
+                 return ParamValue_getitem(*p);
+             })
+        .def("__setitem__",
+             [](ParamValueList& self, const std::string& key, py::object val) {
+                 delegate_setitem(self, key, val);
+             })
         .def("__len__", [](const ParamValueList& p) { return p.size(); })
         .def(
             "__iter__",
@@ -141,7 +203,30 @@ declare_paramvalue(py::module& m)
                 return p.add_or_replace(pv, casesensitive);
             },
             "value"_a, "casesensitive"_a = true)
-        .def("sort", &ParamValueList::sort, "casesensitive"_a = true);
+        .def("sort", &ParamValueList::sort, "casesensitive"_a = true)
+        .def("merge", &ParamValueList::merge, "other"_a, "override"_a = false)
+        .def("attribute",
+             [](ParamValueList& self, const std::string& name, float val) {
+                 self.attribute(name, TypeFloat, &val);
+             })
+        .def("attribute", [](ParamValueList& self, const std::string& name,
+                             int val) { self.attribute(name, TypeInt, &val); })
+        .def("attribute",
+             [](ParamValueList& self, const std::string& name,
+                const std::string& val) {
+                 const char* s = val.c_str();
+                 self.attribute(name, TypeString, &s);
+             })
+        .def("attribute",
+             [](ParamValueList& self, const std::string& name, TypeDesc type,
+                const py::object& obj) {
+                 attribute_typed(self, name, type, obj);
+             })
+        .def("attribute",
+             [](ParamValueList& self, const std::string& name, TypeDesc type,
+                int nvalues, const py::object& obj) {
+                 attribute_typed(self, name, type, nvalues, obj);
+             });
 }
 
 }  // namespace PyOpenImageIO

@@ -1,32 +1,6 @@
-/*
-  Copyright 2008 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 /// \file
@@ -125,6 +99,7 @@ struct ImageCacheStatistics {
     long long shadow_batches;
     long long environment_queries;
     long long environment_batches;
+    long long imageinfo_queries;
     long long aniso_queries;
     long long aniso_probes;
     float max_aniso;
@@ -291,6 +266,7 @@ public:
         // 0-1 relative to the "pixel window".
         float sscale = 1.0f, soffset = 0.0f;
         float tscale = 1.0f, toffset = 0.0f;
+        int min_mip_level = 0;  // Start with this MIP
         ustring subimagename;
 
         SubimageInfo() {}
@@ -314,22 +290,22 @@ public:
 
     const LevelInfo& levelinfo(int subimage, int miplevel) const
     {
-        DASSERT((int)m_subimages.size() > subimage);
-        DASSERT((int)m_subimages[subimage].levels.size() > miplevel);
+        OIIO_DASSERT((int)m_subimages.size() > subimage);
+        OIIO_DASSERT((int)m_subimages[subimage].levels.size() > miplevel);
         return m_subimages[subimage].levels[miplevel];
     }
     LevelInfo& levelinfo(int subimage, int miplevel)
     {
-        DASSERT((int)m_subimages.size() > subimage);
-        DASSERT((int)m_subimages[subimage].levels.size() > miplevel);
+        OIIO_DASSERT((int)m_subimages.size() > subimage);
+        OIIO_DASSERT((int)m_subimages[subimage].levels.size() > miplevel);
         return m_subimages[subimage].levels[miplevel];
     }
 
     /// Do we currently have a valid spec?
     bool validspec() const
     {
-        DASSERT((m_validspec == false || m_subimages.size() > 0)
-                && "validspec is true, but subimages are empty");
+        OIIO_DASSERT((m_validspec == false || m_subimages.size() > 0)
+                     && "validspec is true, but subimages are empty");
         return m_validspec;
     }
 
@@ -460,19 +436,17 @@ typedef unordered_map_concurrent<
     ustring, ImageCacheFileRef, ustringHash, std::equal_to<ustring>,
     FILE_CACHE_SHARDS, tsl::robin_map<ustring, ImageCacheFileRef, ustringHash>>
     FilenameMap;
-typedef std::unordered_map<ustring, ImageCacheFileRef, ustringHash>
-    FingerprintMap;
+typedef tsl::robin_map<ustring, ImageCacheFileRef, ustringHash> FingerprintMap;
 
 
 
 /// Compact identifier for a particular tile of a particular image
 ///
-class TileID {
-public:
+struct TileID {
     /// Default constructor
     ///
     TileID()
-        : m_file(NULL)
+        : m_file(nullptr)
     {
     }
 
@@ -527,9 +501,6 @@ public:
     /// Is this an uninitialized tileID?
     bool empty() const { return m_file == nullptr; }
 
-    /// Treating it like a bool says whether it's non-empty.
-    operator bool() const { return m_file != nullptr; }
-
     /// Do the two ID's refer to the same tile?
     ///
     friend bool equal(const TileID& a, const TileID& b)
@@ -542,17 +513,6 @@ public:
                 && a.m_chend == b.m_chend);
     }
 
-    /// Do the two ID's refer to the same tile, given that the
-    /// caller *guarantees* that the two tiles point to the same
-    /// file, subimage, and miplevel (so it only has to compare xyz)?
-    friend bool equal_same_subimage(const TileID& a, const TileID& b)
-    {
-        DASSERT((a.m_file == b.m_file) && a.m_subimage == b.m_subimage
-                && a.m_miplevel == b.m_miplevel);
-        return (a.m_x == b.m_x && a.m_y == b.m_y && a.m_z == b.m_z
-                && a.m_chbegin == b.m_chbegin && a.m_chend == b.m_chend);
-    }
-
     /// Do the two ID's refer to the same tile?
     ///
     bool operator==(const TileID& b) const { return equal(*this, b); }
@@ -561,23 +521,16 @@ public:
     /// Digest the TileID into a size_t to use as a hash key.
     size_t hash() const
     {
-#if 0
-        // original -- turned out not to fill hash buckets evenly
-        return m_x * 53 + m_y * 97 + m_z * 193 +
-               m_subimage * 389 + m_miplevel * 1543 +
-               m_file->filename().hash() * 769;
-#else
-        // Good compromise!
-        return bjhash::bjfinal(m_x + 1543, m_y + 6151 + m_z * 769,
-                               m_miplevel + (m_subimage << 8) + (chbegin() << 4)
-                                   + nchannels())
-               + m_file->filename().hash();
-#endif
+        const uint64_t a = (uint64_t(m_x) << 32) + uint64_t(m_y);
+        const uint64_t b = (uint64_t(m_z) << 32) + uint64_t(m_subimage);
+        const uint64_t c = (uint64_t(m_miplevel) << 32)
+                           + (uint64_t(m_chbegin) << 16) + uint64_t(m_chend);
+        const uint64_t d = m_file->filename().hash();
+        return fasthash::fasthash64({ a, b, c, d });
     }
 
     /// Functor that hashes a TileID
-    class Hasher {
-    public:
+    struct Hasher {
         size_t operator()(const TileID& a) const { return a.hash(); }
     };
 
@@ -729,24 +682,23 @@ typedef unordered_map_concurrent<
 /// even if you are using only ImageCache but not TextureSystem.
 class ImageCachePerThreadInfo {
 public:
-    // Store just a few filename/fileptr pairs
-    static const int nlastfile = 4;
-    ustring last_filename[nlastfile];
-    ImageCacheFile* last_file[nlastfile];
-    int next_last_file;
+    // Keep a per-thread unlocked map of filenames to ImageCacheFile*'s.
+    // Fall back to the shared map only when not found locally.
+    // This is safe because no ImageCacheFile is ever truly deleted from
+    // the shared map, so this map isn't the owner.
+    using ThreadFilenameMap
+        = tsl::robin_map<ustring, ImageCacheFile*, ustringHash>;
+    ThreadFilenameMap m_thread_files;
+
     // We have a two-tile "microcache", storing the last two tiles needed.
     ImageCacheTileRef tile, lasttile;
     atomic_int purge;  // If set, tile ptrs need purging!
     ImageCacheStatistics m_stats;
-    bool shared;  // Pointed to both by the IC and the thread_specific_ptr
+    bool shared = false;  // Pointed to by the IC and thread_specific_ptr
 
     ImageCachePerThreadInfo()
-        : next_last_file(0)
-        , shared(false)
     {
         // std::cout << "Creating PerThreadInfo " << (void*)this << "\n";
-        for (auto& f : last_file)
-            f = nullptr;
         purge = 0;
     }
 
@@ -756,21 +708,16 @@ public:
     }
 
     // Add a new filename/fileptr pair to our microcache
-    void filename(ustring n, ImageCacheFile* f)
+    void remember_filename(ustring n, ImageCacheFile* f)
     {
-        last_filename[next_last_file] = n;
-        last_file[next_last_file]     = f;
-        ++next_last_file;
-        next_last_file %= nlastfile;
+        m_thread_files.emplace(n, f);
     }
 
     // See if a filename has a fileptr in the microcache
     ImageCacheFile* find_file(ustring n) const
     {
-        for (int i = 0; i < nlastfile; ++i)
-            if (last_filename[i] == n)
-                return last_file[i];
-        return NULL;
+        auto f = m_thread_files.find(n);
+        return f == m_thread_files.end() ? nullptr : f->second;
     }
 };
 
@@ -969,14 +916,18 @@ public:
     /// Try to avoid looking to the big cache (and locking) most of the
     /// time for fairly coherent tile access patterns, by using the
     /// per-thread microcache to boost our hit rate over the big cache.
-    /// Inlined for speed.  The tile is marked as 'used'.
-    bool find_tile(const TileID& id, ImageCachePerThreadInfo* thread_info)
+    /// Inlined for speed.  The tile is marked as 'used' if it wasn't the
+    /// very last one used, or if it was the same as the last used and
+    /// mark_same_tile_used is true.
+    bool find_tile(const TileID& id, ImageCachePerThreadInfo* thread_info,
+                   bool mark_same_tile_used)
     {
         ++thread_info->m_stats.find_tile_calls;
         ImageCacheTileRef& tile(thread_info->tile);
         if (tile) {
             if (tile->id() == id) {
-                tile->use();
+                if (mark_same_tile_used)
+                    tile->use();
                 return true;  // already have the tile we want
             }
             // Tile didn't match, maybe lasttile will?  Swap tile
@@ -1016,7 +967,7 @@ public:
     virtual std::string geterror() const;
     virtual std::string getstats(int level = 1) const;
     virtual void reset_stats();
-    virtual void invalidate(ustring filename);
+    virtual void invalidate(ustring filename, bool force);
     virtual void invalidate_all(bool force = false);
     virtual void close(ustring filename);
     virtual void close_all();
@@ -1058,7 +1009,7 @@ public:
     {
         --m_stat_tiles_current;
         m_mem_used -= size;
-        DASSERT(m_mem_used >= 0);
+        OIIO_DASSERT(m_mem_used >= 0);
     }
 
     /// Internal error reporting routine, with printf-like arguments.
@@ -1098,7 +1049,10 @@ public:
 
     // For virtual UDIM-like files, adjust s and t and return the concrete
     // ImageCacheFile pointer for the tile it's on.
-    ImageCacheFile* resolve_udim(ImageCacheFile* file, float& s, float& t);
+    ImageCacheFile* resolve_udim(ImageCacheFile* file, Perthread* thread_info,
+                                 float& s, float& t);
+
+    int max_mip_res() const noexcept { return m_max_mip_res; }
 
 private:
     void init();
@@ -1153,6 +1107,7 @@ private:
     bool m_unassociatedalpha;  ///< Keep unassociated alpha files as they are?
     int m_failure_retries;     ///< Times to re-try disk failures
     bool m_latlong_y_up_default;  ///< Is +y the default "up" for latlong?
+    int m_max_mip_res = 1 << 30;  ///< Don't use MIP levels higher than this
     Imath::M44f m_Mw2c;           ///< world-to-"common" matrix
     Imath::M44f m_Mc2w;           ///< common-to-world matrix
     ustring m_substitute_image;   ///< Substitute this image for all others

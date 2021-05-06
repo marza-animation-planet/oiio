@@ -1,32 +1,6 @@
-/*
-  Copyright 2013 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 #include "py_oiio.h"
 #include <OpenImageIO/color.h>
@@ -68,7 +42,7 @@ IBA_fill(ImageBuf& dst, py::object values_tuple, ROI roi = ROI::All(),
         values.resize(roi.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return false;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::fill(dst, values, roi, nthreads);
 }
@@ -89,7 +63,7 @@ IBA_fill2(ImageBuf& dst, py::object top_tuple, py::object bottom_tuple,
         bottom.resize(roi.nchannels(), 0.0f);
     } else
         return false;
-    ASSERT(top.size() > 0 && bottom.size() > 0);
+    OIIO_ASSERT(top.size() > 0 && bottom.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::fill(dst, top, bottom, roi, nthreads);
 }
@@ -117,8 +91,8 @@ IBA_fill4(ImageBuf& dst, py::object top_left_tuple, py::object top_right_tuple,
         bottom_right.resize(roi.nchannels(), 0.0f);
     } else
         return false;
-    ASSERT(top_left.size() > 0 && top_right.size() > 0 && bottom_left.size() > 0
-           && bottom_right.size() > 0);
+    OIIO_ASSERT(top_left.size() > 0 && top_right.size() > 0
+                && bottom_left.size() > 0 && bottom_right.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::fill(dst, top_left, top_right, bottom_left,
                               bottom_right, roi, nthreads);
@@ -570,7 +544,7 @@ IBA_add_color(ImageBuf& dst, const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return false;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::add(dst, A, &values[0], roi, nthreads);
 }
@@ -596,7 +570,7 @@ IBA_add_color_ret(const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return result;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     result = ImageBufAlgo::add(A, values, roi, nthreads);
     return result;
@@ -625,7 +599,7 @@ IBA_sub_color(ImageBuf& dst, const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return false;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::sub(dst, A, &values[0], roi, nthreads);
 }
@@ -651,7 +625,7 @@ IBA_sub_color_ret(const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return result;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     result = ImageBufAlgo::sub(A, values, roi, nthreads);
     return result;
@@ -679,7 +653,7 @@ IBA_absdiff_color(ImageBuf& dst, const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return false;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::absdiff(dst, A, &values[0], roi, nthreads);
 }
@@ -705,7 +679,7 @@ IBA_absdiff_color_ref(const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return result;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     result = ImageBufAlgo::absdiff(A, values, roi, nthreads);
     return result;
@@ -752,7 +726,7 @@ IBA_mul_color(ImageBuf& dst, const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return false;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::mul(dst, A, &values[0], roi, nthreads);
 }
@@ -778,7 +752,7 @@ IBA_mul_color_ret(const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return result;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     result = ImageBufAlgo::mul(A, values, roi, nthreads);
     return result;
@@ -806,7 +780,7 @@ IBA_div_color(ImageBuf& dst, const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return false;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::div(dst, A, &values[0], roi, nthreads);
 }
@@ -834,7 +808,7 @@ IBA_div_color_ret(const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return result;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     result = ImageBufAlgo::div(A, values, roi, nthreads);
     return result;
@@ -869,7 +843,7 @@ IBA_mad_color(ImageBuf& dst, const ImageBuf& A, py::object Bvalues_tuple,
         Cvalues.resize(A.nchannels(), Cvalues.size() ? Cvalues.back() : 0.0f);
     else
         return false;
-    ASSERT(Bvalues.size() > 0 && Cvalues.size() > 0);
+    OIIO_ASSERT(Bvalues.size() > 0 && Cvalues.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::mad(dst, A, Bvalues, Cvalues, roi, nthreads);
 }
@@ -886,7 +860,7 @@ IBA_mad_ici(ImageBuf& dst, const ImageBuf& A, py::object Bvalues_tuple,
         Bvalues.resize(A.nchannels(), Bvalues.size() ? Bvalues.back() : 0.0f);
     else
         return false;
-    ASSERT(Bvalues.size() > 0);
+    OIIO_ASSERT(Bvalues.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::mad(dst, A, Bvalues, C, roi, nthreads);
 }
@@ -929,7 +903,7 @@ IBA_mad_color_ret(const ImageBuf& A, py::object Bvalues_tuple,
         Cvalues.resize(A.nchannels(), Cvalues.size() ? Cvalues.back() : 0.0f);
     else
         return result;
-    ASSERT(Bvalues.size() > 0 && Cvalues.size() > 0);
+    OIIO_ASSERT(Bvalues.size() > 0 && Cvalues.size() > 0);
     py::gil_scoped_release gil;
     result = ImageBufAlgo::mad(A, Bvalues, Cvalues, roi, nthreads);
     return result;
@@ -948,7 +922,7 @@ IBA_mad_ici_ret(const ImageBuf& A, py::object Bvalues_tuple, const ImageBuf& C,
         Bvalues.resize(A.nchannels(), Bvalues.size() ? Bvalues.back() : 0.0f);
     else
         return result;
-    ASSERT(Bvalues.size() > 0);
+    OIIO_ASSERT(Bvalues.size() > 0);
     py::gil_scoped_release gil;
     result = ImageBufAlgo::mad(A, Bvalues, C, roi, nthreads);
     return result;
@@ -1001,7 +975,7 @@ IBA_pow_color(ImageBuf& dst, const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return false;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     return ImageBufAlgo::pow(dst, A, values, roi, nthreads);
 }
@@ -1020,7 +994,7 @@ IBA_pow_color_ret(const ImageBuf& A, py::object values_tuple,
         values.resize(A.nchannels(), values.size() ? values.back() : 0.0f);
     else
         return result;
-    ASSERT(values.size() > 0);
+    OIIO_ASSERT(values.size() > 0);
     py::gil_scoped_release gil;
     result = ImageBufAlgo::pow(A, values, roi, nthreads);
     return result;
@@ -1824,13 +1798,13 @@ IBA_colormatrixtransform_ret(const ImageBuf& src, const py::object& Mobj,
 
 bool
 IBA_ociolook(ImageBuf& dst, const ImageBuf& src, const std::string& looks,
-             const std::string& from, const std::string& to, bool inverse,
-             bool unpremult, const std::string& context_key,
+             const std::string& from, const std::string& to, bool unpremult,
+             bool inverse, const std::string& context_key,
              const std::string& context_value, ROI roi = ROI::All(),
              int nthreads = 0)
 {
     py::gil_scoped_release gil;
-    return ImageBufAlgo::ociolook(dst, src, looks, from, to, inverse, unpremult,
+    return ImageBufAlgo::ociolook(dst, src, looks, from, to, unpremult, inverse,
                                   context_key, context_value, NULL, roi,
                                   nthreads);
 }
@@ -1839,7 +1813,7 @@ IBA_ociolook(ImageBuf& dst, const ImageBuf& src, const std::string& looks,
 bool
 IBA_ociolook_colorconfig(ImageBuf& dst, const ImageBuf& src,
                          const std::string& looks, const std::string& from,
-                         const std::string& to, bool inverse, bool unpremult,
+                         const std::string& to, bool unpremult, bool inverse,
                          const std::string& context_key,
                          const std::string& context_value,
                          const std::string& colorconfig = "",
@@ -1847,7 +1821,7 @@ IBA_ociolook_colorconfig(ImageBuf& dst, const ImageBuf& src,
 {
     ColorConfig config(colorconfig);
     py::gil_scoped_release gil;
-    return ImageBufAlgo::ociolook(dst, src, looks, from, to, inverse, unpremult,
+    return ImageBufAlgo::ociolook(dst, src, looks, from, to, unpremult, inverse,
                                   context_key, context_value, &config, roi,
                                   nthreads);
 }
@@ -1856,13 +1830,13 @@ IBA_ociolook_colorconfig(ImageBuf& dst, const ImageBuf& src,
 
 ImageBuf
 IBA_ociolook_ret(const ImageBuf& src, const std::string& looks,
-                 const std::string& from, const std::string& to, bool inverse,
-                 bool unpremult, const std::string& context_key,
+                 const std::string& from, const std::string& to, bool unpremult,
+                 bool inverse, const std::string& context_key,
                  const std::string& context_value, ROI roi = ROI::All(),
                  int nthreads = 0)
 {
     py::gil_scoped_release gil;
-    return ImageBufAlgo::ociolook(src, looks, from, to, inverse, unpremult,
+    return ImageBufAlgo::ociolook(src, looks, from, to, unpremult, inverse,
                                   context_key, context_value, NULL, roi,
                                   nthreads);
 }
@@ -1871,7 +1845,7 @@ IBA_ociolook_ret(const ImageBuf& src, const std::string& looks,
 ImageBuf
 IBA_ociolook_colorconfig_ret(const ImageBuf& src, const std::string& looks,
                              const std::string& from, const std::string& to,
-                             bool inverse, bool unpremult,
+                             bool unpremult, bool inverse,
                              const std::string& context_key,
                              const std::string& context_value,
                              const std::string& colorconfig = "",
@@ -1879,7 +1853,7 @@ IBA_ociolook_colorconfig_ret(const ImageBuf& src, const std::string& looks,
 {
     ColorConfig config(colorconfig);
     py::gil_scoped_release gil;
-    return ImageBufAlgo::ociolook(src, looks, from, to, inverse, unpremult,
+    return ImageBufAlgo::ociolook(src, looks, from, to, unpremult, inverse,
                                   context_key, context_value, &config, roi,
                                   nthreads);
 }
@@ -1952,25 +1926,25 @@ IBA_ociodisplay_colorconfig_ret(
 
 bool
 IBA_ociofiletransform(ImageBuf& dst, const ImageBuf& src,
-                      const std::string& name, bool inverse, bool unpremult,
+                      const std::string& name, bool unpremult, bool inverse,
                       ROI roi = ROI::All(), int nthreads = 0)
 {
     py::gil_scoped_release gil;
-    return ImageBufAlgo::ociofiletransform(dst, src, name, inverse, unpremult,
+    return ImageBufAlgo::ociofiletransform(dst, src, name, unpremult, inverse,
                                            NULL, roi, nthreads);
 }
 
 
 bool
 IBA_ociofiletransform_colorconfig(ImageBuf& dst, const ImageBuf& src,
-                                  const std::string& name, bool inverse,
-                                  bool unpremult,
+                                  const std::string& name, bool unpremult,
+                                  bool inverse,
                                   const std::string& colorconfig = "",
                                   ROI roi = ROI::All(), int nthreads = 0)
 {
     ColorConfig config(colorconfig);
     py::gil_scoped_release gil;
-    return ImageBufAlgo::ociofiletransform(dst, src, name, inverse, unpremult,
+    return ImageBufAlgo::ociofiletransform(dst, src, name, unpremult, inverse,
                                            &config, roi, nthreads);
 }
 
@@ -1978,25 +1952,25 @@ IBA_ociofiletransform_colorconfig(ImageBuf& dst, const ImageBuf& src,
 
 ImageBuf
 IBA_ociofiletransform_ret(const ImageBuf& src, const std::string& name,
-                          bool inverse, bool unpremult, ROI roi = ROI::All(),
+                          bool unpremult, bool inverse, ROI roi = ROI::All(),
                           int nthreads = 0)
 {
     py::gil_scoped_release gil;
-    return ImageBufAlgo::ociofiletransform(src, name, inverse, unpremult, NULL,
+    return ImageBufAlgo::ociofiletransform(src, name, unpremult, inverse, NULL,
                                            roi, nthreads);
 }
 
 
 ImageBuf
 IBA_ociofiletransform_colorconfig_ret(const ImageBuf& src,
-                                      const std::string& name, bool inverse,
-                                      bool unpremult,
+                                      const std::string& name, bool unpremult,
+                                      bool inverse,
                                       const std::string& colorconfig = "",
                                       ROI roi = ROI::All(), int nthreads = 0)
 {
     ColorConfig config(colorconfig);
     py::gil_scoped_release gil;
-    return ImageBufAlgo::ociofiletransform(src, name, inverse, unpremult,
+    return ImageBufAlgo::ociofiletransform(src, name, unpremult, inverse,
                                            &config, roi, nthreads);
 }
 
@@ -2547,22 +2521,22 @@ declare_imagebufalgo(py::module& m)
 
         .def_static("ociolook", &IBA_ociolook, "dst"_a, "src"_a, "looks"_a,
                     "fromspace"_a, "tospace"_a, "unpremult"_a = true,
-                    "invert"_a = false, "context_key"_a = "",
+                    "inverse"_a = false, "context_key"_a = "",
                     "context_value"_a = "", "roi"_a = ROI::All(),
                     "nthreads"_a = 0)
         .def_static("ociolook", &IBA_ociolook_colorconfig, "dst"_a, "src"_a,
                     "looks"_a, "fromspace"_a, "tospace"_a, "unpremult"_a = true,
-                    "invert"_a = false, "context_key"_a = "",
+                    "inverse"_a = false, "context_key"_a = "",
                     "context_value"_a = "", "colorconfig"_a = "",
                     "roi"_a = ROI::All(), "nthreads"_a = 0)
         .def_static("ociolook", &IBA_ociolook_ret, "src"_a, "looks"_a,
                     "fromspace"_a, "tospace"_a, "unpremult"_a = true,
-                    "invert"_a = false, "context_key"_a = "",
+                    "inverse"_a = false, "context_key"_a = "",
                     "context_value"_a = "", "roi"_a = ROI::All(),
                     "nthreads"_a = 0)
         .def_static("ociolook", &IBA_ociolook_colorconfig_ret, "src"_a,
                     "looks"_a, "fromspace"_a, "tospace"_a, "unpremult"_a = true,
-                    "invert"_a = false, "context_key"_a = "",
+                    "inverse"_a = false, "context_key"_a = "",
                     "context_value"_a = "", "colorconfig"_a = "",
                     "roi"_a = ROI::All(), "nthreads"_a = 0)
 
@@ -2588,19 +2562,19 @@ declare_imagebufalgo(py::module& m)
                     "roi"_a = ROI::All(), "nthreads"_a = 0)
 
         .def_static("ociofiletransform", &IBA_ociofiletransform, "dst"_a,
-                    "src"_a, "name"_a, "unpremult"_a = true, "invert"_a = false,
-                    "roi"_a = ROI::All(), "nthreads"_a = 0)
+                    "src"_a, "name"_a, "unpremult"_a = true,
+                    "inverse"_a = false, "roi"_a = ROI::All(), "nthreads"_a = 0)
         .def_static("ociofiletransform", &IBA_ociofiletransform_colorconfig,
                     "dst"_a, "src"_a, "name"_a, "unpremult"_a = true,
-                    "invert"_a = false, "colorconfig"_a = "",
+                    "inverse"_a = false, "colorconfig"_a = "",
                     "roi"_a = ROI::All(), "nthreads"_a = 0)
         .def_static("ociofiletransform", &IBA_ociofiletransform_ret, "src"_a,
-                    "name"_a, "unpremult"_a = true, "invert"_a = false,
+                    "name"_a, "unpremult"_a = true, "inverse"_a = false,
                     "roi"_a = ROI::All(), "nthreads"_a = 0)
         .def_static("ociofiletransform", &IBA_ociofiletransform_colorconfig_ret,
-                    "src"_a, "name"_a, "unpremult"_a = true, "invert"_a = false,
-                    "colorconfig"_a = "", "roi"_a = ROI::All(),
-                    "nthreads"_a = 0)
+                    "src"_a, "name"_a, "unpremult"_a = true,
+                    "inverse"_a = false, "colorconfig"_a = "",
+                    "roi"_a = ROI::All(), "nthreads"_a = 0)
 
         .def_static("computePixelStats", &IBA_computePixelStats, "src"_a,
                     "stats"_a, "roi"_a = ROI::All(), "nthreads"_a = 0)

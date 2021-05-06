@@ -1,32 +1,6 @@
-/*
-  Copyright 2010 Larry Gritz and the other authors and contributors.
-  All Rights Reserved.
-
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions are
-  met:
-  * Redistributions of source code must retain the above copyright
-  notice, this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright
-  notice, this list of conditions and the following disclaimer in the
-  documentation and/or other materials provided with the distribution.
-  * Neither the name of the software's owners nor the names of its
-  contributors may be used to endorse or promote products derived from
-  this software without specific prior written permission.
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-  (This is the Modified BSD License)
-*/
+// Copyright 2008-present Contributors to the OpenImageIO project.
+// SPDX-License-Identifier: BSD-3-Clause
+// https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
 
 
 #include <OpenImageIO/fmath.h>
@@ -120,8 +94,8 @@ test_imagespec_metadata_val()
     OIIO_CHECK_NE(ret, "10, 200, 300, 400");
     OIIO_CHECK_NE(ret, "10.12, 200.34, 300.11, 400.9,");
 
-    unsigned long long ullmatrix[] = { 0xffffffffffffffffLL,
-                                       0xffffffffffffffffLL };
+    unsigned long long ullmatrix[] = { 0xffffffffffffffffULL,
+                                       0xffffffffffffffffULL };
     metadata_val_test(&ullmatrix, 1, TypeDesc::UINT64, ret);
     OIIO_CHECK_EQUAL(ret, "18446744073709551615");
     metadata_val_test(&ullmatrix,
@@ -146,13 +120,15 @@ test_imagespec_metadata_val()
         { 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 }
     };
     metadata_val_test(&matrix16[0], 1, TypeMatrix, ret);
-    OIIO_CHECK_EQUAL(ret, "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16");
-    OIIO_CHECK_NE(ret, "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16,");
+    OIIO_CHECK_EQUAL(ret,
+                     "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16");
+    OIIO_CHECK_NE(ret,
+                  "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,");
     metadata_val_test(matrix16, sizeof(matrix16) / (16 * sizeof(float)),
                       TypeMatrix, ret);
     OIIO_CHECK_EQUAL(
         ret,
-        "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16, 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25");
+        "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25");
 }
 
 
@@ -194,7 +170,7 @@ test_imagespec_attribute_from_string()
     OIIO_CHECK_EQUAL(ret, data);
 
     type = TypeMatrix;
-    data = "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16";
+    data = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16";
     attribute_test(data, type, ret);
     OIIO_CHECK_EQUAL(ret, data);
 
@@ -222,6 +198,7 @@ test_get_attribute()
     spec.attribute("foo", int(42));
     spec.attribute("pi", float(M_PI));
     spec.attribute("bar", "barbarbar?");
+    spec["baz"] = (unsigned int)14;
 
     OIIO_CHECK_EQUAL(spec.get_int_attribute("width"), 640);
     OIIO_CHECK_EQUAL(spec.get_int_attribute("height"), 480);
@@ -268,6 +245,13 @@ test_get_attribute()
     p  = spec.find_attribute("displaywindow", tmp);
     ok = cspan<int>((const int*)p->data(), 4) == cspan<int>(dispwin);
     OIIO_CHECK_ASSERT(ok);
+
+    // Check [] syntax using AttribDelegate
+    OIIO_CHECK_EQUAL(spec["pi"].get<float>(), float(M_PI));
+    OIIO_CHECK_EQUAL(spec["foo"].get<int>(), 42);
+    OIIO_CHECK_EQUAL(spec["foo"].get<std::string>(), "42");
+    OIIO_CHECK_EQUAL(spec.getattributetype("baz"), TypeUInt32);
+    OIIO_CHECK_EQUAL(spec["baz"].get<unsigned int>(), (unsigned int)14);
 }
 
 

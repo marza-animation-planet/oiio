@@ -1,3 +1,7 @@
+# Copyright 2008-present Contributors to the OpenImageIO project.
+# SPDX-License-Identifier: BSD-3-Clause
+# https://github.com/OpenImageIO/oiio/blob/master/LICENSE.md
+
 # Make the build complete for newer ffmpeg versions (3.1.1+) that have
 # marked m_format_context->streams[i]->codec as deprecated.
 # FIXME -- at some point, come back and figure out how to fix for real
@@ -7,7 +11,7 @@ if (NOT MSVC)
                              PROPERTIES COMPILE_FLAGS "-Wno-deprecated-declarations")
 endif()
 
-if (USE_FFMPEG AND FFMPEG_FOUND)
+if (FFMPEG_FOUND)
     add_oiio_plugin (ffmpeginput.cpp
                      INCLUDE_DIRS ${FFMPEG_INCLUDE_DIR}
                      LINK_LIBRARIES ${FFMPEG_LIBRARIES} ${BZIP2_LIBRARIES}

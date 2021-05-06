@@ -15,6 +15,8 @@ else ()
 endif ()
 
 
+include (pybind11Tools)
+
 # Find Python. This macro should only be called if python is required. If
 # Python cannot be found, it will be a fatal error.
 macro (find_python)

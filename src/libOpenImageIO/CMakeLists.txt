@@ -156,13 +156,16 @@ target_link_libraries (OpenImageIO
             ${OpenCV_LIBRARIES}
             ${SANITIZE_LIBRARIES}
             ${format_plugin_libs} # Add all the target link libraries from the plugins
-            $<$<BOOL:${OpenColorIO_FOUND}>:OpenColorIO::OpenColorIO>
             $<$<BOOL:${pugixml_FOUND}>:pugixml::pugixml>
             ${BZIP2_LIBRARIES}
             ${ZLIB_LIBRARIES}
             ${Boost_LIBRARIES}
             ${CMAKE_DL_LIBS}
         )
+
+if (OpenColorIO_FOUND)
+    target_link_libraries (OpenImageIO PRIVATE ${OPENCOLORIO_LIBRARIES})
+endif ()
 
 if (FREETYPE_FOUND)
     target_link_libraries (OpenImageIO PRIVATE ${FREETYPE_LIBRARIES})

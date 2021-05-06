@@ -55,19 +55,18 @@ if (OPENCOLORIO_FOUND)
         add_library(OpenColorIO::OpenColorIO UNKNOWN IMPORTED)
         set_target_properties(OpenColorIO::OpenColorIO PROPERTIES
             INTERFACE_INCLUDE_DIRECTORIES "${OPENCOLORIO_INCLUDES}")
-
         set_property(TARGET OpenColorIO::OpenColorIO APPEND PROPERTY
             IMPORTED_LOCATION "${OPENCOLORIO_LIBRARIES}")
         if (LINKSTATIC)
             set_target_properties(OpenColorIO::OpenColorIO PROPERTIES
-                INTERFACE_COMPILE_DEFINITIONS "-DOpenColorIO_STATIC")
+                INTERFACE_COMPILE_DEFINITIONS "OpenColorIO_STATIC")
         endif()
     endif ()
 endif ()
 
 if (OpenColorIO_FOUND AND LINKSTATIC)
     # Is this necessary?
-    set (OPENCOLORIO_DEFINITIONS "-DOpenColorIO_STATIC")
+    set (OPENCOLORIO_DEFINITIONS "OpenColorIO_STATIC")
     find_library (TINYXML_LIBRARY NAMES tinyxml)
     if (TINYXML_LIBRARY)
         set (OPENCOLORIO_LIBRARIES "${OPENCOLORIO_LIBRARIES};${TINYXML_LIBRARY}" CACHE STRING "" FORCE)
@@ -81,4 +80,3 @@ if (OpenColorIO_FOUND AND LINKSTATIC)
         set (OPENCOLORIO_LIBRARIES "${OPENCOLORIO_LIBRARIES};${LCMS2_LIBRARY}" CACHE STRING "" FORCE)
     endif ()
 endif ()
-

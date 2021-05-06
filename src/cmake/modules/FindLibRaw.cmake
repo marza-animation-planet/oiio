@@ -90,7 +90,8 @@ MARK_AS_ADVANCED(LibRaw_VERSION_STRING
 
 if (LINKSTATIC)
     # Necessary?
-    find_package (Jasper)
+    # find_package (Jasper)
     find_library (LCMS2_LIBRARIES NAMES lcms2)
-    set (LibRaw_r_LIBRARIES ${LibRaw_r_LIBRARIES} ${JASPER_LIBRARIES} ${LCMS2_LIBRARIES})
+    # set (LibRaw_r_LIBRARIES ${LibRaw_r_LIBRARIES} ${JASPER_LIBRARIES} ${LCMS2_LIBRARIES})
+    set (LibRaw_r_LIBRARIES ${LibRaw_r_LIBRARIES} ${LCMS2_LIBRARIES})
 endif ()

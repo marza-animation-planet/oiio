@@ -65,7 +65,9 @@ oiio_opts["PYLIB_INCLUDE_SONAME"] = 0
 oiio_opts["PYLIB_LIB_PREFIX"] = 0
 oiio_opts["PYTHON_VERSION"] = python_ver
 oiio_opts["USE_PYTHON"] = excons.GetArgument("oiio-python", 1, int)
+oiio_opts["PYBIND11_PYTHON_VERSION"] = python_ver
 oiio_opts["PYBIND11_INCLUDE_DIR"] = os.path.abspath("pybind11/include")
+oiio_opts["CMAKE_MODULE_PATH"] = os.path.abspath("pybind11/tools")
 oiio_opts["ROBINMAP_INCLUDE_DIR"] = os.path.abspath("robin-map")
 
 
@@ -467,49 +469,12 @@ else:
 
 oiio_dependencies += freetype_outputs
 
-# ocio (depends on tinyxml, yaml-cpp, lcms2 [SCons])
-
-def OCIOLibname(static):
-    return "OpenColorIO"
-
-rv = excons.cmake.ExternalLibRequire(oiio_opts, "ocio", libnameFunc=OCIOLibname)
-if not rv["require"]:
-    if sys.platform == "win32":
-        overrides["ocio-use-boost"] = 1
-    excons.PrintOnce("OIIO: Build OpenColorIO from sources ...")
-    excons.Call("OpenColorIO", targets=["ocio-static"], overrides=overrides, imp=["OCIOPath", "YamlCppPath", "TinyXmlPath"])
-    ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
-    ocio_outputs = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath(), "{}/OpenColorIO/OpenColorIO.h".format(out_incdir)] # pylint: disable=undefined-variable
-    export_ocio = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath()] # pylint: disable=undefined-variable
-    oiio_opts["OPENCOLORIO_INCLUDE_DIR"] = out_incdir
-    oiio_opts["OPENCOLORIO_LIBRARY"] = OCIOPath(ocio_static) # pylint: disable=undefined-variable
-    oiio_opts["YAML_LIBRARY"] = YamlCppPath() # pylint: disable=undefined-variable
-    oiio_opts["TINYXML_LIBRARY"] = TinyXmlPath() # pylint: disable=undefined-variable
-else:
-    ocio_outputs = []
-    export_ocio = [rv.get("libpath")]
-
-    oiio_opts["OPENCOLORIO_INCLUDE_DIR"] = rv["incdir"]
-    oiio_opts["OPENCOLORIO_LIBRARY"] = rv["libpath"]
-
-    rv = excons.ExternalLibRequire("tinyxml")
-    if rv["require"]:
-        oiio_opts["TINYXML_LIBRARY"] = rv["libpath"]
-        export_ocio.append(rv["libpath"])
-
-    rv = excons.ExternalLibRequire("yamlcpp")
-    if rv["require"]:
-        oiio_opts["YAML_LIBRARY"] = rv["libpath"]
-        export_ocio.append(rv["libpath"])
-
-oiio_dependencies += ocio_outputs
-
 # opexnexr (depends on zlib [SCons])
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "openexr")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build openexr from sources ...")
 
-    excons.Call("openexr", targets=["ilmbase-static", "openexr-static"], overrides=overrides, imp=["HalfPath", "IexPath", "ImathPath", "IlmThreadPath", "IlmImfPath"])
+    excons.Call("openexr", targets=["ilmbase-static", "openexr-static"], overrides=overrides, imp=["HalfPath", "HalfName", "IexPath", "ImathPath", "IlmThreadPath", "IlmImfPath"])
     openexr_static = (excons.GetArgument("openexr-static", 1, int) != 0)
     openexr_half = HalfPath(openexr_static) # pylint: disable=undefined-variable
     openexr_iex = IexPath(openexr_static) # pylint: disable=undefined-variable
@@ -517,6 +482,11 @@ if not rv["require"]:
     openexr_ilmt = IlmThreadPath(openexr_static) # pylint: disable=undefined-variable
     openexr_imf = IlmImfPath(openexr_static) # pylint: disable=undefined-variable
     openexr_outputs = [openexr_imf, openexr_imath, openexr_iex, openexr_half, openexr_ilmt]
+
+    overrides["with-half-inc"] = out_incdir
+    overrides["with-half-lib"] = os.path.dirname(openexr_half)
+    overrides["half-static"] = "1" if openexr_static else "0"
+    overrides["half-name"] = HalfName(openexr_static) # pylint: disable=undefined-variable
 
     oiio_opts["OPENEXR_INCLUDE_DIR"] = out_incdir
     oiio_opts["OPENEXR_HALF_LIBRARY"] = openexr_half
@@ -529,12 +499,21 @@ else:
     openexr_outputs = []
     export_openexr = []
 
+    overrides["with-half-inc"] = rv["incdir"]
+    overrides["with-half-lib"] = rv["libdir"]
+    overrides["half-static"] = "1" if rv["static"] else "0"
+    bn = os.path.splitext(os.path.basename(rv["libpath"]))
+    hn = os.path.splitext(bn)[0].replace("openexr", "Half")
+    if sys.platform != "win32" and bn.startswith("lib"):
+       hn = hn[4:]
+    overrides["half-name"] = hn
+
     oiio_opts["OPENEXR_INCLUDE_DIR"] = rv["incdir"]
-    oiio_opts["OPENEXR_HALF_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Half")
-    oiio_opts["OPENEXR_IEX_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Iex")
-    oiio_opts["OPENEXR_IMATH_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "Imath")
-    oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "IlmThread")
-    oiio_opts["OPENEXR_ILMIMF_LIBRARY"] = rv["libdir"] + "/" + os.path.basename(rv["libpath"]).replace("openexr", "IlmImf")
+    oiio_opts["OPENEXR_HALF_LIBRARY"] = rv["libdir"] + "/" + bn.replace("openexr", "Half")
+    oiio_opts["OPENEXR_IEX_LIBRARY"] = rv["libdir"] + "/" + bn.replace("openexr", "Iex")
+    oiio_opts["OPENEXR_IMATH_LIBRARY"] = rv["libdir"] + "/" + bn.replace("openexr", "Imath")
+    oiio_opts["OPENEXR_ILMTHREAD_LIBRARY"] = rv["libdir"] + "/" + bn.replace("openexr", "IlmThread")
+    oiio_opts["OPENEXR_ILMIMF_LIBRARY"] = rv["libdir"] + "/" + bn.replace("openexr", "IlmImf")
 
     export_openexr.append(oiio_opts["OPENEXR_HALF_LIBRARY"])
     export_openexr.append(oiio_opts["OPENEXR_IEX_LIBRARY"])
@@ -544,15 +523,56 @@ else:
 
 oiio_dependencies += openexr_outputs
 
+# ocio (depends on half, libexpat, glew, yaml-cpp, lcms2 [SCons])
+
+def OCIOLibname(static):
+    return "OpenColorIO"
+
+rv = excons.cmake.ExternalLibRequire(oiio_opts, "ocio", libnameFunc=OCIOLibname)
+if not rv["require"]:
+    #if sys.platform == "win32":
+    #    overrides["ocio-use-boost"] = 1
+    excons.PrintOnce("OIIO: Build OpenColorIO from sources ...")
+    
+    excons.Call("OpenColorIO", targets=["ocio-static"], overrides=overrides, imp=["OCIOPath", "YamlCppPath", "ExpatPath"])
+    ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
+    ocio_outputs = [OCIOPath(ocio_static), ExpatPath(True), YamlCppPath(), "{}/OpenColorIO/OpenColorIO.h".format(out_incdir)] # pylint: disable=undefined-variable
+    export_ocio = [OCIOPath(ocio_static), ExpatPath(True), YamlCppPath()] # pylint: disable=undefined-variable
+    oiio_opts["OPENCOLORIO_INCLUDE_DIR"] = out_incdir
+    oiio_opts["OPENCOLORIO_LIBRARY"] = OCIOPath(ocio_static) # pylint: disable=undefined-variable
+    oiio_opts["YAML_LIBRARY"] = YamlCppPath() # pylint: disable=undefined-variable
+    oiio_opts["EXPAT_LIBRARY"] = ExpatPath() # pylint: disable=undefined-variable
+else:
+    ocio_outputs = []
+    export_ocio = [rv.get("libpath")]
+
+    oiio_opts["OPENCOLORIO_INCLUDE_DIR"] = rv["incdir"]
+    oiio_opts["OPENCOLORIO_LIBRARY"] = rv["libpath"]
+
+    rv = excons.ExternalLibRequire("expat")
+    if rv["require"]:
+        oiio_opts["EXPAT_LIBRARY"] = rv["libpath"]
+        export_ocio.append(rv["libpath"])
+
+    rv = excons.ExternalLibRequire("yamlcpp")
+    if rv["require"]:
+        oiio_opts["YAML_LIBRARY"] = rv["libpath"]
+        export_ocio.append(rv["libpath"])
+
+oiio_dependencies += ocio_outputs
+
+# pybind
 if not os.path.isfile("pybind11/include/pybind11/pybind11.h"):
     cmd = "git submodule update --init pybind11"
     p = subprocess.Popen(cmd, shell=True)
     p.communicate()
 
+# robin-map
 if not os.path.isfile("robin-map/tsl/robin_map.h"):
     cmd = "git submodule update --init robin-map"
     p = subprocess.Popen(cmd, shell=True)
     p.communicate()
+
 
 # oiio build
 

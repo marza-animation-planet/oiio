@@ -196,7 +196,6 @@ export_jpeg = []
 export_openjpeg = []
 export_png = []
 export_tiff = []
-export_lcms2 = []
 export_raw = []
 export_freetype = []
 export_ocio = []
@@ -371,30 +370,38 @@ else:
 
 oiio_dependecies += tiff_outputs
 
-# lcms2 (depends on jpeg, tiff [SCons])
+# ocio (depends on tinyxml, yaml-cpp, lcms2 [SCons])
 
-def Lcms2Defines(static):
-    return (["CMS_DLL"] if not static else [])
+def OCIOLibname(static):
+    return "OpenColorIO"
 
-rv = excons.cmake.ExternalLibRequire(oiio_opts, "lcms2", definesFunc=Lcms2Defines, varPrefix="LCMS2_")
+rv = excons.cmake.ExternalLibRequire(oiio_opts, "ocio", libnameFunc=OCIOLibname)
 if not rv["require"]:
-    excons.PrintOnce("OIIO: Build lcms from sources ...")
-    excons.Call("Little-cms", targets=["lcms2"], overrides=overrides, imp=["LCMS2Name", "LCMS2Path"])
-    lcms2_static = excons.GetArgument("lcms2-static", 1, int)
-    lcms2_path = LCMS2Path() # pylint: disable=undefined-variable
-    lcms2_outputs = [lcms2_path]
+    if sys.platform == "win32":
+        overrides["ocio-use-boost"] = 1
+    excons.PrintOnce("OIIO: Build OpenColorIO from sources ...")
+    excons.Call("OpenColorIO", targets=["ocio"], overrides=overrides, imp=["OCIOPath", "YamlCppPath", "TinyXmlPath", "LCMS2Name", "LCMS2Path"])
+    ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
+    ocio_outputs = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath(), LCMS2Path()] # pylint: disable=undefined-variable
 
-    oiio_opts["LCMS2_LIBRARY"] = lcms2_path
+    oiio_opts["OCIO_INCLUDE_PATH"] = out_incdir
+    oiio_opts["OCIO_LIBRARIES"] = OCIOPath(ocio_static) # pylint: disable=undefined-variable
+    oiio_opts["LCMS2_LIBRARY"] = LCMS2Path() # pylint: disable=undefined-variable
+    oiio_opts["YAML_LIBRARY"] = YamlCppPath() # pylint: disable=undefined-variable
+    oiio_opts["TINYXML_LIBRARY"] = TinyXmlPath() # pylint: disable=undefined-variable
 
-    overrides["with-lcms2"] = os.path.dirname(os.path.dirname(lcms2_path))
-    overrides["lcms2-static"] = lcms2_static
+    # setup overrides for LibRaw build
+    overrides["with-lcms2-inc"] = out_incdir
+    overrides["with-lcms2-lib"] = os.path.dirname(LCMS2Path()) # pylint: disable=undefined-variable
     overrides["lcms2-name"] = LCMS2Name() # pylint: disable=undefined-variable
-    export_lcms2 += lcms2_outputs
-else:
-    lcms2_outputs = []
-    export_lcms2.append(rv.get("libpath"))
+    overrides["lcms2-static"] = excons.GetArgument("lcms2-static", 1, int)
 
-oiio_dependecies += lcms2_outputs
+    export_ocio += ocio_outputs
+else:
+    ocio_outputs = []
+    export_ocio.append(rv.get("libpath"))
+
+oiio_dependecies += ocio_outputs
 
 # libraw (depends on jpeg, lcms2 [SCons])
 
@@ -426,6 +433,7 @@ else:
 oiio_dependecies += libraw_outputs
 
 # freetype (depends on zlib, bzip2, png [CMake])
+
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "freetype")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build freetype from sources ...")
@@ -443,33 +451,8 @@ else:
 
 oiio_dependecies += freetype_outputs
 
-# ocio (depends on tinyxml, yaml-cpp, lcms2 [SCons])
-
-def OCIOLibname(static):
-    return "OpenColorIO"
-
-rv = excons.cmake.ExternalLibRequire(oiio_opts, "ocio", libnameFunc=OCIOLibname)
-if not rv["require"]:
-    if sys.platform == "win32":
-        overrides["ocio-use-boost"] = 1
-    excons.PrintOnce("OIIO: Build OpenColorIO from sources ...")
-    excons.Call("OpenColorIO", targets=["ocio-libs"], overrides=overrides, imp=["OCIOPath", "YamlCppPath", "TinyXmlPath"])
-    ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
-    ocio_outputs = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath()] # pylint: disable=undefined-variable
-    
-    oiio_opts["OCIO_INCLUDE_PATH"] = out_incdir
-    oiio_opts["OCIO_LIBRARIES"] = OCIOPath(ocio_static) # pylint: disable=undefined-variable
-    oiio_opts["LCMS2_LIBRARY"] = LCMS2Path() # pylint: disable=undefined-variable
-    oiio_opts["YAML_LIBRARY"] = YamlCppPath() # pylint: disable=undefined-variable
-    oiio_opts["TINYXML_LIBRARY"] = TinyXmlPath() # pylint: disable=undefined-variable
-    export_ocio += ocio_outputs
-else:
-    ocio_outputs = []
-    export_ocio.append(rv.get("libpath"))
-
-oiio_dependecies += ocio_outputs
-
 # opexnexr (depends on zlib [SCons])
+
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "openexr")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build openexr from sources ...")
@@ -532,7 +515,7 @@ def RequireOiio(env, static=False):
 
 
 def OiioExtraLibPaths():
-    return export_png + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_lcms2 + export_freetype + export_bzip2 + export_jbig + export_openexr + export_zlib
+    return export_png + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_freetype + export_bzip2 + export_jbig + export_openexr + export_zlib
 
 
 prjs.append({"name": "oiio",

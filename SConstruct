@@ -540,23 +540,3 @@ excons.DeclareTargets(env, prjs)
 SCons.Script.Default("oiio")
 
 SCons.Script.Export("OiioName OiioPath RequireOiio OiioExtraLibPaths")
-
-# Ecosystem
-
-if "eco" in SCons.Script.COMMAND_LINE_TARGETS:
-    ecoroot = "/" + excons.EcosystemPlatform()
-    outdir = excons.OutputBaseDirectory()
-    binext = (".exe" if sys.platform == "win32" else "")
-
-    tgts = {"oiio-lib": SCons.Script.Glob(outdir + "/lib/*OpenImageIO*"),
-            "oiio-inc": SCons.Script.Glob(outdir + "/include/OpenImageIO/*"),
-            "oiio-bin": map(lambda x: SCons.Script.File(outdir + "/bin/" + x + binext), ["iconvert", "idiff", "igrep", "iinfo", "maketx", "oiiotool"]) +
-                        ([] if sys.platform != "win32" else SCons.Script.Glob(outdir + "/bin/*OpenImageIO*.dll")),
-            "oiio-python": SCons.Script.Glob(outdir + ("/lib/python/site-packages/*" if sys.platform != "win32" else "/python"))}
-
-    tgtdirs = {"oiio-lib": ecoroot + "/lib",
-               "oiio-inc": ecoroot + "/include/OpenImageIO",
-               "oiio-bin": ecoroot + "/bin",
-               "oiio-python": ecoroot + "/lib/python/%s" % python_ver}
-
-    excons.EcosystemDist(env, "oiio.env", tgtdirs, targets=tgts, name="OpenImageIO", version="%d.%d.%d" % (major, minor, patch))

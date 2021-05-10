@@ -297,6 +297,7 @@ if not rv["require"]:
     openjpeg_outputs = [OpenjpegPath()] # pylint: disable=undefined-variable
     oiio_opts["OPENJPEG_HOME"] = excons.OutputBaseDirectory()
     oiio_opts["OPENJPEG_INCLUDE_DIR"] = out_incdir + "/openjpeg-2.3"
+    export_openjpeg += openjpeg_outputs
 else:
     oiio_opts["OPENJPEG_HOME"] = os.path.dirname(rv["incdir"])
     incdir = None

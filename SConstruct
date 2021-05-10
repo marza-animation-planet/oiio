@@ -199,6 +199,7 @@ if sys.platform != "win32":
 
 export_zlib = []
 export_bzip2 = []
+export_jbig = []
 export_jpeg = []
 export_openjpeg = []
 export_png = []
@@ -322,6 +323,51 @@ else:
 
 oiio_dependencies += openjpeg_outputs
 
+# jbig (no deps [SCons])
+def JbigLibname(static):
+   return "jbig"
+
+rv = excons.cmake.ExternalLibRequire(oiio_opts, name="jbig", libnameFunc=JbigLibname)
+if rv["require"] is None:
+   excons.PrintOnce("OIIO: Build jbig from sources ...")
+   excons.Call("jbigkit", targets=["jbig"], imp=["RequireJbig", "JbigPath", "JbigName"])
+   jbig_path = JbigPath() # pylint: disable=undefined-variable
+   jbig_outputs = [JbigPath(), # pylint: disable=undefined-variable
+                   "{}/jbig.h".format(out_incdir),
+                   "{}/jbig_ar.h".format(out_incdir)]
+   export_jbig = [JbigPath()] # pylint: disable=undefined-variable
+
+   oiio_opts["JBIG_LIBRARY"] = jbig_path
+   oiio_opts["JBIG_LIBRARY_RELEASE"] = jbig_path
+   oiio_opts["JBIG_INCLUDE_DIR"] = out_incdir
+
+   overrides["libtiff-use-jbig"] = 1
+   overrides["with-jbig"] = os.path.dirname(os.path.dirname(JbigPath())) # pylint: disable=undefined-variable
+   overrides["jbig-name"] = JbigName() # pylint: disable=undefined-variable
+   overrides["jbig-static"] = 1
+else:
+   jbig_path = rv.get("libpath")
+   jbig_incdir = rv.get("incdir")
+   jbig_libdir = rv.get("libdir")
+
+   if os.path.isfile(jbig_path) and os.path.isdir(jbig_incdir) and os.path.isdir(jbig_libdir):
+      jbig_outputs = []
+      export_jbig = [jbig_path]
+
+      oiio_opts["JBIG_LIBRARY"] = jbig_path
+      oiio_opts["JBIG_LIBRARY_RELEASE"] = jbig_path
+      oiio_opts["JBIG_INCLUDE_DIR"] = jbig_incdir
+
+      overrides["libtiff-use-jbig"] = 1
+      overrides["with-jbig-inc"] = jbig_incdir
+      overrides["with-jbig-lib"] = jbig_libdir
+      overrides["jbig-name"] = rv.get("libname")
+      overrides["jbig-static"] = rv.get("static")
+   else:
+      overrides["libtiff-use-jbig"] = 0
+
+oiio_dependencies += jbig_outputs
+
 # png (depends on zlib [CMake])
 
 def PngLibname(static):
@@ -355,15 +401,13 @@ oiio_dependencies += libpng_outputs
 
 # tiff (depends on zlib, jpeg, jbig [CMake])
 
-overrides["libtiff-use-jbig"] = 0
-
 def TiffLibname(static):
     return "tiff"
 
 rv = excons.cmake.ExternalLibRequire(oiio_opts, "libtiff", libnameFunc=TiffLibname, varPrefix="TIFF_")
 if not rv["require"]:
     excons.PrintOnce("OIIO: Build libtiff from sources ...")
-    excons.cmake.AddConfigureDependencies("libtiff", zlib_outputs + jpeg_outputs)
+    excons.cmake.AddConfigureDependencies("libtiff", zlib_outputs + jpeg_outputs + jbig_outputs)
     excons.Call("libtiff", targets=["libtiff"], overrides=overrides, imp=["LibtiffName", "LibtiffPath"])
     tiff_path = LibtiffPath() # pylint: disable=undefined-variable
     tiff_outputs = [tiff_path, "{}/tiff.h".format(out_incdir)]
@@ -560,7 +604,7 @@ def OiioVersion():
     return "{}.{}.{}".format(major, minor, path)
 
 def OiioExtraLibPaths():
-    return export_png + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_freetype + export_bzip2 + export_openexr + export_zlib + boost_outputs
+    return export_png + export_jbig + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_freetype + export_bzip2 + export_openexr + export_zlib + boost_outputs
 
 
 prjs.append({"name": "oiio",

@@ -191,7 +191,6 @@ if sys.platform != "win32":
 
 export_zlib = []
 export_bzip2 = []
-export_jbig = []
 export_jpeg = []
 export_openjpeg = []
 export_png = []
@@ -515,7 +514,7 @@ def RequireOiio(env, static=False):
 
 
 def OiioExtraLibPaths():
-    return export_png + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_freetype + export_bzip2 + export_jbig + export_openexr + export_zlib
+    return export_png + export_jpeg + export_openjpeg + export_raw + export_tiff + export_ocio + export_freetype + export_bzip2 + export_openexr + export_zlib
 
 
 prjs.append({"name": "oiio",

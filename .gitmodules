@@ -37,3 +37,6 @@
 [submodule "robin-map"]
 	path = robin-map
 	url = git://github.com/Tessil/robin-map.git
+[submodule "jbigkit"]
+	path = jbigkit
+	url = git://github.com/gatgui/jbigkit

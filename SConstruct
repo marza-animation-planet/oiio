@@ -471,6 +471,11 @@ else:
         oiio_opts["YAML_LIBRARY"] = rv["libpath"]
         export_ocio.append(rv["libpath"])
 
+    rv = excons.ExternalLibRequire("lcms2")
+    if rv["require"]:
+        oiio_opts["LCMS2_LIBRARY"] = rv["libpath"]
+        export_ocio.append(rv["libpath"])
+
 oiio_dependencies += ocio_outputs
 
 # libraw (depends on jpeg, lcms2 [SCons])

@@ -64,9 +64,12 @@ if (OPENCOLORIO_FOUND)
         set_property(TARGET OpenColorIO::OpenColorIO APPEND PROPERTY
             IMPORTED_LOCATION "${OPENCOLORIO_LIBRARIES}")
         if (LINKSTATIC)
-            target_compile_definitions(OpenColorIO::OpenColorIO
-                INTERFACE "OpenColorIO_STATIC"
-                INTERFACE "OpenColorIO_SKIP_IMPORTS")
+            # target_compile_definitions(OpenColorIO::OpenColorIO
+            #     INTERFACE "OpenColorIO_STATIC"
+            #     INTERFACE "OpenColorIO_SKIP_IMPORTS")
+            set_target_properties(OpenColorIO::OpenColorIO PROPERTIES
+                INTERFACE_COMPILE_DEFINITIONS "OpenColorIO_STATIC"
+                INTERFACE_COMPILE_DEFINITIONS "OpenColorIO_SKIP_IMPORTS")
         endif()
     endif ()
 endif ()

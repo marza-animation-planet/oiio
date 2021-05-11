@@ -276,24 +276,14 @@ if not rv["require"]:
     excons.PrintOnce("OIIO: Build openjpeg from sources ...")
     excons.Call("openjpeg", targets=["openjpeg"], imp=["OpenjpegPath"])
     openjpeg_path = OpenjpegPath() # pylint: disable=undefined-variable
-    openjpeg_outputs = [OpenjpegPath()] # pylint: disable=undefined-variable
-    export_openjpeg = [OpenjpegPath()] # pylint: disable=undefined-variable
-    oiio_opts["OPENJPEG_INCLUDE_DIR"] = out_incdir + "/openjpeg-2.4"
+    openjpeg_outputs = [openjpeg_path]
+    export_openjpeg = [openjpeg_path]
+    oiio_opts["OpenJpeg_ROOT"] = os.path.dirname(os.path.dirname(openjpeg_path))
 else:
-    incdir = None
-    if os.path.isdir(rv["incdir"]):
-        for item in os.listdir(rv["incdir"]):
-            _incdir = rv["incdir"] + "/" + item
-            if item.startswith("openjpeg") and os.path.isdir(_incdir):
-                incdir = _incdir
-                break
-    if incdir is None:
-        excons.PrintOnce("OIIO: Please specify openjpeg compatibility version using openjpeg-version= flag")
-        openjpeg_version = excons.GetArgument("openjpeg-version", "2.4")
-        incdir = rv["incdir"] + "/openjpeg-" + openjpeg_version
-    oiio_opts["OPENJPEG_INCLUDE_DIR"] = incdir
     openjpeg_outputs = []
-    export_openjpeg = [rv.get("libpath")]
+    openjpeg_path = rv["libpath"]
+    export_openjpeg = [openjpeg_path]
+    oiio_opts["OpenJpeg_ROOT"] = os.path.dirname(rv["libdir"])
 
 oiio_dependencies += openjpeg_outputs
 
@@ -461,11 +451,13 @@ if not rv["require"]:
     export_freetype = [freetype_path]
     oiio_opts["FREETYPE_INCLUDE_DIR"] = out_incdir
     oiio_opts["FREETYPE_LIBRARY"] = freetype_path
+    oiio_opts["FREETYPE_LIBRARIES"] = "%s;%s" % (freetype_path, bz2_path)
 else:
     freetype_outputs = []
     export_freetype = [rv.get("libpath")]
     oiio_opts["FREETYPE_INCLUDE_DIR"] = rv["incdir"]
     oiio_opts["FREETYPE_LIBRARY"] = rv["libpath"]
+    oiio_opts["FREETYPE_LIBRARIES"] = "%s;%s" % (freetype_path, bz2_path)
 
 oiio_dependencies += freetype_outputs
 

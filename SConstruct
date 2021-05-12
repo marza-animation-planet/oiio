@@ -620,9 +620,6 @@ prjs.append({"name": "oiio",
              "cmake-outputs": map(lambda x: out_incdir + "/OpenImageIO/" + os.path.basename(x), excons.glob("src/include/OpenImageIO/*.h")) +
                               [OiioPath(staticlib)]})
 
-import pprint
-pprint.pprint(map(str, prjs[-1]["cmake-cfgs"]))
-
 excons.AddHelpOptions(oiio="""OPENIMAGEIO OPTIONS
   oiio-static=0|1        : Toggle between static and shared library build [0]
   oiio-simd=0|<simd>     : Use SIMD directives [0]

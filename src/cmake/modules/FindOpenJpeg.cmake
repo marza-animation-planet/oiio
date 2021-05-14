@@ -139,6 +139,7 @@ else ()
     set (OPJ_VERSION_MINOR 5)
 endif ()
 set (OPENJPEG_VERSION "${OPJ_VERSION_MAJOR}.${OPJ_VERSION_MINOR}")
+set (OPENJPEG_DEFINITIONS "")
 
 
 # Locate the OpenJpeg library
@@ -160,6 +161,9 @@ FIND_PACKAGE_HANDLE_STANDARD_ARGS (OpenJpeg
 if (OPENJPEG_FOUND)
   set (OPENJPEG_INCLUDES ${OPENJPEG_INCLUDE_DIR})
   set (OPENJPEG_LIBRARIES "")
+  if (LINKSTATIC)
+    set (OPENJPEG_DEFINITIONS ${OPENJPEG_DEFINITIONS} "-DOPJ_STATIC")
+  endif ()
   foreach (tmplib ${OpenJpeg_libvars})
     list (APPEND OPENJPEG_LIBRARIES ${${tmplib}})
   endforeach ()

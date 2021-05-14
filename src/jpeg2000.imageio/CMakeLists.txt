@@ -15,14 +15,14 @@ if (OPENJPEG_FOUND)
             add_oiio_plugin (jpeg2000input-v1.cpp jpeg2000output-v1.cpp
                              INCLUDE_DIRS ${OPENJPEG_INCLUDES}
                              LINK_LIBRARIES ${OPENJPEG_LIBRARIES}
-                             DEFINITIONS "-DUSE_OPENJPEG")
+                             DEFINITIONS ${OPENJPEG_DEFINITIONS} "-DUSE_OPENJPEG")
         endif()
     else ()
         # OpenJpeg 2.x. Eventually this should be the only one we need.
         add_oiio_plugin (jpeg2000input.cpp jpeg2000output.cpp
                          INCLUDE_DIRS ${OPENJPEG_INCLUDES}
                          LINK_LIBRARIES ${OPENJPEG_LIBRARIES}
-                         DEFINITIONS "-DUSE_OPENJPEG")
+                         DEFINITIONS ${OPENJPEG_DEFINITIONS} "-DUSE_OPENJPEG")
     endif ()
 else()
     message (WARNING "Jpeg-2000 plugin will not be built")

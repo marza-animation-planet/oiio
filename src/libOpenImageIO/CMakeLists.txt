@@ -150,6 +150,7 @@ target_link_libraries (OpenImageIO
 
 if (OpenColorIO_FOUND)
     target_link_libraries (OpenImageIO PRIVATE ${OPENCOLORIO_LIBRARIES})
+    target_compile_definitions (OpenImageIO PRIVATE ${OPENCOLORIO_DEFINITIONS})
 endif ()
 
 if (USE_EXTERNAL_PUGIXML)

@@ -267,7 +267,10 @@ else:
 oiio_dependencies += jpeg_outputs
 
 # openjpeg (no deps [CMake])
-rv = excons.cmake.ExternalLibRequire(oiio_opts, "openjpeg")
+def OpenjpegLibname(static):
+    return "openjp2"
+
+rv = excons.cmake.ExternalLibRequire(oiio_opts, "openjpeg", libnameFunc=OpenjpegLibname)
 if not rv["require"]:
     # Openjpeg submodule is referencing v2.4.0 tag
     excons.PrintOnce("OIIO: Build openjpeg from sources ...")
@@ -400,10 +403,11 @@ if not rv["require"]:
     excons.PrintOnce("OIIO: Build OpenColorIO from sources ...")
     excons.Call("OpenColorIO", targets=["ocio-libs"], overrides=overrides, imp=["OCIOPath", "YamlCppPath", "TinyXmlPath", "LCMS2Name", "LCMS2Path"])
     ocio_static = excons.GetArgument("ocio-static", 1, int) != 0
-    ocio_outputs = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath(), LCMS2Path(), "{}/OpenColorIO/OpenColorIO.h".format(out_incdir)] # pylint: disable=undefined-variable
     export_ocio = [OCIOPath(ocio_static), TinyXmlPath(), YamlCppPath(), LCMS2Path()] # pylint: disable=undefined-variable
+    ocio_outputs = export_ocio + ["{}/OpenColorIO/OpenColorIO.h".format(out_incdir)] # pylint: disable=undefined-variable
     oiio_opts["OPENCOLORIO_INCLUDE_PATH"] = out_incdir
-    oiio_opts["OPENCOLORIO_LIBRARIES"] = OCIOPath(ocio_static) # pylint: disable=undefined-variable
+    oiio_opts["OPENCOLORIO_LIBRARY"] = ocio_outputs[0]
+    oiio_opts["OPENCOLORIO_LIBRARIES"] = ocio_outputs[0]
     oiio_opts["LCMS2_LIBRARY"] = LCMS2Path() # pylint: disable=undefined-variable
     if overrides["libtiff-use-jbig"] != 0:
         oiio_opts["LCMS2_LIBRARIES"] = "%s;%s" % (oiio_opts["LCMS2_LIBRARY"], jbig_path)
@@ -419,6 +423,7 @@ else:
     export_ocio = [rv.get("libpath")]
 
     oiio_opts["OPENCOLORIO_INCLUDE_PATH"] = rv["incdir"]
+    oiio_opts["OPENCOLORIO_LIBRARY"] = rv["libpath"]
     oiio_opts["OPENCOLORIO_LIBRARIES"] = rv["libpath"]
 
     rv = excons.ExternalLibRequire("tinyxml")
@@ -578,7 +583,9 @@ prjs.append({"name": "oiio",
              "type": "cmake",
              "cmake-opts": oiio_opts,
              "cmake-flags": "-Wno-dev",
-             "cmake-cfgs": excons.CollectFiles(["src"], patterns=["CMakeLists.txt"], recursive=True) + ["CMakeLists.txt"] + oiio_dependencies,
+             "cmake-cfgs": excons.CollectFiles(["src"], patterns=["CMakeLists.txt"], recursive=True) +
+                           excons.CollectFiles(["src/cmake"], patterns=["*.cmake"], recursive=True) +
+                           ["CMakeLists.txt"] + oiio_dependencies,
              "cmake-srcs": excons.CollectFiles(["src"], patterns=["*.cpp"], recursive=True),
              "cmake-outputs": map(lambda x: out_incdir + "/OpenImageIO/" + os.path.basename(x), excons.glob("src/include/OpenImageIO/*.h")) +
                               [OiioPath(staticlib)]})

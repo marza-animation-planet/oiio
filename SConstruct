@@ -45,7 +45,8 @@ oiio_dependencies = []
 
 # build options
 oiio_opts["LINKSTATIC"] = 1
-oiio_opts["USE_fPIC"] = 1
+if sys.platform != "win32":
+    oiio_opts["USE_fPIC"] = 1
 oiio_opts["BUILDSTATIC"] = (1 if staticlib else 0)
 oiio_opts["OIIO_THREAD_ALLOW_DCLP"] = 1
 oiio_opts["SOVERSION"] = "%s.%s" % (major, minor)

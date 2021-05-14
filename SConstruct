@@ -160,6 +160,7 @@ oiio_opts["USE_WEBP"] = 0
 # Not building 'iv' so far
 oiio_opts["USE_QT"] = 0
 oiio_opts["USE_OPENGL"] = 0
+oiio_opts["USE_JASPER"] = 0
 
 ## extra args
 oiio_opts["EXTRA_DSO_LINK_ARGS"] = ""

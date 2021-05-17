@@ -462,8 +462,14 @@ TextureSystemImpl::accum3d_sample_bilinear(
     valid_storage.ivalid = 0;
     OIIO_DASSERT(sizeof(valid_storage) == 8);
     const unsigned long long none_valid = 0;
-    const unsigned long long all_valid  = littleendian() ? 0x010101010101LL
-                                                        : 0x01010101010100LL;
+    // const unsigned long long all_valid  = littleendian() ? 0x010101010101LL : 0x01010101010100LL;
+    // The above line generates a compile error on some Visual Studio 2015 (MSVC 19.15.26726.0 [14.1])
+    unsigned long long all_valid = 0;
+    if (littleendian()) {
+        all_valid = 0x010101010101LL;
+    } else {
+        all_valid = 0x01010101010100LL;
+    }
     bool* svalid = valid_storage.bvalid;
     bool* tvalid = valid_storage.bvalid + 2;
     bool* rvalid = valid_storage.bvalid + 4;

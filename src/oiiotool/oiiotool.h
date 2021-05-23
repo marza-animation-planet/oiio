@@ -109,7 +109,7 @@ public:
     typedef std::map<std::string, double> TimingMap;
     TimingMap function_times;
     size_t peak_memory          = 0;
-    int return_value            = EXIT_SUCCESS;  // oiiotool command return code
+    mutable int return_value    = EXIT_SUCCESS;  // oiiotool command return code
     int num_outputs             = 0;             // Count of outputs written
     int frame_number            = 0;
     bool enable_function_timing = true;
@@ -119,6 +119,8 @@ public:
     TypeDesc input_dataformat;
     int input_bitspersample = 0;
     std::map<std::string, std::string> input_channelformats;
+
+    static Oiiotool& instance();
 
     Oiiotool();
 
@@ -292,6 +294,8 @@ private:
                                 std::string& result);
 
     std::string express_impl(string_view s);
+
+    static Oiiotool *ms_the_instance;
 };
 
 

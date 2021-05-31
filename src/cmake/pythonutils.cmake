@@ -85,9 +85,9 @@ macro (setup_python_module)
     target_link_libraries (${target_name}
                            PRIVATE ${lib_LIBS} ${SANITIZE_LIBRARIES})
 
-    if (APPLE)
-        set_target_properties (${target_name} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
-    endif ()
+    # if (APPLE)
+    #     set_target_properties (${target_name} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
+    # endif ()
 
     if (${CXX_VISIBILITY_PRESET} STREQUAL "hidden" AND NOT "${lib_VISMAP}" STREQUAL "" AND
         (CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_CLANG) AND

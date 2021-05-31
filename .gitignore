@@ -21,3 +21,4 @@ config.log
 eco/
 oiio.env.tmp
 .vscode/
+expat.status

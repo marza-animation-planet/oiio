@@ -10,6 +10,7 @@ checked_find_package (Pybind11 REQUIRED
 file (GLOB python_srcs *.cpp)
 setup_python_module (TARGET    PyOpenImageIO
                      MODULE    OpenImageIO
+                     VISMAP    ${PROJECT_SOURCE_DIR}/src/build-scripts/hidesymbols_python.map
                      SOURCES   ${python_srcs}
                      LIBS      OpenImageIO
                      )

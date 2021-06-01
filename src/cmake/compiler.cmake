@@ -113,15 +113,22 @@ endif ()
 #
 set (CXX_VISIBILITY_PRESET "hidden" CACHE STRING "Symbol visibility (hidden or default")
 option (VISIBILITY_INLINES_HIDDEN "Hide symbol visibility of inline functions" ON)
-set (VISIBILITY_MAP_FILE "${PROJECT_SOURCE_DIR}/src/build-scripts/hidesymbols.map" CACHE FILEPATH "Visibility map file")
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set (VISIBILITY_MAP_FILE "${PROJECT_SOURCE_DIR}/src/build-scripts/exportsymbols_osx.map" CACHE FILEPATH "Visibility map file")
+else ()
+    set (VISIBILITY_MAP_FILE "${PROJECT_SOURCE_DIR}/src/build-scripts/hidesymbols.map" CACHE FILEPATH "Visibility map file")
+endif ()
 set (C_VISIBILITY_PRESET ${CXX_VISIBILITY_PRESET})
 if (${CXX_VISIBILITY_PRESET} STREQUAL "hidden" AND
-    (CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_CLANG) AND
-    (CMAKE_SYSTEM_NAME MATCHES "Linux|kFreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "GNU"))
-    # Linux/FreeBSD/Hurd: also hide all the symbols of dependent libraries
-    # to prevent clashes if an app using this project is linked against
-    # other versions of our dependencies.
-    set (VISIBILITY_MAP_COMMAND "-Wl,--version-script=${VISIBILITY_MAP_FILE}")
+    (CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_CLANG))
+    if (CMAKE_SYSTEM_NAME MATCHES "Linux|kFreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "GNU")
+        # Linux/FreeBSD/Hurd: also hide all the symbols of dependent libraries
+        # to prevent clashes if an app using this project is linked against
+        # other versions of our dependencies.
+        set (VISIBILITY_MAP_COMMAND "-Wl,--version-script=${VISIBILITY_MAP_FILE}")
+    elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        set (VISIBILITY_MAP_COMMAND "-Wl,-exported_symbols_list,${VISIBILITY_MAP_FILE}")
+    endif ()
 endif ()
 
 

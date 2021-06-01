@@ -98,7 +98,7 @@ macro (setup_python_module)
         set (PYTHON_VISIBILITY_MAP_COMMAND "-Wl,--version-script=${lib_VISMAP}")
     endif ()
     if (PYTHON_VISIBILITY_MAP_COMMAND)
-        set_target_properties (PyOpenImageIO PROPERTIES LINK_FLAGS ${PYTHON_VISIBILITY_MAP_COMMAND})
+        set_target_properties (${target_name} PROPERTIES LINK_FLAGS ${PYTHON_VISIBILITY_MAP_COMMAND})
     endif ()
 
     # Exclude the 'lib' prefix from the name

@@ -109,7 +109,7 @@ endmacro()
 
 
 macro (setup_python_module)
-    cmake_parse_arguments (lib "" "TARGET;MODULE;LIBS" "SOURCES" ${ARGN})
+    cmake_parse_arguments (lib "" "TARGET;MODULE;VISMAP;LIBS" "SOURCES" ${ARGN})
     # Arguments: <prefix> <options> <one_value_keywords> <multi_value_keywords> args...
 
     set (target_name ${lib_TARGET})
@@ -132,6 +132,18 @@ macro (setup_python_module)
         set_target_properties (${target_name} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
     else ()
         target_link_libraries (${target_name} ${PYTHON_LIBRARIES})
+    endif ()
+
+    if (${CXX_VISIBILITY_PRESET} STREQUAL "hidden" AND NOT "${lib_VISMAP}" STREQUAL "" AND
+        (CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_CLANG) AND
+        (CMAKE_SYSTEM_NAME MATCHES "Linux|kFreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "GNU"))
+        # Linux/FreeBSD/Hurd: also hide all the symbols of dependent libraries
+        # to prevent clashes if an app using this project is linked against
+        # other versions of our dependencies.
+        set (PYTHON_VISIBILITY_MAP_COMMAND "-Wl,--version-script=${lib_VISMAP}")
+    endif ()
+    if (PYTHON_VISIBILITY_MAP_COMMAND)
+        set_target_properties (${target_name} PROPERTIES LINK_FLAGS ${PYTHON_VISIBILITY_MAP_COMMAND})
     endif ()
 
     # Exclude the 'lib' prefix from the name

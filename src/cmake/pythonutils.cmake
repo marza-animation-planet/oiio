@@ -135,12 +135,15 @@ macro (setup_python_module)
     endif ()
 
     if (${CXX_VISIBILITY_PRESET} STREQUAL "hidden" AND NOT "${lib_VISMAP}" STREQUAL "" AND
-        (CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_CLANG) AND
-        (CMAKE_SYSTEM_NAME MATCHES "Linux|kFreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "GNU"))
-        # Linux/FreeBSD/Hurd: also hide all the symbols of dependent libraries
-        # to prevent clashes if an app using this project is linked against
-        # other versions of our dependencies.
-        set (PYTHON_VISIBILITY_MAP_COMMAND "-Wl,--version-script=${lib_VISMAP}")
+        (CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_CLANG))
+        if (CMAKE_SYSTEM_NAME MATCHES "Linux|kFreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "GNU")
+            # Linux/FreeBSD/Hurd: also hide all the symbols of dependent libraries
+            # to prevent clashes if an app using this project is linked against
+            # other versions of our dependencies.
+            set (PYTHON_VISIBILITY_MAP_COMMAND "-Wl,--version-script=${lib_VISMAP}")
+        elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            set (PYTHON_VISIBILITY_MAP_COMMAND "-Wl,-exported_symbols_list,${lib_VISMAP}")
+        endif ()
     endif ()
     if (PYTHON_VISIBILITY_MAP_COMMAND)
         set_target_properties (${target_name} PROPERTIES LINK_FLAGS ${PYTHON_VISIBILITY_MAP_COMMAND})

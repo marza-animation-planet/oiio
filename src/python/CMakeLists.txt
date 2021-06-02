@@ -88,9 +88,7 @@ if (PY_VISIBILITY_MAP_FILE)
 endif ()
 if (PY_VISIBILITY_MAP_COMMAND)
     # if PY_VISIBILITY_MAP_COMMAND defined means VISIBILTY_COMMAND is necessarily defined too
-    set_target_properties (${target_name}
-                           PROPERTIES
-                           LINK_FLAGS "${VISIBILITY_COMMAND} ${PY_VISIBILITY_MAP_COMMAND}")
+    set_property (TARGET ${target_name} APPEND_STRING PROPERTY LINK_FLAGS " ${VISIBILITY_COMMAND} ${PY_VISIBILITY_MAP_COMMAND}")
 endif ()
 
 install (TARGETS ${target_name}

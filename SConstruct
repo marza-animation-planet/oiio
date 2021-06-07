@@ -122,8 +122,15 @@ if rv["require"]:
    for name in ["filesystem", "regex", "system", "thread"]:
       path = rv["libdir"] + "/libboost_" + name + libsuffix
       if not os.path.isfile(path):
-         excons.WarnOnce("Invalid Boost %s library '%s'" % (name, path), tool="OIIO")
-         sys.exit(1)
+         warnandquit = True
+         # boost newer than 1.63.0 (at least) on windows also have extension for the architecture after the runtime
+         if sys.platform == "win32":
+            libname = "libboost_%s-vc%d-mt-x64-%s.lib" % (name, int(float(excons.mscver) * 10), strver)
+            path = rv["libdir"] + "/" + libname
+            warnandquit = (not os.path.isfile(path))
+         if warnandquit:
+            excons.WarnOnce("Invalid Boost %s library '%s'" % (name, path), tool="OIIO")
+            sys.exit(1)
       libs.append(path)
 
    oiio_opts["BOOST_CUSTOM"] = 1
